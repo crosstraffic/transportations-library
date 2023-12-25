@@ -184,9 +184,9 @@ impl TwoLaneHighways<'_> {
     pub fn identify_vertical_class(&mut self, seg_num: usize) -> (f64, f64) {
         let mut _min = 0.0;
         let mut _max = 0.0;
-        let mut vc = self.segments[seg_num].get_vertical_class();
-        let mut pt = self.segments[seg_num].get_passing_type();
-        if (vc == 1) && (vc == 2){
+        let vc = self.segments[seg_num].get_vertical_class();
+        let pt = self.segments[seg_num].get_passing_type();
+        if (vc == 1) || (vc == 2){
             if pt == "Passing Constrained" {
                 _min = 0.25;
                 _max = 3.0;
@@ -224,66 +224,66 @@ impl TwoLaneHighways<'_> {
     }
 
 
-    // /// Step 2: Determine demand flow rates and capacity
-    // pub fn determine_demand_flow(&self) -> (f64, f64, i32) {
+    /// Step 2: Determine demand flow rates and capacity
+    pub fn determine_demand_flow(&self, seg_num: usize) -> (f64, f64, i32) {
 
-    //     let mut v_i = self.volume;
-    //     let mut v_o = self.volume_op;
-    //     let phf = self.phf;
-    //     let phv = self.phv;
-    //     let mut pt = self.passing_type;
-    //     let mut vc = self.vertical_class;
+        let v_i = self.segments[seg_num].get_volume();
+        let v_o = self.segments[seg_num].get_volume_op();
+        let phf = self.segments[seg_num].get_phf();
+        let phv = self.segments[seg_num].get_phv();
+        let pt = self.segments[seg_num].get_passing_type();
+        let vc = self.segments[seg_num].get_vertical_class();
 
-    //     let mut demand_flow_i = v_i / phf;
-    //     let mut demand_flow_o = 0.0;
-    //     let mut capacity = 0;
+        let demand_flow_i = v_i / phf;
+        let mut demand_flow_o = 0.0;
+        let mut capacity = 0;
 
-    //     if (pt == "Passing Zone") && (v_o == 0.0) {
-    //         capacity = 1700;
-    //     } else if pt == "Passing Zone" {
-    //         demand_flow_o = v_o / phf;
-    //         capacity = 1700;
-    //     } else if pt == "Passing Constrained" {
-    //         demand_flow_o = 1500.0;
-    //         capacity = 1700;
-    //     } else if pt == "Passing Lane" {
-    //         if phv < 5.0 {
-    //             capacity = 1500;
-    //         } else if phv >= 5.0 && phv < 10.0 {
-    //             if vc == 1 || vc == 2 || vc == 3 {
-    //                 capacity = 1500;
-    //             } else {
-    //                 capacity = 1500;
-    //             }
-    //         } else if phv >= 10.0 && phv < 15.0 {
-    //             if vc == 1 || vc == 2 || vc == 3 {
-    //                 capacity = 1400;
-    //             } else {
-    //                 capacity = 1300;
-    //             }
-    //         } else if phv >= 15.0 && phv < 20.0 {
-    //             if vc == 1 || vc == 2 || vc == 3 || vc == 4 {
-    //             capacity = 1300;
-    //             } else {
-    //             capacity = 1200;
-    //             }
-    //         } else if phv >= 20.0 && phv < 25.0 {
-    //             if vc == 1 || vc == 2 || vc == 3 {
-    //                 capacity = 1300;
-    //             } else if vc == 4 {
-    //                 capacity = 1200;
-    //             } else {
-    //                 capacity = 1100;
-    //             }
-    //         } else if phv >= 25.0 {
-    //             capacity = 1100;
-    //         }
-    //     }
+        if (pt == "Passing Zone") && (v_o == 0.0) {
+            capacity = 1700;
+        } else if pt == "Passing Zone" {
+            demand_flow_o = v_o / phf;
+            capacity = 1700;
+        } else if pt == "Passing Constrained" {
+            demand_flow_o = 1500.0;
+            capacity = 1700;
+        } else if pt == "Passing Lane" {
+            if phv < 5.0 {
+                capacity = 1500;
+            } else if phv >= 5.0 && phv < 10.0 {
+                if vc == 1 || vc == 2 || vc == 3 {
+                    capacity = 1500;
+                } else {
+                    capacity = 1500;
+                }
+            } else if phv >= 10.0 && phv < 15.0 {
+                if vc == 1 || vc == 2 || vc == 3 {
+                    capacity = 1400;
+                } else {
+                    capacity = 1300;
+                }
+            } else if phv >= 15.0 && phv < 20.0 {
+                if vc == 1 || vc == 2 || vc == 3 || vc == 4 {
+                capacity = 1300;
+                } else {
+                capacity = 1200;
+                }
+            } else if phv >= 20.0 && phv < 25.0 {
+                if vc == 1 || vc == 2 || vc == 3 {
+                    capacity = 1300;
+                } else if vc == 4 {
+                    capacity = 1200;
+                } else {
+                    capacity = 1100;
+                }
+            } else if phv >= 25.0 {
+                capacity = 1100;
+            }
+        }
 
-    //     (demand_flow_i, demand_flow_o, capacity)
+        (demand_flow_i, demand_flow_o, capacity)
 
 
-    // }
+    }
 
 
     // /// Step 3: Determine vertical alignment classification
