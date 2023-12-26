@@ -1,14 +1,17 @@
-pub use crate::hcm::*;
-extern crate round;
-
-
+mod utils;
 mod hcm;
+
+pub use crate::hcm::*;
+
+
+// use crate::utils::round_to_significant_digits;
 
 #[cfg(test)]
 mod twolanehighways_test {
     use super::TwoLaneHighways;
     use super::Segment;
     use super::SubSegment;
+    use super::utils::math;
 
     fn case1_settings() -> (TwoLaneHighways, usize) {
         // let subsegment = SubSegment::new(250.0, 0.5, 3.0);
@@ -21,12 +24,15 @@ mod twolanehighways_test {
 
         let segment = Segment::new(
             passing_type,
-            3960.0,
+            0.75,
             0.0,
             // true,
             false,
             752.0,
             0.0,
+            0.0,
+            0.0,
+            0,
             0.0,
             0.0,
             1,
@@ -67,7 +73,7 @@ mod twolanehighways_test {
         let ans1_demand_flow_o = 1500.0;
         let ans1_capacity = 1700.0;
 
-        let (twolanehighways, seg_num) = case1_settings();
+        let (mut twolanehighways, seg_num) = case1_settings();
 
         let (demand_flow_i, demand_flow_o, capacity) = twolanehighways.determine_demand_flow(seg_num);
         assert_eq!((ans1_demand_flow_i, ans1_demand_flow_o, ans1_capacity), (demand_flow_i, demand_flow_o, capacity.into()));
@@ -78,7 +84,7 @@ mod twolanehighways_test {
     pub fn determine_vertical_alignment_test() {
         let ans1_ver_align = 1;
 
-        let (twolanehighways, seg_num) = case1_settings();
+        let (mut twolanehighways, seg_num) = case1_settings();
 
         let ver_align = twolanehighways.determine_vertical_alignment(seg_num);
         assert_eq!(ans1_ver_align, ver_align);
@@ -96,16 +102,29 @@ mod twolanehighways_test {
     }
 
     #[test]
-    pub fn estimate_average_speed_teset() {
+    pub fn estimate_average_speed_test() {
         let ans1_s = 53.7;
         let ans1_hor_class = 0;
 
         let (mut twolanehighways, seg_num) = case1_settings();
 
         // Set free flow speed
+        let (demand_flow_i, demand_flow_o, capacity) = twolanehighways.determine_demand_flow(seg_num);
         let ffs = twolanehighways.determine_free_flow_speed(seg_num);
         let (s, hor_class) = twolanehighways.estimate_average_speed(seg_num);
-        assert_eq!((ans1_s, ans1_hor_class), (s, hor_class));
+        assert_eq!((ans1_s, ans1_hor_class), (math::round_to_significant_digits(s, 3), hor_class));
+
+    }
+
+    #[test]
+    pub fn estimate_percent_followers_test() {
+        let ans1_pf = 67.7;
+        let (mut twolanehighways, seg_num) = case1_settings();
+
+        let (demand_flow_i, demand_flow_o, capacity) = twolanehighways.determine_demand_flow(seg_num);
+        let ffs = twolanehighways.determine_free_flow_speed(seg_num);
+        let pf = twolanehighways.estimate_percent_followers(seg_num);
+        assert_eq!(ans1_pf, math::round_to_significant_digits(pf, 3));
 
     }
 }

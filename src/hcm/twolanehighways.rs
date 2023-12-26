@@ -1,3 +1,6 @@
+use crate::utils::math::round_to_significant_digits;
+
+
 #[derive(Debug, Clone)]
 pub struct SubSegment {
     /// Length of subsegment, ft.
@@ -30,6 +33,12 @@ pub struct Segment {
     /// Demand volume for opposite direction o, veh/hr. Required for PZ segments.
     /// 1500 veh/hr for PC segments and 0 for PL segments.
     pub volume_op: f64,
+    /// Demand flow rate for analysis direction i, veh/hr
+    pub flow_rate: f64,
+    /// Demand flow rate for opposite direction i, veh/hr
+    pub flow_rate_o: f64,
+    /// Capacity, veh/hr
+    pub capacity: i32,
     /// Free flow speed, mi/hr
     pub ffs: f64,
     /// Average speed, mi/hr
@@ -109,8 +118,8 @@ impl SubSegment {
 /// Implement methods for Segment
 impl Segment {
     /// Method to create a new Segment instance
-    pub fn new(passing_type: usize, length: f64, grade: f64, is_hc: bool, volume: f64,
-            volume_op: f64, ffs: f64, avg_speed: f64, vertical_class: i32, subsegments:Vec<SubSegment>, phf: f64, phv: f64, hor_class: i32) -> Segment {
+    pub fn new(passing_type: usize, length: f64, grade: f64, is_hc: bool, volume: f64, volume_op: f64, flow_rate: f64, flow_rate_o: f64, capacity: i32,
+            ffs: f64, avg_speed: f64, vertical_class: i32, subsegments:Vec<SubSegment>, phf: f64, phv: f64, hor_class: i32) -> Segment {
         Segment {
             passing_type,
             length,
@@ -118,6 +127,9 @@ impl Segment {
             is_hc,
             volume,
             volume_op,
+            flow_rate,
+            flow_rate_o,
+            capacity,
             ffs,
             avg_speed,
             vertical_class,
@@ -159,6 +171,30 @@ impl Segment {
         return self.volume_op
     }
 
+    fn get_flow_rate(&self) -> f64 {
+        return self.flow_rate
+    }
+
+    fn set_flow_rate(&mut self, flow_rate: f64) {
+        self.flow_rate = flow_rate
+    }
+
+    fn get_flow_rate_o(&self) -> f64 {
+        return self.flow_rate_o
+    }
+
+    fn set_flow_rate_o(&mut self, flow_rate_o: f64) {
+        self.flow_rate_o = flow_rate_o
+    }
+
+    fn get_capacity(&self) -> i32 {
+        self.capacity
+    }
+
+    fn set_capacity(&mut self, capacity: i32) {
+        self.capacity = capacity
+    }
+
     fn get_ffs(&self) -> f64 {
         return self.ffs
     }
@@ -177,6 +213,10 @@ impl Segment {
 
     fn get_vertical_class(&self) -> i32 {
         return self.vertical_class
+    }
+    
+    fn set_vertical_class(&mut self, vertical_class: i32) {
+        self.vertical_class = vertical_class
     }
 
     fn get_subsegments(&self) -> &Vec<SubSegment> {
@@ -240,9 +280,8 @@ impl TwoLaneHighways {
         }
     }
 
-    fn horizontal_class(&self) -> i32 {1}
-
     /// Step 1: Identify vertical class
+    /// TODO: This should be carefully reviewed if a passing lane exceeds 3 mi in length...
     pub fn identify_vertical_class(&mut self, seg_num: usize) -> (f64, f64) {
         let mut _min = 0.0;
         let mut _max = 0.0;
@@ -287,7 +326,7 @@ impl TwoLaneHighways {
 
 
     /// Step 2: Determine demand flow rates and capacity
-    pub fn determine_demand_flow(&self, seg_num: usize) -> (f64, f64, i32) {
+    pub fn determine_demand_flow(&mut self, seg_num: usize) -> (f64, f64, i32) {
 
         let v_i = self.segments[seg_num].get_volume();
         let v_o = self.segments[seg_num].get_volume_op();
@@ -341,6 +380,9 @@ impl TwoLaneHighways {
                 capacity = 1100;
             }
         }
+        self.segments[seg_num].set_flow_rate(demand_flow_i);
+        self.segments[seg_num].set_capacity(capacity);
+        self.segments[seg_num].set_flow_rate_o(demand_flow_o);
 
         (demand_flow_i, demand_flow_o, capacity)
 
@@ -349,7 +391,7 @@ impl TwoLaneHighways {
 
 
     /// Step 3: Determine vertical alignment classification
-    pub fn determine_vertical_alignment(&self, seg_num: usize) -> i32 {
+    pub fn determine_vertical_alignment(&mut self, seg_num: usize) -> i32 {
         let mut seg_length = self.segments[seg_num].get_length();
         let seg_grade = self.segments[seg_num].get_grade();
 
@@ -453,6 +495,11 @@ impl TwoLaneHighways {
                 else { ver_align = 5 };
             }
         }
+        if ver_align != self.segments[seg_num].get_vertical_class(){
+            self.segments[seg_num].set_vertical_class(ver_align);
+            // Run step 1 again.
+            self.identify_vertical_class(seg_num);
+        }
 
         ver_align
     }
@@ -546,8 +593,8 @@ impl TwoLaneHighways {
         let phf = self.segments[seg_num].get_phf();
         let phv = self.segments[seg_num].get_phv();
         let vc = self.segments[seg_num].get_vertical_class();
-        let vd = self.segments[seg_num].get_volume();
-        let vo = self.segments[seg_num].get_volume_op();
+        let vd = self.segments[seg_num].get_flow_rate();
+        let vo = self.segments[seg_num].get_flow_rate_o();
         let is_hc = self.segments[seg_num].get_is_hc();
 
 
@@ -573,14 +620,11 @@ impl TwoLaneHighways {
             res_s = tot_s / i as f64;
         } else {
             let seg_length = self.segments[seg_num].get_length();
-            println!("{}", seg_length);
-            println!("{}", ffs);
             // Only affected when it contains subsegments
             let rad = 0.0;
             let sup_ele = 0.0;
             (s, hor_class) = calc_speed(seg_length, bffs, ffs, pt, vc, vd, vo, phv, phf, is_hc, rad, sup_ele);
-            println!("{}", s);
-            println!("{}", hor_class);
+
             self.segments[seg_num].set_avg_speed(s);
             // self.segments[seg_num].seg_hor_class(hor_class);
             res_s = s;
@@ -755,17 +799,17 @@ impl TwoLaneHighways {
                 }
             }
             // slope coefficient for average speed calculation
-            let ms = f64::max(
+            let mut ms = f64::max(
             b5,
             b0 +
                 b1 * ffs +
-                b2 * vo / 1000.0 +
+                b2 * f64::sqrt(vo / 1000.0) +
                 f64::max(0.0, b3) * f64::sqrt(seg_length) +
                 f64::max(0.0, b4) * f64::sqrt(phv),
             );
         
             // power coefficient for average speed calculation
-            let ps = f64::max(
+            let mut ps = f64::max(
             f8,
             f0 +
                 f1 * ffs +
@@ -776,6 +820,10 @@ impl TwoLaneHighways {
                 f6 * f64::sqrt(phv) +
                 f7 * seg_length * phv,
             );
+
+            ms = round_to_significant_digits(ms, 5);
+            ps = round_to_significant_digits(ps, 5);
+
             // Length of horizontal curves = radius x central angle x pi/180
             // determine horizontal class
             if rad == 0.0 { 
@@ -838,325 +886,329 @@ impl TwoLaneHighways {
         (res_s, hor_class)
     }
 
-    // /// Step 6: Estimate percent followers
-    // pub fn estimate_percent_followers(&self, vc: i32, seg_length: f64, ffs: f64, cap: i32) -> f64 {
-    //     let (mut b0, mut b1, mut b2, mut b3, mut b4, mut b5, mut b6, mut b7) = (0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000);
-    //     let (mut c0, mut c1, mut c2, mut c3, mut c4, mut c5, mut c6, mut c7) = (0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000);
-    //     let (mut d0, mut d1, mut d2) = (0.000000, 0.000000, 0.000000);
-    //     let (mut e0, mut e1, mut e2, mut e3, mut e4) = (0.000000, 0.000000, 0.000000, 0.000000, 0.000000);
+    /// Step 6: Estimate percent followers
+    pub fn estimate_percent_followers(&self, seg_num: usize) -> f64 {
+        let (mut b0, mut b1, mut b2, mut b3, mut b4, mut b5, mut b6, mut b7) = (0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000);
+        let (mut c0, mut c1, mut c2, mut c3, mut c4, mut c5, mut c6, mut c7) = (0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000);
+        let (mut d0, mut d1, mut d2) = (0.000000, 0.000000, 0.000000);
+        let (mut e0, mut e1, mut e2, mut e3, mut e4) = (0.000000, 0.000000, 0.000000, 0.000000, 0.000000);
 
-    //     // Percent followers at capacity
-    //     let mut pf_cap = 0.0;
-    //     let mut pf_25_cap = 0.0;
+        // Percent followers at capacity
+        let mut pf_cap = 0.0;
+        let mut pf_25_cap = 0.0;
         
-    //     let pt = self.passing_type;
-    //     let vd = self.volume;
-    //     let vo = self.volume_op;
-    //     let phv = self.phv;
+        let seg_length = self.segments[seg_num].get_length();
+        let ffs = self.segments[seg_num].get_ffs();
+        let cap = self.segments[seg_num].get_capacity();
+        let pt = self.segments[seg_num].get_passing_type();
+        let vc = self.segments[seg_num].get_vertical_class();
+        let vd = self.segments[seg_num].get_flow_rate();
+        let vo = self.segments[seg_num].get_flow_rate_o();
+        let phv = self.segments[seg_num].get_phv();
 
-    //     if pt == "Passing Constrained" || pt == "Passing Zone" {
-    //         if vc == 1 {
-    //             b0 = 37.68080;
-    //             b1 = 3.05089;
-    //             b2 = -7.90866;
-    //             b3 = -0.94321;
-    //             b4 = 13.64266;
-    //             b5 = -0.00050;
-    //             b6 = -0.05500;
-    //             b7 = 7.13758;
-    //             c0 = 18.01780;
-    //             c1 = 10.00000;
-    //             c2 = -21.60000;
-    //             c3 = -0.97853;
-    //             c4 = 12.05214;
-    //             c5 = -0.00750;
-    //             c6 = -0.06700;
-    //             c7 = 11.60405;
-    //         } else if vc == 2 {
-    //             b0 = 58.21104;
-    //             b1 = 5.73387;
-    //             b2 = -13.66293;
-    //             b3 = -0.66126;
-    //             b4 = 9.08575;
-    //             b5 = -0.00950;
-    //             b6 = -0.03602;
-    //             b7 = 7.14619;
-    //             c0 = 47.83887;
-    //             c1 = 12.80000;
-    //             c2 = -28.20000;
-    //             c3 = -0.61758;
-    //             c4 = 5.80000;
-    //             c5 = -0.04550;
-    //             c6 = -0.03344;
-    //             c7 = 11.35573;
-    //         } else if vc == 3 {
-    //             b0 = 113.20439;
-    //             b1 = 10.01778;
-    //             b2 = -18.90000;
-    //             b3 = 0.46542;
-    //             b4 = -6.75338;
-    //             b5 = -0.03000;
-    //             b6 = -0.05800;
-    //             b7 = 10.03239;
-    //             c0 = 125.40000;
-    //             c1 = 19.50000;
-    //             c2 = -34.90000;
-    //             c3 = 0.90672;
-    //             c4 = -16.10000;
-    //             c5 = -0.11000;
-    //             c6 = -0.06200;
-    //             c7 = 14.71136;
-    //         } else if vc == 4 {
-    //             b0 = 58.29978;
-    //             b1 = -0.53611;
-    //             b2 = 7.35076;
-    //             b3 = -0.27046;
-    //             b4 = 4.49850;
-    //             b5 = -0.01100;
-    //             b6 = -0.02968;
-    //             b7 = 8.89680;
-    //             c0 = 103.13534;
-    //             c1 = 14.68459;
-    //             c2 = -23.72704;
-    //             c3 = 0.66444;
-    //             c4 = -11.95763;
-    //             c5 = -0.10000;
-    //             c6 = 0.00172;
-    //             c7 = 14.56611;
-    //         } else if vc == 5 {
-    //             b0 = 3.32968;
-    //             b1 = -0.84377;
-    //             b2 = 7.08952;
-    //             b3 = -1.32089;
-    //             b4 = 19.98477;
-    //             b5 = -0.01250;
-    //             b6 = -0.02960;
-    //             b7 = 9.99453;
-    //             c0 = 89.00000;
-    //             c1 = 19.02642;
-    //             c2 = -34.54240;
-    //             c3 = 0.29792;
-    //             c4 = -6.62528;
-    //             c5 = -0.16000;
-    //             c6 = 0.00480;
-    //             c7 = 17.56611;
-    //         }
-    //         d1 = -0.29764;
-    //         d2 = -0.71917;
-    //         e0 = 0.81165;
-    //         e1 = 0.37920;
-    //         e2 = -0.49524;
-    //         e3 = -2.11289;
-    //         e4 = 2.41146;
+        if pt == 0 || pt == 1 {
+            if vc == 1 {
+                b0 = 37.68080;
+                b1 = 3.05089;
+                b2 = -7.90866;
+                b3 = -0.94321;
+                b4 = 13.64266;
+                b5 = -0.00050;
+                b6 = -0.05500;
+                b7 = 7.13758;
+                c0 = 18.01780;
+                c1 = 10.00000;
+                c2 = -21.60000;
+                c3 = -0.97853;
+                c4 = 12.05214;
+                c5 = -0.00750;
+                c6 = -0.06700;
+                c7 = 11.60405;
+            } else if vc == 2 {
+                b0 = 58.21104;
+                b1 = 5.73387;
+                b2 = -13.66293;
+                b3 = -0.66126;
+                b4 = 9.08575;
+                b5 = -0.00950;
+                b6 = -0.03602;
+                b7 = 7.14619;
+                c0 = 47.83887;
+                c1 = 12.80000;
+                c2 = -28.20000;
+                c3 = -0.61758;
+                c4 = 5.80000;
+                c5 = -0.04550;
+                c6 = -0.03344;
+                c7 = 11.35573;
+            } else if vc == 3 {
+                b0 = 113.20439;
+                b1 = 10.01778;
+                b2 = -18.90000;
+                b3 = 0.46542;
+                b4 = -6.75338;
+                b5 = -0.03000;
+                b6 = -0.05800;
+                b7 = 10.03239;
+                c0 = 125.40000;
+                c1 = 19.50000;
+                c2 = -34.90000;
+                c3 = 0.90672;
+                c4 = -16.10000;
+                c5 = -0.11000;
+                c6 = -0.06200;
+                c7 = 14.71136;
+            } else if vc == 4 {
+                b0 = 58.29978;
+                b1 = -0.53611;
+                b2 = 7.35076;
+                b3 = -0.27046;
+                b4 = 4.49850;
+                b5 = -0.01100;
+                b6 = -0.02968;
+                b7 = 8.89680;
+                c0 = 103.13534;
+                c1 = 14.68459;
+                c2 = -23.72704;
+                c3 = 0.66444;
+                c4 = -11.95763;
+                c5 = -0.10000;
+                c6 = 0.00172;
+                c7 = 14.56611;
+            } else if vc == 5 {
+                b0 = 3.32968;
+                b1 = -0.84377;
+                b2 = 7.08952;
+                b3 = -1.32089;
+                b4 = 19.98477;
+                b5 = -0.01250;
+                b6 = -0.02960;
+                b7 = 9.99453;
+                c0 = 89.00000;
+                c1 = 19.02642;
+                c2 = -34.54240;
+                c3 = 0.29792;
+                c4 = -6.62528;
+                c5 = -0.16000;
+                c6 = 0.00480;
+                c7 = 17.56611;
+            }
+            d1 = -0.29764;
+            d2 = -0.71917;
+            e0 = 0.81165;
+            e1 = 0.37920;
+            e2 = -0.49524;
+            e3 = -2.11289;
+            e4 = 2.41146;
 
-    //         pf_cap = b0 + b1 * seg_length + b2 * f64::sqrt(seg_length) + b3 * ffs + b4 * f64::sqrt(ffs) + b5 * phv + b6 * ffs * vo / 1000.0 + b7 * f64::sqrt(vo/1000.0);
-    //         pf_25_cap = c0 + c1 * seg_length + c2 * f64::sqrt(seg_length) + c3 * ffs + c4 * f64::sqrt(ffs) + c5 * phv + c6 * ffs * vo / 1000.0 + c7 * f64::sqrt(vo/1000.0);
-    //     } else if pt == "Passing Lane" {
-    //         if vc == 1 {
-    //             b0 = 61.73075;
-    //             b1 = 6.73922;
-    //             b2 = -23.68853;
-    //             b3 = -0.84126;
-    //             b4 = 11.44533;
-    //             b5 = -1.05124;
-    //             b6 = 1.50390;
-    //             b7 = 0.00491;
-    //             c0 = 80.37105;
-    //             c1 = 14.44997;
-    //             c2 = -46.41831;
-    //             c3 = -0.23367;
-    //             c4 = 0.84914;
-    //             c5 = -0.56747;
-    //             c6 = 0.89427;
-    //             c7 = 0.00119;
-    //         } else if vc == 2 {
-    //             b0 = 12.30096;
-    //             b1 = 9.57465;
-    //             b2 = -30.79427;
-    //             b3 = -1.79448;
-    //             b4 = 25.76436;
-    //             b5 = -0.66350;
-    //             b6 = 1.26039;
-    //             b7 = -0.00323;
-    //             c0 = 18.37886;
-    //             c1 = 14.71856;
-    //             c2 = -47.78892;
-    //             c3 = -1.43373;
-    //             c4 = 18.32040;
-    //             c5 = -0.13226;
-    //             c6 = 0.77127;
-    //             c7 = -0.00778;
-    //         } else if vc == 3 {
-    //             b0 = 206.07369;
-    //             b1 = -4.29885;
-    //             b2 = 0.00000;
-    //             b3 = 1.96483;
-    //             b4 = -30.32556;
-    //             b5 = -0.75812;
-    //             b6 = 1.06453;
-    //             b7 = -0.00839;
-    //             c0 = 239.98930;
-    //             c1 = 15.90683;
-    //             c2 = -46.87525;
-    //             c3 = 2.73582;
-    //             c4 = -42.88130;
-    //             c5 = -0.53746;
-    //             c6 = -0.76271;
-    //             c7 = -0.00428;
-    //         } else if vc == 4 {
-    //             b0 = 263.13428;
-    //             b1 = 5.38749;
-    //             b2 = -19.04859;
-    //             b3 = 2.73018;
-    //             b4 = -42.76919;
-    //             b5 = -1.31277;
-    //             b6 = -0.32242;
-    //             b7 = 0.01412;
-    //             c0 = 223.68435;
-    //             c1 = 10.26908;
-    //             c2 = -35.60830;
-    //             c3 = 2.31877;
-    //             c4 = -38.30034;
-    //             c5 = -0.60275;
-    //             c6 = -0.67758;
-    //             c7 = 0.00117;
-    //         } else if vc == 5 {
-    //             b0 = 126.95629;
-    //             b1 = 5.95754;
-    //             b2 = -19.22229;
-    //             b3 = 0.43238;
-    //             b4 = -7.35636;
-    //             b5 = -1.03017;
-    //             b6 = -2.66026;
-    //             b7 = 0.01389;
-    //             c0 = 137.37633;
-    //             c1 = 11.00106;
-    //             c2 = -38.89043;
-    //             c3 = 0.78501;
-    //             c4 = -14.88672;
-    //             c5 = -0.72576;
-    //             c6 = -2.49546;
-    //             c7 = 0.00872;
-    //         }
-    //         d1 = -0.15808;
-    //         d2 = -0.83732;
-    //         e0 = -1.63246;
-    //         e1 = 1.64960;
-    //         e2 = -4.45823;
-    //         e3 = -4.89119;
-    //         e4 = 10.33057;
+            pf_cap = b0 + b1 * seg_length + b2 * f64::sqrt(seg_length) + b3 * ffs + b4 * f64::sqrt(ffs) + b5 * phv + b6 * ffs * vo / 1000.0 + b7 * f64::sqrt(vo/1000.0);
+            pf_25_cap = c0 + c1 * seg_length + c2 * f64::sqrt(seg_length) + c3 * ffs + c4 * f64::sqrt(ffs) + c5 * phv + c6 * ffs * vo / 1000.0 + c7 * f64::sqrt(vo/1000.0);
+        } else if pt == 2 {
+            if vc == 1 {
+                b0 = 61.73075;
+                b1 = 6.73922;
+                b2 = -23.68853;
+                b3 = -0.84126;
+                b4 = 11.44533;
+                b5 = -1.05124;
+                b6 = 1.50390;
+                b7 = 0.00491;
+                c0 = 80.37105;
+                c1 = 14.44997;
+                c2 = -46.41831;
+                c3 = -0.23367;
+                c4 = 0.84914;
+                c5 = -0.56747;
+                c6 = 0.89427;
+                c7 = 0.00119;
+            } else if vc == 2 {
+                b0 = 12.30096;
+                b1 = 9.57465;
+                b2 = -30.79427;
+                b3 = -1.79448;
+                b4 = 25.76436;
+                b5 = -0.66350;
+                b6 = 1.26039;
+                b7 = -0.00323;
+                c0 = 18.37886;
+                c1 = 14.71856;
+                c2 = -47.78892;
+                c3 = -1.43373;
+                c4 = 18.32040;
+                c5 = -0.13226;
+                c6 = 0.77127;
+                c7 = -0.00778;
+            } else if vc == 3 {
+                b0 = 206.07369;
+                b1 = -4.29885;
+                b2 = 0.00000;
+                b3 = 1.96483;
+                b4 = -30.32556;
+                b5 = -0.75812;
+                b6 = 1.06453;
+                b7 = -0.00839;
+                c0 = 239.98930;
+                c1 = 15.90683;
+                c2 = -46.87525;
+                c3 = 2.73582;
+                c4 = -42.88130;
+                c5 = -0.53746;
+                c6 = -0.76271;
+                c7 = -0.00428;
+            } else if vc == 4 {
+                b0 = 263.13428;
+                b1 = 5.38749;
+                b2 = -19.04859;
+                b3 = 2.73018;
+                b4 = -42.76919;
+                b5 = -1.31277;
+                b6 = -0.32242;
+                b7 = 0.01412;
+                c0 = 223.68435;
+                c1 = 10.26908;
+                c2 = -35.60830;
+                c3 = 2.31877;
+                c4 = -38.30034;
+                c5 = -0.60275;
+                c6 = -0.67758;
+                c7 = 0.00117;
+            } else if vc == 5 {
+                b0 = 126.95629;
+                b1 = 5.95754;
+                b2 = -19.22229;
+                b3 = 0.43238;
+                b4 = -7.35636;
+                b5 = -1.03017;
+                b6 = -2.66026;
+                b7 = 0.01389;
+                c0 = 137.37633;
+                c1 = 11.00106;
+                c2 = -38.89043;
+                c3 = 0.78501;
+                c4 = -14.88672;
+                c5 = -0.72576;
+                c6 = -2.49546;
+                c7 = 0.00872;
+            }
+            d1 = -0.15808;
+            d2 = -0.83732;
+            e0 = -1.63246;
+            e1 = 1.64960;
+            e2 = -4.45823;
+            e3 = -4.89119;
+            e4 = 10.33057;
 
-    //         pf_cap = b0 + b1 * seg_length + b2 * f64::sqrt(seg_length) + b3 * ffs + b4 * f64::sqrt(ffs) + b5 * phv + b6 * f64::sqrt(phv) + b7 * ffs * phv;
-    //         pf_25_cap = c0 + c1 * seg_length + c2 * f64::sqrt(seg_length) + c3 * ffs + c4 * f64::sqrt(ffs) + c5 * phv + c6 * f64::sqrt(phv) + c7 * ffs * phv;
-    //     }
+            pf_cap = b0 + b1 * seg_length + b2 * f64::sqrt(seg_length) + b3 * ffs + b4 * f64::sqrt(ffs) + b5 * phv + b6 * f64::sqrt(phv) + b7 * ffs * phv;
+            pf_25_cap = c0 + c1 * seg_length + c2 * f64::sqrt(seg_length) + c3 * ffs + c4 * f64::sqrt(ffs) + c5 * phv + c6 * f64::sqrt(phv) + c7 * ffs * phv;
+        }
 
-    //     let mut z_cap = (0.0 - f64::ln(1.0 - pf_cap / 100.0)) / (cap as f64 / 1000.0);
-    //     let mut z_25_cap = (0.0 - f64::ln(1.0 - pf_25_cap / 100.0)) / ((0.25 * cap as f64) / 1000.0);
+        let z_cap = (0.0 - f64::ln(1.0 - pf_cap / 100.0)) / (cap as f64 / 1000.0);
+        let z_25_cap = (0.0 - f64::ln(1.0 - pf_25_cap / 100.0)) / ((0.25 * cap as f64) / 1000.0);
 
-    //     // Slope Coefficient
-    //     let mut m_pf = d1 * z_25_cap + d2 * z_cap;
-    //     // Power Coefficient
-    //     let mut p_pf = e0 + e1 * z_25_cap + e2 * z_cap + e3 * f64::sqrt(z_25_cap) + e4 * f64::sqrt(z_cap);
+        // Slope Coefficient
+        let m_pf = d1 * z_25_cap + d2 * z_cap;
+        // Power Coefficient
+        let p_pf = e0 + e1 * z_25_cap + e2 * z_cap + e3 * f64::sqrt(z_25_cap) + e4 * f64::sqrt(z_cap);
 
-    //     let mut pf = 100.0 * (1.0 - f64::exp(m_pf * f64::powf(vd / 1000.0, p_pf)));
+        let pf = 100.0 * (1.0 - f64::exp(m_pf * f64::powf(vd / 1000.0, p_pf)));
 
-    //     pf
-    // }
+        pf
+    }
 
-    // // Step 7: Calculate passing lane parameters
+    // Step 7: Calculate passing lane parameters
 
-    // // Step 8: Determine follower density
-    // pub fn determine_follower_density_pl(&self) -> f64 {
-    //     let mut s_init_fl: f64;
-    //     let mut s_init_sl: f64;
-    //     let mut pf_fl: f64;
-    //     let mut pf_sl: f64;
-    //     let mut hor_class = 0;
+    // Step 8: Determine follower density
+    pub fn determine_follower_density_pl(&self, seg_num: usize) -> f64 {
+        let mut s_init_fl: f64;
+        let mut s_init_sl: f64;
+        let mut pf_fl: f64;
+        let mut pf_sl: f64;
+        let mut hor_class = 0;
 
-    //     let vd = self.volume;
-    //     let phv = self.phv;
-    //     let pm_hv_fl = self.pm_hv_fl;
-    //     let subrows_len = self.subrows_len;
+        let vd = self.segments[seg_num].get_free_flow();
+        let phv = self.segments[seg_num].get_phv();
+        let pm_hv_fl = self.segments[seg_num].get_pmhvfl();
+        let subrows_len = self.segments[seg_num].get_subsegments()[subseg_num].get_length();
         
-    //     // Calculate passing lane parameters
-    //     let nhv = f64::ceil(vd * phv / 100.0);
-    //     let p_v_fl = 0.92183 - 0.05022 * f64::ln(vd) - 0.00030 * nhv;
-    //     let vd_fl = f64::ceil(vd * p_v_fl);
-    //     let vd_sl = f64::ceil(vd * (1.0 - p_v_fl));
-    //     let phv_fl = phv * pm_hv_fl;
-    //     let nhv_sl = f64::ceil(nhv - (vd_fl * phv_fl / 100.0));
-    //     let phv_sl = nhv_sl / vd_sl * 100.0;
-    //     let mut fl_tot = 0.0;
-    //     let mut sl_tot = 0.0;
+        // Calculate passing lane parameters
+        let nhv = f64::ceil(vd * phv / 100.0);
+        let p_v_fl = 0.92183 - 0.05022 * f64::ln(vd) - 0.00030 * nhv;
+        let vd_fl = f64::ceil(vd * p_v_fl);
+        let vd_sl = f64::ceil(vd * (1.0 - p_v_fl));
+        let phv_fl = phv * pm_hv_fl;
+        let nhv_sl = f64::ceil(nhv - (vd_fl * phv_fl / 100.0));
+        let phv_sl = nhv_sl / vd_sl * 100.0;
+        let mut fl_tot = 0.0;
+        let mut sl_tot = 0.0;
 
-    //     // Subsection
-    //     let mut j = 0;
-    //     if subrows_len > 0 {
-    //         while j < subrows_len {
-    //             [s_init_fl, hor_class] = estimateAverageSpeed(Spl, pass_type, ver_cls, subSeg_len[j], ffs, vdFL, vo, PHVFL, is_hc, rad[j], sup_ele[j]);
-    //             [s_init_sl, hor_class] = estimateAverageSpeed(Spl, pass_type, ver_cls, subSeg_len[j], ffs, vdSL, vo, PHVSL, is_hc, rad[j], sup_ele[j]);
+        // Subsection
+        let mut j = 0;
+        if subrows_len > 0 {
+            while j < subrows_len {
+                [s_init_fl, hor_class] = estimateAverageSpeed(Spl, pass_type, ver_cls, subSeg_len[j], ffs, vdFL, vo, PHVFL, is_hc, rad[j], sup_ele[j]);
+                [s_init_sl, hor_class] = estimateAverageSpeed(Spl, pass_type, ver_cls, subSeg_len[j], ffs, vdSL, vo, PHVSL, is_hc, rad[j], sup_ele[j]);
 
-    //             fl_tot += s_init_fl * subSeg_len[j];
-    //             sl_tot += s_init_sl * subSeg_len[j];
-    //             j += 1;
-    //         }
-    //         s_init_fl = s_init_fl / seg_length;
-    //         s_init_sl = s_init_sl / seg_length;
-    //     } else {
-    //         [s_init_fl, hor_class] = estimateAverageSpeed(Spl, pass_type, ver_cls, seg_length, ffs, vdFL, vo, PHVFL, is_hc, rad, sup_ele);
-    //         [s_init_sl, hor_class] = estimateAverageSpeed(Spl, pass_type, ver_cls, seg_length, ffs, vdSL, vo, PHVSL, is_hc, rad, sup_ele);
-    //     }
-
-
-    //     pf_fl= estimatePercentFollowers(pass_type, ver_cls, seg_length, ffs, phv_fl, vdFL, vo, capacity);
-    //     pf_sl = estimatePercentFollowers(pass_type, ver_cls, seg_length, ffs, phv_sl, vdSL, vo, capacity);
-
-    //     let sda = 2.750 + 0.00056 * vd + 3.8521 * phv / 100.0;
-    //     let s_mid_fl = s_init_fl + sda / 2.0;
-    //     let s_mid_sl = s_init_sl - sda / 2.0;
-
-    //     // it's acutually fd at the midpoint of the PL segment but used for LOS calculation
-    //     let fd_mid = (pf_fl * vd_fl / s_mid_fl + pf_sl * vd_sl / s_mid_sl) / 200.0 ;
-
-    //     fd_mid
-    // }
+                fl_tot += s_init_fl * subSeg_len[j];
+                sl_tot += s_init_sl * subSeg_len[j];
+                j += 1;
+            }
+            s_init_fl = s_init_fl / seg_length;
+            s_init_sl = s_init_sl / seg_length;
+        } else {
+            [s_init_fl, hor_class] = estimateAverageSpeed(Spl, pass_type, ver_cls, seg_length, ffs, vdFL, vo, PHVFL, is_hc, rad, sup_ele);
+            [s_init_sl, hor_class] = estimateAverageSpeed(Spl, pass_type, ver_cls, seg_length, ffs, vdSL, vo, PHVSL, is_hc, rad, sup_ele);
+        }
 
 
-    // pub fn determine_follower_density_pc_pz(&self, pf: f64, s: f64) -> f64 {
-    //     let vd = self.volume;
-    //     let mut fd = (pf * vd) / (100.0 * s);
-    //     fd
-    // }
+        pf_fl= estimatePercentFollowers(pass_type, ver_cls, seg_length, ffs, phv_fl, vdFL, vo, capacity);
+        pf_sl = estimatePercentFollowers(pass_type, ver_cls, seg_length, ffs, phv_sl, vdSL, vo, capacity);
+
+        let sda = 2.750 + 0.00056 * vd + 3.8521 * phv / 100.0;
+        let s_mid_fl = s_init_fl + sda / 2.0;
+        let s_mid_sl = s_init_sl - sda / 2.0;
+
+        // it's acutually fd at the midpoint of the PL segment but used for LOS calculation
+        let fd_mid = (pf_fl * vd_fl / s_mid_fl + pf_sl * vd_sl / s_mid_sl) / 200.0 ;
+
+        fd_mid
+    }
 
 
-    // pub fn determine_segment_los(&self, fd: f64, s_pl: f64, cap: f64) -> char {
-    //     let mut los: char;
+    pub fn determine_follower_density_pc_pz(&self, seg_num: usize, pf: f64, s: f64) -> f64 {
+        let vd = self.segments[seg_num].get_free_flow();
+        let mut fd = (pf * vd) / (100.0 * s);
+        fd
+    }
+
+
+    pub fn determine_segment_los(&self, seg_num: usize, fd: f64, s_pl: f64, cap: f64) -> char {
+        let mut los: char;
         
-    //     let vd = self.volume;
+        let vd = self.segments[seg_num].get_free_flow();
 
-    //     if s_pl >= 50.0 {
-    //         if fd <= 2.0 { los = 'A' }
-    //         else if fd > 2.0 && fd <= 4.0 { los = 'B' }
-    //         else if fd > 4.0 && fd <= 8.0 { los = 'C' }
-    //         else if fd > 8.0 && fd <= 12.0 { los = 'D' }
-    //         else if fd > 12.0 { los = 'E' };
-    //         if vd > cap as f64 { los = 'F' };
-    //     } else {
-    //         if fd <= 2.5 { los = 'A' }
-    //         else if fd > 2.5 && fd <= 5.0 { los = 'B' }
-    //         else if fd > 5.0 && fd <= 10.0 { los = 'C' }
-    //         else if fd > 10.0 && fd <= 15.0 { los = 'D' }
-    //         else if fd > 15.0 { los = 'E' }
-    //         if vd > cap as f64 { los = 'F' };
-    //     }
+        if s_pl >= 50.0 {
+            if fd <= 2.0 { los = 'A' }
+            else if fd > 2.0 && fd <= 4.0 { los = 'B' }
+            else if fd > 4.0 && fd <= 8.0 { los = 'C' }
+            else if fd > 8.0 && fd <= 12.0 { los = 'D' }
+            else if fd > 12.0 { los = 'E' };
+            if vd > cap as f64 { los = 'F' };
+        } else {
+            if fd <= 2.5 { los = 'A' }
+            else if fd > 2.5 && fd <= 5.0 { los = 'B' }
+            else if fd > 5.0 && fd <= 10.0 { los = 'C' }
+            else if fd > 10.0 && fd <= 15.0 { los = 'D' }
+            else if fd > 15.0 { los = 'E' }
+            if vd > cap as f64 { los = 'F' };
+        }
 
-    //     los
-    // }
+        los
+    }
 
-    // Calculate segment LOS
+    // /// Calculate segment LOS
     // fn calc_seg_LOS(&self) -> String {}
     
-    // Calculate LOS
+    // /// Calculate LOS
     // fn calc_LOS(&self) -> String {}
 }
 
