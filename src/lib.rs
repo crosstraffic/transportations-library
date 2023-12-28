@@ -40,6 +40,7 @@ mod twolanehighways_test {
             Vec::new(),
             0.94,
             5.0,
+            0.0,
             0,
         );
         let twolanehighways = TwoLaneHighways {
@@ -112,6 +113,11 @@ mod twolanehighways_test {
         let (demand_flow_i, demand_flow_o, capacity) = twolanehighways.determine_demand_flow(seg_num);
         let ffs = twolanehighways.determine_free_flow_speed(seg_num);
         let (s, hor_class) = twolanehighways.estimate_average_speed(seg_num);
+
+        // let subseg_num = twolanehighways.get_segments()[seg_num].get_subsegments().len();
+        // while j < subseg_num {
+        //     tot_s += s;
+        // }
         assert_eq!((ans1_s, ans1_hor_class), (math::round_to_significant_digits(s, 3), hor_class));
 
     }
@@ -125,6 +131,40 @@ mod twolanehighways_test {
         let ffs = twolanehighways.determine_free_flow_speed(seg_num);
         let pf = twolanehighways.estimate_percent_followers(seg_num);
         assert_eq!(ans1_pf, math::round_to_significant_digits(pf, 3));
+    }
 
+    #[test]
+    pub fn determine_follower_density_pl_test() {
+        // let ans1_fd_mid = 
+        let (mut twolanehighways, seg_num) = case1_settings();
+    }
+
+    #[test]
+    pub fn determine_follower_density_pc_pz_test() {
+        let ans1_fd = 10.1;
+
+        let (mut twolanehighways, seg_num) = case1_settings();
+        let (demand_flow_i, demand_flow_o, capacity) = twolanehighways.determine_demand_flow(seg_num);
+        let ffs = twolanehighways.determine_free_flow_speed(seg_num);
+        let (s, hor_class) = twolanehighways.estimate_average_speed(seg_num);
+        let pf = twolanehighways.estimate_percent_followers(seg_num);
+        let fd = twolanehighways.determine_follower_density_pc_pz(seg_num);
+
+        assert_eq!(ans1_fd, math::round_to_significant_digits(fd, 3));
+
+    }
+
+    #[test]
+    pub fn determine_segment_los_test() {
+        let ans1_los = 'D';
+
+        let (mut twolanehighways, seg_num) = case1_settings();
+        let (demand_flow_i, demand_flow_o, capacity) = twolanehighways.determine_demand_flow(seg_num);
+        let ffs = twolanehighways.determine_free_flow_speed(seg_num);
+        let (s, hor_class) = twolanehighways.estimate_average_speed(seg_num);
+        let pf = twolanehighways.estimate_percent_followers(seg_num);
+        let fd = twolanehighways.determine_follower_density_pc_pz(seg_num);
+
+        assert_eq!(ans1_los, ans1_los);
     }
 }

@@ -1,4 +1,4 @@
-use crate::utils::math::round_to_significant_digits;
+use crate::{utils::math::round_to_significant_digits};
 
 
 #[derive(Debug, Clone)]
@@ -50,6 +50,8 @@ pub struct Segment {
     pub phf : f64,
     /// Percentage of heavy vehicles, unitless
     pub phv: f64,
+    /// Percent Followers
+    pub pf: f64,
     // /// Horizontal class of the segment.
     pub hor_class: i32,
 }
@@ -119,7 +121,7 @@ impl SubSegment {
 impl Segment {
     /// Method to create a new Segment instance
     pub fn new(passing_type: usize, length: f64, grade: f64, is_hc: bool, volume: f64, volume_op: f64, flow_rate: f64, flow_rate_o: f64, capacity: i32,
-            ffs: f64, avg_speed: f64, vertical_class: i32, subsegments:Vec<SubSegment>, phf: f64, phv: f64, hor_class: i32) -> Segment {
+            ffs: f64, avg_speed: f64, vertical_class: i32, subsegments:Vec<SubSegment>, phf: f64, phv: f64, pf: f64, hor_class: i32) -> Segment {
         Segment {
             passing_type,
             length,
@@ -136,6 +138,7 @@ impl Segment {
             subsegments,
             phf,
             phv,
+            pf,
             hor_class,
         }
     }
@@ -219,7 +222,7 @@ impl Segment {
         self.vertical_class = vertical_class
     }
 
-    fn get_subsegments(&self) -> &Vec<SubSegment> {
+    pub fn get_subsegments(&self) -> &Vec<SubSegment> {
         return &self.subsegments
     }
 
@@ -243,6 +246,14 @@ impl Segment {
         return self.phv
     }
 
+    fn get_percent_followers(&self) -> f64 {
+        self.pf
+    }
+
+    fn set_percent_followers(&mut self, pf: f64) {
+       self.pf = pf
+    }
+
     fn get_hor_class(&self) -> i32 {
         return self.hor_class
     }
@@ -258,18 +269,7 @@ impl TwoLaneHighways {
     /// * `segment number` - the number of segments
     /// 
 
-    // pub fn new(vi: f64, vo: f64, phf: f64, phv: f64, spl: f64, seg_length: f64, seg_grade: i32, 
-    //     lw: f64, sw: f64, apd: f64, is_hc: bool, pmhvfl: f64, hor_class: i32, vc: i32, pt: &str, sub_params: Vec<(f64, f64, f64)>) -> Self {
-    // pub fn new(seg: &Segment, subseg: &SubSegment) -> Self {
-    fn new(segments: Vec<Segment>, spl: f64, lane_width: f64, shoulder_width: f64, apd: f64, pmhvfl: f64) -> TwoLaneHighways {
-
-        // let subseg: Vec<SubSegment> = sub_params
-        //     .into_iter()
-        //     .map(|(subseg_length, design_rad, super_ele)| SubSegment {
-        //         subseg_length: subseg_length, design_rad: design_rad, sup_ele: super_ele
-        //     })
-        //     .collect();
-
+    pub fn new(segments: Vec<Segment>, spl: f64, lane_width: f64, shoulder_width: f64, apd: f64, pmhvfl: f64) -> TwoLaneHighways {
         TwoLaneHighways {
             segments: segments,
             spl: spl,
@@ -278,6 +278,10 @@ impl TwoLaneHighways {
             apd: apd,
             pmhvfl: pmhvfl,
         }
+    }
+
+    pub fn get_segments(&self) -> &Vec<Segment> {
+        return &self.segments
     }
 
     /// Step 1: Identify vertical class
@@ -601,15 +605,15 @@ impl TwoLaneHighways {
         if is_hc {
             // Get variables from subsegments
             let subseg_num = self.segments[seg_num].get_subsegments().len();
-            // let mut subseg_length: Vec<f64>; // = (0..seg_num).collect();
-            // let mut rad: Vec<f64>; // = (0..seg_num).collect();
-            // let mut sup_ele: Vec<f64>; // = (0..seg_num).collect();
+            let mut subseg_length: Vec<f64>; // = (0..seg_num).collect();
+            let mut rad: Vec<f64>; // = (0..seg_num).collect();
+            let mut sup_ele: Vec<f64>; // = (0..seg_num).collect();
             let mut i = 0;
             while i < subseg_num {
                 let subseg_length = self.segments[seg_num].get_subsegments()[subseg_num].get_length();
                 let rad = self.segments[seg_num].get_subsegments()[subseg_num].get_design_rad();
                 let sup_ele = self.segments[seg_num].get_subsegments()[subseg_num].get_sup_ele();
-                (s, hor_class) = calc_speed(subseg_length, bffs, ffs, pt, vc, vd, vo, phv, phf, is_hc, rad, sup_ele);
+                (s, hor_class) = self.calc_speed(subseg_length, bffs, ffs, pt, vc, vd, vo, phv, phf, is_hc, rad, sup_ele);
                 tot_s += s;
 
                 self.segments[seg_num].set_subsegments_avg_speed(i, s);
@@ -623,271 +627,272 @@ impl TwoLaneHighways {
             // Only affected when it contains subsegments
             let rad = 0.0;
             let sup_ele = 0.0;
-            (s, hor_class) = calc_speed(seg_length, bffs, ffs, pt, vc, vd, vo, phv, phf, is_hc, rad, sup_ele);
+            (s, hor_class) = self.calc_speed(seg_length, bffs, ffs, pt, vc, vd, vo, phv, phf, is_hc, rad, sup_ele);
 
             self.segments[seg_num].set_avg_speed(s);
             // self.segments[seg_num].seg_hor_class(hor_class);
             res_s = s;
         }
 
-        fn calc_speed(seg_length: f64, bffs: f64, ffs: f64, pt: usize, vc: i32, vd: f64, vo: f64, phv: f64, phf: f64, is_hc:bool, rad: f64, sup_ele: f64) -> (f64, i32) {
-            // Parameter initialization
-            let (mut b0, mut b1, mut b2, mut b3, mut b4, mut b5) = (0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000);
-            let (mut c0, mut c1, mut c2, mut c3) = (0.0000, 0.0000, 0.0000, 0.0000);
-            let (mut d0, mut d1, mut d2, mut d3) = (0.0000, 0.0000, 0.0000, 0.0000);
-            let (mut f0, mut f1, mut f2, mut f3, mut f4, mut f5, mut f6, mut f7, mut f8) = (0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000);
-
-            let mut s: f64;
-            let mut hor_class: i32 = 0;
-
-            if pt == 0 || pt == 1 {
-                if vc == 1 {
-                    b0 = 0.0558;
-                    b1 = 0.0542;
-                    b2 = 0.3278;
-                    b3 = 0.1029;
-                    f0 = 0.67576;
-                    f3 = 0.12060;
-                    f4 = -0.35919;
-                } else if vc == 2 {
-                    b0 = 5.7280;
-                    b1 = -0.0809;
-                    b2 = 0.7404;
-                    b5 = 3.1155;
-                    c0 = -13.8036;
-                    c2 = 0.2446;
-                    d0 = -1.7765;
-                    d2 = 0.0392;
-                    b3 = c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length);
-                    b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phf);
-                    f0 = 0.34524;
-                    f1 = 0.00591;
-                    f2 = 0.02031;
-                    f3 = 0.14911;
-                    f4 = -0.43784;
-                    f5 = -0.00296;
-                    f6 = 0.02956;
-                    f8 = 0.41622;
-                } else if vc == 3 {
-                    b0 = 9.3079;
-                    b1 = -0.1706;
-                    b2 = 1.1292;
-                    b5 = 3.1155;
-                    c0 = -11.9703;
-                    c2 = 0.2542;
-                    d0 = -3.5550;
-                    d2 = 0.0826;
-                    b3 = c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length);
-                    b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv);
-                    f0 = 0.17291;
-                    f1 = 0.00917;
-                    f2 = 0.05698;
-                    f3 = 0.27734;
-                    f4 = -0.61893;
-                    f5 = -0.00918;
-                    f6 = 0.09184;
-                    f8 = 0.41622;
-                } else if vc == 4 {
-                    b0 = 9.0115;
-                    b1 = -0.1994;
-                    b2 = 1.8252;
-                    b5 = 3.2685;
-                    c0 = -12.5113;
-                    c2 = 0.2656;
-                    d0 = -5.7775;
-                    d2 = 0.1373;
-                    b3 = c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length);
-                    b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv);
-                    f0 = 0.67689;
-                    f1 = 0.00534;
-                    f2 = -0.13037;
-                    f3 = 0.25699;
-                    f4 = -0.68465;
-                    f5 = -0.00709;
-                    f6 = 0.07087;
-                    f8 = 0.33950;
-                } else if vc == 5 {
-                    b0 = 23.9144;
-                    b1 = -0.6925;
-                    b2 = 1.9473;
-                    b5 = 3.5115;
-                    c0 = -14.8961;
-                    c2 = 0.4370;
-                    d0 = -18.2910;
-                    d1 = 2.3875;
-                    d2 = 0.4494;
-                    d3 = -0.0520;
-                    b3 = c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length);
-                    b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv);
-                    f0 = 1.13262;
-                    f2 = -0.26367;
-                    f3 = 0.18811;
-                    f4 = -0.64304;
-                    f5 = -0.00867;
-                    f6 = 0.08675;
-                    f8 = 0.30590;
-                }
-            } else if pt == 2 {
-                if vc == 1 {
-                    b0 = -1.1379;
-                    b1 = 0.0941;
-                    c1 = 0.2667;
-                    d1 = 0.1252;
-                    b3 = c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length);
-                    b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv);
-                    f0 = 0.91793;
-                    f1 = -0.00557;
-                    f2 = 0.36862;
-                    f5 = 0.00611;
-                    f7 = -0.00419;
-                } else if vc == 2 {
-                    b0 = -2.0668;
-                    b1 = 0.1053;
-                    c1 = 0.4479;
-                    d1 = 0.1631;
-                    b3 = c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length);
-                    b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv);
-                    f0 = 0.65105;
-                    f2 = 0.34931;
-                    f5 = 0.00722;
-                    f7 = -0.00391;
-                } else if vc == 3 {
-                    b0 = -0.5074;
-                    b1 = 0.0935;
-                    d1 = -0.2201;
-                    d3 = 0.0072;
-                    b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv);
-                    f0 = 0.40117;
-                    f2 = 0.68633;
-                    f5 = 0.02350;
-                    f7 = -0.02088;
-                } else if vc == 4 {
-                    b0 = 8.0354;
-                    b1 = -0.0860;
-                    b5 = 4.1900;
-                    c0 = -27.1244;
-                    c1 = 11.5196;
-                    c2 = 0.4681;
-                    c3 = -0.1873;
-                    d1 = -0.7506;
-                    d3 = 0.0193;
-                    b3 = c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length);
-                    b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv);
-                    f0 = 1.13282;
-                    f1 = -0.00798;
-                    f2 = 0.35425;
-                    f5 = 0.01521;
-                    f7 = -0.00987;
-                } else if vc == 5 {
-                    b0 = 7.2991;
-                    b1 = -0.3535;
-                    b5 = 4.8700;
-                    c0 = -45.3391;
-                    c1 = 17.3749;
-                    c2 = 1.0587;
-                    c3 = -0.3729;
-                    d0 = 3.8457;
-                    d1 = -0.9112;
-                    d3 = 0.0170;
-                    b3 = c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length);
-                    b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv);
-                    f0 = 1.12077;
-                    f1 = -0.00550;
-                    f2 = 0.25431;
-                    f5 = 0.01269;
-                    f7 = -0.01053;
-                }
-            }
-            // slope coefficient for average speed calculation
-            let mut ms = f64::max(
-            b5,
-            b0 +
-                b1 * ffs +
-                b2 * f64::sqrt(vo / 1000.0) +
-                f64::max(0.0, b3) * f64::sqrt(seg_length) +
-                f64::max(0.0, b4) * f64::sqrt(phv),
-            );
-        
-            // power coefficient for average speed calculation
-            let mut ps = f64::max(
-            f8,
-            f0 +
-                f1 * ffs +
-                f2 * seg_length +
-                (f3 * vo) / 1000.0 +
-                f4 * f64::sqrt(vo / 1000.0) +
-                f5 * phv +
-                f6 * f64::sqrt(phv) +
-                f7 * seg_length * phv,
-            );
-
-            ms = round_to_significant_digits(ms, 5);
-            ps = round_to_significant_digits(ps, 5);
-
-            // Length of horizontal curves = radius x central angle x pi/180
-            // determine horizontal class
-            if rad == 0.0 { 
-                hor_class = 0;
-            } else if rad > 0.0 && rad < 300.0 {
-                hor_class = 5;
-            } else if rad >= 300.0 && rad < 450.0 {
-                hor_class = 4;
-            } else if rad >= 450.0 && rad < 600.0 {
-                if sup_ele < 1.0 { hor_class = 4 } else { hor_class = 3 };
-            } else if rad >= 600.0 && rad < 750.0 {
-                if sup_ele < 6.0 { hor_class = 3 } else { hor_class = 2 };
-            } else if rad >= 750.0 && rad < 900.0 {
-                hor_class = 2;
-            } else if rad >= 900.0 && rad < 1050.0 {
-                if sup_ele < 8.0 { hor_class = 2 } else { hor_class = 1 };
-            } else if rad >= 1050.0 && rad < 1200.0 {
-                if sup_ele < 4.0 { hor_class = 2 } else { hor_class = 1 };
-            } else if rad >= 1200.0 && rad < 1350.0 {
-                if sup_ele < 2.0 { hor_class = 2 } else { hor_class = 1 };
-            } else if rad >= 1350.0 && rad < 1500.0 {
-                hor_class = 1;
-            } else if rad >= 1500.0 && rad < 1750.0 {
-                if sup_ele < 8.0 { hor_class = 1 } else { hor_class = 0 };
-            } else if rad >= 1750.0 && rad < 1800.0 {
-                if sup_ele < 6.0 { hor_class = 1 } else { hor_class = 0 };
-            } else if rad >= 1800.0 && rad < 1950.0 {
-                if sup_ele < 5.0 { hor_class = 1 } else { hor_class = 0 };
-            } else if rad >= 1950.0 && rad < 2100.0 {
-                if sup_ele < 4.0 { hor_class = 1 } else { hor_class = 0 };
-            } else if rad >= 2100.0 && rad < 2250.0 {
-                if sup_ele < 3.0 { hor_class = 1 } else { hor_class = 0 };
-            } else if rad >= 2250.0 && rad < 2400.0 {
-                if sup_ele < 2.0 { hor_class = 1 } else { hor_class = 0 };
-            } else if rad >= 2400.0 && rad < 2550.0 {
-                if sup_ele < 1.0 { hor_class = 1 } else { hor_class = 0 };
-            } else if rad >= 2550.0 {
-                hor_class = 0;
-            }
-
-            if vd <= 100.0 {
-                let st = ffs;
-                s = st;
-            } else {
-                let st = ffs - ms * f64::powf(vd / 1000.0 - 0.1, ps);
-                s = st;
-            }
-
-            if is_hc {
-                // calculate horizontal class
-                let bffshc = f64::min(bffs, 44.32 + 0.3728 * bffs - 6.868 * hor_class as f64);
-                let ffshc = bffshc - 0.0255 * phv;
-                let mhc = f64::max(0.277, -25.8993 - 0.7756 * ffshc + 10.6294 * f64::sqrt(ffshc) + 2.4766 * hor_class as f64 - 9.8238 * f64::sqrt(hor_class as f64));
-                let shc = f64::min(s, ffshc - mhc * f64::sqrt(vd / 1000.0 - 0.1)); // Should be ST instead of S?
-                s = shc;
-            }
-            (s, hor_class)
-        }
 
         (res_s, hor_class)
     }
 
-    /// Step 6: Estimate percent followers
-    pub fn estimate_percent_followers(&self, seg_num: usize) -> f64 {
+    fn calc_speed(&self, seg_length: f64, bffs: f64, ffs: f64, pt: usize, vc: i32, vd: f64, vo: f64, phv: f64, phf: f64, is_hc:bool, rad: f64, sup_ele: f64) -> (f64, i32) {
+        // Parameter initialization
+        let (mut b0, mut b1, mut b2, mut b3, mut b4, mut b5) = (0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000);
+        let (mut c0, mut c1, mut c2, mut c3) = (0.0000, 0.0000, 0.0000, 0.0000);
+        let (mut d0, mut d1, mut d2, mut d3) = (0.0000, 0.0000, 0.0000, 0.0000);
+        let (mut f0, mut f1, mut f2, mut f3, mut f4, mut f5, mut f6, mut f7, mut f8) = (0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000);
+
+        let mut s: f64;
+        let mut hor_class: i32 = 0;
+
+        if pt == 0 || pt == 1 {
+            if vc == 1 {
+                b0 = 0.0558;
+                b1 = 0.0542;
+                b2 = 0.3278;
+                b3 = 0.1029;
+                f0 = 0.67576;
+                f3 = 0.12060;
+                f4 = -0.35919;
+            } else if vc == 2 {
+                b0 = 5.7280;
+                b1 = -0.0809;
+                b2 = 0.7404;
+                b5 = 3.1155;
+                c0 = -13.8036;
+                c2 = 0.2446;
+                d0 = -1.7765;
+                d2 = 0.0392;
+                b3 = c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length);
+                b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phf);
+                f0 = 0.34524;
+                f1 = 0.00591;
+                f2 = 0.02031;
+                f3 = 0.14911;
+                f4 = -0.43784;
+                f5 = -0.00296;
+                f6 = 0.02956;
+                f8 = 0.41622;
+            } else if vc == 3 {
+                b0 = 9.3079;
+                b1 = -0.1706;
+                b2 = 1.1292;
+                b5 = 3.1155;
+                c0 = -11.9703;
+                c2 = 0.2542;
+                d0 = -3.5550;
+                d2 = 0.0826;
+                b3 = c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length);
+                b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv);
+                f0 = 0.17291;
+                f1 = 0.00917;
+                f2 = 0.05698;
+                f3 = 0.27734;
+                f4 = -0.61893;
+                f5 = -0.00918;
+                f6 = 0.09184;
+                f8 = 0.41622;
+            } else if vc == 4 {
+                b0 = 9.0115;
+                b1 = -0.1994;
+                b2 = 1.8252;
+                b5 = 3.2685;
+                c0 = -12.5113;
+                c2 = 0.2656;
+                d0 = -5.7775;
+                d2 = 0.1373;
+                b3 = c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length);
+                b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv);
+                f0 = 0.67689;
+                f1 = 0.00534;
+                f2 = -0.13037;
+                f3 = 0.25699;
+                f4 = -0.68465;
+                f5 = -0.00709;
+                f6 = 0.07087;
+                f8 = 0.33950;
+            } else if vc == 5 {
+                b0 = 23.9144;
+                b1 = -0.6925;
+                b2 = 1.9473;
+                b5 = 3.5115;
+                c0 = -14.8961;
+                c2 = 0.4370;
+                d0 = -18.2910;
+                d1 = 2.3875;
+                d2 = 0.4494;
+                d3 = -0.0520;
+                b3 = c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length);
+                b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv);
+                f0 = 1.13262;
+                f2 = -0.26367;
+                f3 = 0.18811;
+                f4 = -0.64304;
+                f5 = -0.00867;
+                f6 = 0.08675;
+                f8 = 0.30590;
+            }
+        } else if pt == 2 {
+            if vc == 1 {
+                b0 = -1.1379;
+                b1 = 0.0941;
+                c1 = 0.2667;
+                d1 = 0.1252;
+                b3 = c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length);
+                b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv);
+                f0 = 0.91793;
+                f1 = -0.00557;
+                f2 = 0.36862;
+                f5 = 0.00611;
+                f7 = -0.00419;
+            } else if vc == 2 {
+                b0 = -2.0668;
+                b1 = 0.1053;
+                c1 = 0.4479;
+                d1 = 0.1631;
+                b3 = c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length);
+                b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv);
+                f0 = 0.65105;
+                f2 = 0.34931;
+                f5 = 0.00722;
+                f7 = -0.00391;
+            } else if vc == 3 {
+                b0 = -0.5074;
+                b1 = 0.0935;
+                d1 = -0.2201;
+                d3 = 0.0072;
+                b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv);
+                f0 = 0.40117;
+                f2 = 0.68633;
+                f5 = 0.02350;
+                f7 = -0.02088;
+            } else if vc == 4 {
+                b0 = 8.0354;
+                b1 = -0.0860;
+                b5 = 4.1900;
+                c0 = -27.1244;
+                c1 = 11.5196;
+                c2 = 0.4681;
+                c3 = -0.1873;
+                d1 = -0.7506;
+                d3 = 0.0193;
+                b3 = c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length);
+                b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv);
+                f0 = 1.13282;
+                f1 = -0.00798;
+                f2 = 0.35425;
+                f5 = 0.01521;
+                f7 = -0.00987;
+            } else if vc == 5 {
+                b0 = 7.2991;
+                b1 = -0.3535;
+                b5 = 4.8700;
+                c0 = -45.3391;
+                c1 = 17.3749;
+                c2 = 1.0587;
+                c3 = -0.3729;
+                d0 = 3.8457;
+                d1 = -0.9112;
+                d3 = 0.0170;
+                b3 = c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length);
+                b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv);
+                f0 = 1.12077;
+                f1 = -0.00550;
+                f2 = 0.25431;
+                f5 = 0.01269;
+                f7 = -0.01053;
+            }
+        }
+        // slope coefficient for average speed calculation
+        let mut ms = f64::max(
+        b5,
+        b0 +
+            b1 * ffs +
+            b2 * f64::sqrt(vo / 1000.0) +
+            f64::max(0.0, b3) * f64::sqrt(seg_length) +
+            f64::max(0.0, b4) * f64::sqrt(phv),
+        );
+    
+        // power coefficient for average speed calculation
+        let mut ps = f64::max(
+        f8,
+        f0 +
+            f1 * ffs +
+            f2 * seg_length +
+            (f3 * vo) / 1000.0 +
+            f4 * f64::sqrt(vo / 1000.0) +
+            f5 * phv +
+            f6 * f64::sqrt(phv) +
+            f7 * seg_length * phv,
+        );
+
+        ms = round_to_significant_digits(ms, 5);
+        ps = round_to_significant_digits(ps, 5);
+
+        // Length of horizontal curves = radius x central angle x pi/180
+        // determine horizontal class
+        if rad == 0.0 { 
+            hor_class = 0;
+        } else if rad > 0.0 && rad < 300.0 {
+            hor_class = 5;
+        } else if rad >= 300.0 && rad < 450.0 {
+            hor_class = 4;
+        } else if rad >= 450.0 && rad < 600.0 {
+            if sup_ele < 1.0 { hor_class = 4 } else { hor_class = 3 };
+        } else if rad >= 600.0 && rad < 750.0 {
+            if sup_ele < 6.0 { hor_class = 3 } else { hor_class = 2 };
+        } else if rad >= 750.0 && rad < 900.0 {
+            hor_class = 2;
+        } else if rad >= 900.0 && rad < 1050.0 {
+            if sup_ele < 8.0 { hor_class = 2 } else { hor_class = 1 };
+        } else if rad >= 1050.0 && rad < 1200.0 {
+            if sup_ele < 4.0 { hor_class = 2 } else { hor_class = 1 };
+        } else if rad >= 1200.0 && rad < 1350.0 {
+            if sup_ele < 2.0 { hor_class = 2 } else { hor_class = 1 };
+        } else if rad >= 1350.0 && rad < 1500.0 {
+            hor_class = 1;
+        } else if rad >= 1500.0 && rad < 1750.0 {
+            if sup_ele < 8.0 { hor_class = 1 } else { hor_class = 0 };
+        } else if rad >= 1750.0 && rad < 1800.0 {
+            if sup_ele < 6.0 { hor_class = 1 } else { hor_class = 0 };
+        } else if rad >= 1800.0 && rad < 1950.0 {
+            if sup_ele < 5.0 { hor_class = 1 } else { hor_class = 0 };
+        } else if rad >= 1950.0 && rad < 2100.0 {
+            if sup_ele < 4.0 { hor_class = 1 } else { hor_class = 0 };
+        } else if rad >= 2100.0 && rad < 2250.0 {
+            if sup_ele < 3.0 { hor_class = 1 } else { hor_class = 0 };
+        } else if rad >= 2250.0 && rad < 2400.0 {
+            if sup_ele < 2.0 { hor_class = 1 } else { hor_class = 0 };
+        } else if rad >= 2400.0 && rad < 2550.0 {
+            if sup_ele < 1.0 { hor_class = 1 } else { hor_class = 0 };
+        } else if rad >= 2550.0 {
+            hor_class = 0;
+        }
+
+        if vd <= 100.0 {
+            let st = ffs;
+            s = st;
+        } else {
+            let st = ffs - ms * f64::powf(vd / 1000.0 - 0.1, ps);
+            s = st;
+        }
+
+        if is_hc {
+            // calculate horizontal class
+            let bffshc = f64::min(bffs, 44.32 + 0.3728 * bffs - 6.868 * hor_class as f64);
+            let ffshc = bffshc - 0.0255 * phv;
+            let mhc = f64::max(0.277, -25.8993 - 0.7756 * ffshc + 10.6294 * f64::sqrt(ffshc) + 2.4766 * hor_class as f64 - 9.8238 * f64::sqrt(hor_class as f64));
+            let shc = f64::min(s, ffshc - mhc * f64::sqrt(vd / 1000.0 - 0.1)); // Should be ST instead of S?
+            s = shc;
+        }
+        (s, hor_class)
+    }
+
+    fn calc_percent_followers(&self, seg_length: f64, ffs: f64, cap: i32, pt: usize, vc: i32, vd: f64, vo: f64, phv: f64) -> f64{
+
         let (mut b0, mut b1, mut b2, mut b3, mut b4, mut b5, mut b6, mut b7) = (0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000);
         let (mut c0, mut c1, mut c2, mut c3, mut c4, mut c5, mut c6, mut c7) = (0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000);
         let (mut d0, mut d1, mut d2) = (0.000000, 0.000000, 0.000000);
@@ -896,15 +901,6 @@ impl TwoLaneHighways {
         // Percent followers at capacity
         let mut pf_cap = 0.0;
         let mut pf_25_cap = 0.0;
-        
-        let seg_length = self.segments[seg_num].get_length();
-        let ffs = self.segments[seg_num].get_ffs();
-        let cap = self.segments[seg_num].get_capacity();
-        let pt = self.segments[seg_num].get_passing_type();
-        let vc = self.segments[seg_num].get_vertical_class();
-        let vd = self.segments[seg_num].get_flow_rate();
-        let vo = self.segments[seg_num].get_flow_rate_o();
-        let phv = self.segments[seg_num].get_phv();
 
         if pt == 0 || pt == 1 {
             if vc == 1 {
@@ -1115,20 +1111,74 @@ impl TwoLaneHighways {
         pf
     }
 
+    /// Step 6: Estimate percent followers
+    pub fn estimate_percent_followers(&mut self, seg_num: usize) -> f64 {
+        
+        let seg_length = self.segments[seg_num].get_length();
+        let ffs = self.segments[seg_num].get_ffs();
+        let cap = self.segments[seg_num].get_capacity();
+        let pt = self.segments[seg_num].get_passing_type();
+        let vc = self.segments[seg_num].get_vertical_class();
+        let vd = self.segments[seg_num].get_flow_rate();
+        let vo = self.segments[seg_num].get_flow_rate_o();
+        let phv = self.segments[seg_num].get_phv();
+
+        let pf = self.calc_percent_followers(seg_length, ffs, cap, pt, vc, vd, vo, phv);
+        
+        self.segments[seg_num].set_percent_followers(pf);
+
+        pf
+    }
+
+    pub fn estimate_average_speed_sf(&mut self, seg_num: usize, length: f64, vd: f64, phv: f64, rad: f64, sup_ele: f64) -> (f64, i32) {
+        let bffs = 1.14 * self.spl;
+
+        // Get variables from segments
+        let mut s: f64; // average speed
+        let mut tot_s: f64 = 0.0; // total speed
+        let mut res_s: f64 = 0.0; // Results speed
+        let mut hor_class: i32 = 0;
+        let ffs = self.segments[seg_num].get_ffs();
+        let pt = self.segments[seg_num].get_passing_type();
+        let phf = self.segments[seg_num].get_phf();
+        let vc = self.segments[seg_num].get_vertical_class();
+        let vo = self.segments[seg_num].get_flow_rate_o();
+        let is_hc = self.segments[seg_num].get_is_hc();
+
+        (s, hor_class) = self.calc_speed(length, bffs, ffs, pt, vc, vd, vo, phv, phf, is_hc, rad, sup_ele);
+        
+        (s, hor_class)
+    }
+
+    pub fn estimate_percent_followers_sf(&self, seg_num: usize, vd: f64, phv: f64) -> f64 {
+        let seg_length = self.segments[seg_num].get_length();
+        let ffs = self.segments[seg_num].get_ffs();
+        let cap = self.segments[seg_num].get_capacity();
+        let pt = self.segments[seg_num].get_passing_type();
+        let vc = self.segments[seg_num].get_vertical_class();
+        let vo = self.segments[seg_num].get_flow_rate_o();
+
+        let pf = self.calc_percent_followers(seg_length, ffs, cap, pt, vc, vd, vo, phv);
+
+
+        pf
+    }
+
     // Step 7: Calculate passing lane parameters
 
     // Step 8: Determine follower density
-    pub fn determine_follower_density_pl(&self, seg_num: usize) -> f64 {
-        let mut s_init_fl: f64;
-        let mut s_init_sl: f64;
+    pub fn determine_follower_density_pl(&mut self, seg_num: usize) -> f64 {
+        let mut s_init_fl: f64 = 0.0;
+        let mut s_init_sl: f64 = 0.0;
         let mut pf_fl: f64;
         let mut pf_sl: f64;
         let mut hor_class = 0;
 
-        let vd = self.segments[seg_num].get_free_flow();
+        let seg_length = self.segments[seg_num].get_length();
+        let subseg_num = self.segments[seg_num].get_subsegments().len();
+        let vd = self.segments[seg_num].get_flow_rate();
         let phv = self.segments[seg_num].get_phv();
-        let pm_hv_fl = self.segments[seg_num].get_pmhvfl();
-        let subrows_len = self.segments[seg_num].get_subsegments()[subseg_num].get_length();
+        let pm_hv_fl = self.pmhvfl;
         
         // Calculate passing lane parameters
         let nhv = f64::ceil(vd * phv / 100.0);
@@ -1143,25 +1193,30 @@ impl TwoLaneHighways {
 
         // Subsection
         let mut j = 0;
-        if subrows_len > 0 {
-            while j < subrows_len {
-                [s_init_fl, hor_class] = estimateAverageSpeed(Spl, pass_type, ver_cls, subSeg_len[j], ffs, vdFL, vo, PHVFL, is_hc, rad[j], sup_ele[j]);
-                [s_init_sl, hor_class] = estimateAverageSpeed(Spl, pass_type, ver_cls, subSeg_len[j], ffs, vdSL, vo, PHVSL, is_hc, rad[j], sup_ele[j]);
+        if subseg_num > 0 {
+            while j < subseg_num {
+                let sub_seg_len = self.segments[seg_num].get_subsegments()[j].get_length();
+                let rad = self.segments[seg_num].get_subsegments()[j].get_design_rad();
+                let sup_ele = self.segments[seg_num].get_subsegments()[j].get_sup_ele();
+                (s_init_fl, hor_class) = self.estimate_average_speed_sf(seg_num, sub_seg_len, vd_fl, phv_fl, rad, sup_ele);
+                (s_init_sl, hor_class) = self.estimate_average_speed_sf(seg_num, sub_seg_len, vd_sl, phv_sl, rad, sup_ele);
 
-                fl_tot += s_init_fl * subSeg_len[j];
-                sl_tot += s_init_sl * subSeg_len[j];
+                fl_tot += s_init_fl * sub_seg_len;
+                sl_tot += s_init_sl * sub_seg_len;
                 j += 1;
             }
             s_init_fl = s_init_fl / seg_length;
             s_init_sl = s_init_sl / seg_length;
         } else {
-            [s_init_fl, hor_class] = estimateAverageSpeed(Spl, pass_type, ver_cls, seg_length, ffs, vdFL, vo, PHVFL, is_hc, rad, sup_ele);
-            [s_init_sl, hor_class] = estimateAverageSpeed(Spl, pass_type, ver_cls, seg_length, ffs, vdSL, vo, PHVSL, is_hc, rad, sup_ele);
+            let rad = 0.0;
+            let sup_ele = 0.0;
+            (s_init_fl, hor_class) = self.estimate_average_speed_sf(seg_num, seg_length, vd_fl, phv_fl, rad, sup_ele);
+            (s_init_sl, hor_class) = self.estimate_average_speed_sf(seg_num, seg_length, vd_sl, phv_sl, rad, sup_ele);
         }
 
 
-        pf_fl= estimatePercentFollowers(pass_type, ver_cls, seg_length, ffs, phv_fl, vdFL, vo, capacity);
-        pf_sl = estimatePercentFollowers(pass_type, ver_cls, seg_length, ffs, phv_sl, vdSL, vo, capacity);
+        pf_fl= self.estimate_percent_followers_sf(seg_num, vd_fl, phv_fl);
+        pf_sl = self.estimate_percent_followers_sf(seg_num, vd_sl, phv_sl);
 
         let sda = 2.750 + 0.00056 * vd + 3.8521 * phv / 100.0;
         let s_mid_fl = s_init_fl + sda / 2.0;
@@ -1174,17 +1229,19 @@ impl TwoLaneHighways {
     }
 
 
-    pub fn determine_follower_density_pc_pz(&self, seg_num: usize, pf: f64, s: f64) -> f64 {
-        let vd = self.segments[seg_num].get_free_flow();
-        let mut fd = (pf * vd) / (100.0 * s);
+    pub fn determine_follower_density_pc_pz(&self, seg_num: usize) -> f64 {
+        let s = self.segments[seg_num].get_avg_speed();
+        let pf = self.segments[seg_num].get_percent_followers();
+        let vd = self.segments[seg_num].get_flow_rate();
+        let fd = (pf * vd) / (100.0 * s);
         fd
     }
 
 
     pub fn determine_segment_los(&self, seg_num: usize, fd: f64, s_pl: f64, cap: f64) -> char {
-        let mut los: char;
+        let mut los: char = 'F';
         
-        let vd = self.segments[seg_num].get_free_flow();
+        let vd = self.segments[seg_num].get_flow_rate();
 
         if s_pl >= 50.0 {
             if fd <= 2.0 { los = 'A' }
