@@ -11,31 +11,34 @@ mod twolanehighways_test {
     use std::fs::File;
     use std::io::prelude::*;
     use std::io::BufReader;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
+    use std::fs;
+    use std::result::Result::Ok;
 
     use super::TwoLaneHighways;
     use super::Segment;
     use super::SubSegment;
     use super::utils::math;
-    // const examples_root_dir: &str = "src/ExampleCases/hcm/TwoLaneHighways";
-    // const case1_path: &Path = &Path::new(examples_root_dir).join("case1.json");
-    const case1_path: &str = "src/ExampleCases/hcm/TwoLaneHighways/case1.json";
-    const case2_path: &str = "src/ExampleCases/hcm/TwoLaneHighways/case2.json";
-    // const case3_path: &str = "src/ExampleCases/hcm/TwoLaneHighways/case3.json";
-    // const case4_path: &str = "src/ExampleCases/hcm/TwoLaneHighways/case4.json";
-    // const case5_path: &str = "src/ExampleCases/hcm/TwoLaneHighways/case5.json";
 
-    // TODO: Automatically gets all cases
-    // const SETTING_FILES: [&str; 2]= [case1_path, case2_path];
-    const SETTING_FILES: [&str; 1]= [case1_path];
+    fn read_files() -> Vec<String> {
+
+        let examples_root_dir: &str = "src/ExampleCases/hcm/TwoLaneHighways/";
+        let paths = fs::read_dir(examples_root_dir).expect("Unable to read directory");
+        let mut setting_files: Vec<String> = Vec::new();
+
+        for path in paths {
+            setting_files.push(path.unwrap().path().display().to_string());
+        }
+
+        setting_files
+    }
 
 
-    fn settings(setting_file_loc: &str) -> TwoLaneHighways {
+    fn settings(setting_file_loc: String) -> TwoLaneHighways {
         let f = File::open(setting_file_loc).expect("Unable to open file");
         let reader = BufReader::new(f);
 
         let twolanehighways: TwoLaneHighways = serde_json::from_reader(reader).expect("Failed to parse JSON");
-        // let segment: Segment = value["1"];
 
         twolanehighways
     }
@@ -100,8 +103,9 @@ mod twolanehighways_test {
     pub fn identity_vertical_class_test() {
         let ans1_min = 0.25;
         let ans1_max = 3.0;
+        let setting_files = read_files();
 
-        for s_file in SETTING_FILES {
+        for s_file in setting_files {
             let tlh = settings(s_file);
 
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
@@ -119,7 +123,8 @@ mod twolanehighways_test {
         let ans1_demand_flow_o = 1500.0;
         let ans1_capacity = 1700.0;
 
-        for s_file in SETTING_FILES {
+        let setting_files = read_files();
+        for s_file in setting_files {
             let tlh = settings(s_file);
 
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
@@ -136,7 +141,8 @@ mod twolanehighways_test {
     pub fn determine_vertical_alignment_test() {
         let ans1_ver_align = 1;
 
-        for s_file in SETTING_FILES {
+        let setting_files = read_files();
+        for s_file in setting_files {
             let tlh = settings(s_file);
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
 
@@ -151,8 +157,9 @@ mod twolanehighways_test {
     #[test]
     pub fn determine_free_flow_speed_test() {
         let ans1_ffs = 56.83;
+        let setting_files = read_files();
 
-        for s_file in SETTING_FILES {
+        for s_file in setting_files {
             let tlh = settings(s_file);
 
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
@@ -168,7 +175,8 @@ mod twolanehighways_test {
     pub fn estimate_average_speed_test() {
         let ans1_s = 53.7;
         let ans1_hor_class = 0;
-        for s_file in SETTING_FILES {
+        let setting_files = read_files();
+        for s_file in setting_files {
             let tlh = settings(s_file);
 
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
@@ -192,7 +200,8 @@ mod twolanehighways_test {
     #[test]
     pub fn estimate_percent_followers_test() {
         let ans1_pf = 67.7;
-        for s_file in SETTING_FILES {
+        let setting_files = read_files();
+        for s_file in setting_files {
             let tlh = settings(s_file);
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
 
@@ -207,8 +216,8 @@ mod twolanehighways_test {
 
     #[test]
     pub fn determine_follower_density_pl_test() {
-        // let ans1_fd_mid = 
-        for s_file in SETTING_FILES {
+        let setting_files = read_files();
+        for s_file in setting_files {
             let tlh = settings(s_file);
 
             let (mut twolanehighways, seg_num) = case_initialize(tlh);
@@ -218,7 +227,8 @@ mod twolanehighways_test {
     #[test]
     pub fn determine_follower_density_pc_pz_test() {
         let ans1_fd = 10.1;
-        for s_file in SETTING_FILES {
+        let setting_files = read_files();
+        for s_file in setting_files {
             let tlh = settings(s_file);
 
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
@@ -238,7 +248,8 @@ mod twolanehighways_test {
     #[test]
     pub fn determine_segment_los_test() {
         let ans1_los = 'D';
-        for s_file in SETTING_FILES {
+        let setting_files = read_files();
+        for s_file in setting_files {
             let tlh = settings(s_file);
 
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
