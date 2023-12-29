@@ -1,7 +1,8 @@
 use crate::{utils::math::round_to_significant_digits};
+use serde::{Serialize, Deserialize};
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubSegment {
     /// Length of subsegment, ft.
     pub length: f64,
@@ -15,7 +16,7 @@ pub struct SubSegment {
     pub sup_ele: f64
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Segment {
     /// Passing Type.
     /// 0 -> Passing Constrained
@@ -57,7 +58,7 @@ pub struct Segment {
 }
 
 /// Two Lane Highways on chapter 15 of HCM.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TwoLaneHighways {
     pub segments: Vec<Segment>,
     /// Posted speed limit, mi/hr.
@@ -88,7 +89,7 @@ impl SubSegment {
 
     /// Method to get the length of the SubSegment
     fn get_length(&self) -> f64 {
-        self.length
+        self.length / 5280.0
     }
 
     fn get_avg_speed(&self) -> f64 {
