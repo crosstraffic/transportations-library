@@ -1,0 +1,106 @@
+{
+    "segments": [
+        {
+            "passing_type": 0,
+            "length": 0.75,
+            "grade": 0.0,
+            "is_hc": true,
+            "volume": 752.0,
+            "volume_op": 0.0,
+            "flow_rate": 0.0,
+            "flow_rate_o": 0.0,
+            "capacity": 0,
+            "ffs": 0.0,
+            "avg_speed": 0.0,
+            "vertical_class": 1,
+            "subsegments": [
+                {
+                    "length": 280.0,
+                    "avg_speed": 0.0,
+                    "hor_class": 0,
+                    "design_rad": 0.0,
+                    "sup_ele": 0.0
+                },
+                {
+                    "length": 432.0,
+                    "avg_speed": 0.0,
+                    "hor_class": 3,
+                    "design_rad": 450.0,
+                    "sup_ele": 3.0
+                },
+                {
+                    "length": 260.0,
+                    "avg_speed": 0.0,
+                    "hor_class": 0,
+                    "design_rad": 0.0,
+                    "sup_ele": 0.0
+                },
+                {
+                    "length": 366.5,
+                    "avg_speed": 0.0,
+                    "hor_class": 4,
+                    "design_rad": 300.0,
+                    "sup_ele": 2.0
+                },
+                {
+                    "length": 250.0,
+                    "avg_speed": 0.0,
+                    "hor_class": 0,
+                    "design_rad": 0.0,
+                    "sup_ele": 0.0
+                },
+                {
+                    "length": 216.0,
+                    "avg_speed": 0.0,
+                    "hor_class": 5,
+                    "design_rad": 275.0,
+                    "sup_ele": 5.0
+                },
+                {
+                    "length": 275.6,
+                    "avg_speed": 0.0,
+                    "hor_class": 0,
+                    "design_rad": 0.0,
+                    "sup_ele": 0.0
+                },
+                {
+                    "length": 458.0,
+                    "avg_speed": 0.0,
+                    "hor_class": 2,
+                    "design_rad": 750.0,
+                    "sup_ele": 0.0
+                },
+                {
+                    "length": 285.0,
+                    "avg_speed": 0.0,
+                    "hor_class": 0,
+                    "design_rad": 0.0,
+                    "sup_ele": 0.0
+                },
+                {
+                    "length": 767.9,
+                    "avg_speed": 0.0,
+                    "hor_class": 1,
+                    "design_rad": 1100.0,
+                    "sup_ele": 4.0
+                },
+                {
+                    "length": 369.0,
+                    "avg_speed": 0.0,
+                    "hor_class": 0,
+                    "design_rad": 0.0,
+                    "sup_ele": 0.0
+                }
+            ],
+            "phf": 0.94,
+            "phv": 5.0,
+            "pf": 0.0,
+            "hor_class": 0
+        }
+    ],
+    "spl": 50.0,
+    "lane_width": 12.0,
+    "shoulder_width": 6.0,
+    "apd": 0.0,
+    "pmhvfl": 0.0
+}

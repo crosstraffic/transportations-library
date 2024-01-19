@@ -1,5 +1,5 @@
-use crate::{utils::math::round_to_significant_digits};
 use serde::{Serialize, Deserialize};
+use crate::utils::math;
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -255,9 +255,9 @@ impl Segment {
        self.pf = pf
     }
 
-    fn get_hor_class(&self) -> i32 {
-        return self.hor_class
-    }
+    // fn get_hor_class(&self) -> i32 {
+    //     return self.hor_class
+    // }
 }
 
 
@@ -586,13 +586,15 @@ impl TwoLaneHighways {
 
     /// Step 5: Estimate average speed
     pub fn estimate_average_speed(&mut self, seg_num: usize) -> (f64, i32) {
-        let bffs = 1.14 * self.spl;
+        let bffs = math::round_to_significant_digits(1.14 * self.spl, 3);
 
         // Get variables from segments
         let mut s: f64; // average speed
         let mut tot_s: f64 = 0.0; // total speed
-        let mut res_s: f64 = 0.0; // Results speed
-        let mut hor_class: i32 = 0;
+        let res_s: f64; // Results speed
+        let mut hor_class: i32;
+        let seg_s:f64;
+        let seg_hor_class: i32;
         let ffs = self.segments[seg_num].get_ffs();
         let pt = self.segments[seg_num].get_passing_type();
         let phf = self.segments[seg_num].get_phf();
@@ -602,41 +604,48 @@ impl TwoLaneHighways {
         let vo = self.segments[seg_num].get_flow_rate_o();
         let is_hc = self.segments[seg_num].get_is_hc();
 
+        // Determine Segment Avg Speed
+        let seg_length = self.segments[seg_num].get_length();
+        // Only affected when it contains subsegments
+        let rad = 0.0;
+        let sup_ele = 0.0;
+        (seg_s, seg_hor_class) = self.calc_speed(seg_length, bffs, ffs, pt, vc, vd, vo, phv, phf, false, rad, sup_ele);
 
         if is_hc {
             // Get variables from subsegments
             let subseg_num = self.segments[seg_num].get_subsegments().len();
-            let mut subseg_length: Vec<f64>; // = (0..seg_num).collect();
-            let mut rad: Vec<f64>; // = (0..seg_num).collect();
-            let mut sup_ele: Vec<f64>; // = (0..seg_num).collect();
+            // let mut subseg_length: Vec<f64>; // = (0../collect();
+            // let mut sup_ele: Vec<f64>; // = (0..seg_num).collect();
             let mut i = 0;
             while i < subseg_num {
-                let subseg_length = self.segments[seg_num].get_subsegments()[subseg_num].get_length();
-                let rad = self.segments[seg_num].get_subsegments()[subseg_num].get_design_rad();
-                let sup_ele = self.segments[seg_num].get_subsegments()[subseg_num].get_sup_ele();
-                (s, hor_class) = self.calc_speed(subseg_length, bffs, ffs, pt, vc, vd, vo, phv, phf, is_hc, rad, sup_ele);
-                tot_s += s;
+                let subseg_length = self.segments[seg_num].get_subsegments()[i].get_length();
+                let rad = self.segments[seg_num].get_subsegments()[i].get_design_rad();
+                let sup_ele = self.segments[seg_num].get_subsegments()[i].get_sup_ele();
+                if rad > 0.0 {
+                    (s, hor_class) = self.calc_speed(seg_length, bffs, ffs, pt, vc, vd, vo, phv, phf, is_hc, rad, sup_ele);
+                    tot_s += s * subseg_length * 5280.0;
 
-                self.segments[seg_num].set_subsegments_avg_speed(i, s);
-                self.segments[seg_num].set_subsegments_hor_class(i, hor_class);
+                    self.segments[seg_num].set_subsegments_avg_speed(i, s);
+                    self.segments[seg_num].set_subsegments_hor_class(i, hor_class);
 
+                } else { // Tangent Section
+                    self.segments[seg_num].set_subsegments_avg_speed(i, seg_s);
+                    self.segments[seg_num].set_subsegments_hor_class(i, seg_hor_class);
+                    tot_s += math::round_to_significant_digits(seg_s * subseg_length * 5280.0, 3);
+
+                    println!("Sub Segments: {i}, Speed: {seg_s}: Length: {subseg_length}");
+                }
                 i += 1;
             }
-            res_s = tot_s / i as f64;
+            res_s = tot_s / (seg_length * 5280.0) as f64;
         } else {
-            let seg_length = self.segments[seg_num].get_length();
-            // Only affected when it contains subsegments
-            let rad = 0.0;
-            let sup_ele = 0.0;
-            (s, hor_class) = self.calc_speed(seg_length, bffs, ffs, pt, vc, vd, vo, phv, phf, is_hc, rad, sup_ele);
-
-            self.segments[seg_num].set_avg_speed(s);
-            // self.segments[seg_num].seg_hor_class(hor_class);
-            res_s = s;
+            res_s = seg_s;
         }
 
+        self.segments[seg_num].set_avg_speed(res_s);
+        // self.segments[seg_num].seg_hor_class(hor_class);
 
-        (res_s, hor_class)
+        (res_s, seg_hor_class)
     }
 
     fn calc_speed(&self, seg_length: f64, bffs: f64, ffs: f64, pt: usize, vc: i32, vd: f64, vo: f64, phv: f64, phf: f64, is_hc:bool, rad: f64, sup_ele: f64) -> (f64, i32) {
@@ -830,8 +839,8 @@ impl TwoLaneHighways {
             f7 * seg_length * phv,
         );
 
-        ms = round_to_significant_digits(ms, 5);
-        ps = round_to_significant_digits(ps, 5);
+        ms = math::round_to_significant_digits(ms, 5);
+        ps = math::round_to_significant_digits(ps, 5);
 
         // Length of horizontal curves = radius x central angle x pi/180
         // determine horizontal class
@@ -885,8 +894,10 @@ impl TwoLaneHighways {
             // calculate horizontal class
             let bffshc = f64::min(bffs, 44.32 + 0.3728 * bffs - 6.868 * hor_class as f64);
             let ffshc = bffshc - 0.0255 * phv;
-            let mhc = f64::max(0.277, -25.8993 - 0.7756 * ffshc + 10.6294 * f64::sqrt(ffshc) + 2.4766 * hor_class as f64 - 9.8238 * f64::sqrt(hor_class as f64));
-            let shc = f64::min(s, ffshc - mhc * f64::sqrt(vd / 1000.0 - 0.1)); // Should be ST instead of S?
+            let mhc = math::round_to_significant_digits(f64::max(0.277, -25.8993 - 0.7756 * ffshc + 10.6294 * f64::sqrt(ffshc) + 2.4766 * hor_class as f64 - 9.8238 * f64::sqrt(hor_class as f64)), 5);
+            // println!("s: {s}");
+            let shc = math::round_to_significant_digits(f64::min(s, ffshc - mhc * f64::sqrt(vd / 1000.0 - 0.1)), 3); // Should be ST instead of S?
+            // println!("BFFS: {bffshc}, FFSHC: {ffshc}, MHC: {mhc}, SHC: {shc}");
             s = shc;
         }
         (s, hor_class)
@@ -896,7 +907,7 @@ impl TwoLaneHighways {
 
         let (mut b0, mut b1, mut b2, mut b3, mut b4, mut b5, mut b6, mut b7) = (0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000);
         let (mut c0, mut c1, mut c2, mut c3, mut c4, mut c5, mut c6, mut c7) = (0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000);
-        let (mut d0, mut d1, mut d2) = (0.000000, 0.000000, 0.000000);
+        let (mut d1, mut d2) = (0.000000, 0.000000);
         let (mut e0, mut e1, mut e2, mut e3, mut e4) = (0.000000, 0.000000, 0.000000, 0.000000, 0.000000);
 
         // Percent followers at capacity
@@ -1135,10 +1146,8 @@ impl TwoLaneHighways {
         let bffs = 1.14 * self.spl;
 
         // Get variables from segments
-        let mut s: f64; // average speed
-        let mut tot_s: f64 = 0.0; // total speed
-        let mut res_s: f64 = 0.0; // Results speed
-        let mut hor_class: i32 = 0;
+        let s: f64; // average speed
+        let hor_class: i32;
         let ffs = self.segments[seg_num].get_ffs();
         let pt = self.segments[seg_num].get_passing_type();
         let phf = self.segments[seg_num].get_phf();
@@ -1171,9 +1180,8 @@ impl TwoLaneHighways {
     pub fn determine_follower_density_pl(&mut self, seg_num: usize) -> f64 {
         let mut s_init_fl: f64 = 0.0;
         let mut s_init_sl: f64 = 0.0;
-        let mut pf_fl: f64;
-        let mut pf_sl: f64;
-        let mut hor_class = 0;
+        let pf_fl: f64;
+        let pf_sl: f64;
 
         let seg_length = self.segments[seg_num].get_length();
         let subseg_num = self.segments[seg_num].get_subsegments().len();
@@ -1189,8 +1197,8 @@ impl TwoLaneHighways {
         let phv_fl = phv * pm_hv_fl;
         let nhv_sl = f64::ceil(nhv - (vd_fl * phv_fl / 100.0));
         let phv_sl = nhv_sl / vd_sl * 100.0;
-        let mut fl_tot = 0.0;
-        let mut sl_tot = 0.0;
+        let mut fl_tot: f64 = 0.0;
+        let mut sl_tot: f64 = 0.0;
 
         // Subsection
         let mut j = 0;
@@ -1199,8 +1207,8 @@ impl TwoLaneHighways {
                 let sub_seg_len = self.segments[seg_num].get_subsegments()[j].get_length();
                 let rad = self.segments[seg_num].get_subsegments()[j].get_design_rad();
                 let sup_ele = self.segments[seg_num].get_subsegments()[j].get_sup_ele();
-                (s_init_fl, hor_class) = self.estimate_average_speed_sf(seg_num, sub_seg_len, vd_fl, phv_fl, rad, sup_ele);
-                (s_init_sl, hor_class) = self.estimate_average_speed_sf(seg_num, sub_seg_len, vd_sl, phv_sl, rad, sup_ele);
+                (s_init_fl, _) = self.estimate_average_speed_sf(seg_num, sub_seg_len, vd_fl, phv_fl, rad, sup_ele);
+                (s_init_sl, _) = self.estimate_average_speed_sf(seg_num, sub_seg_len, vd_sl, phv_sl, rad, sup_ele);
 
                 fl_tot += s_init_fl * sub_seg_len;
                 sl_tot += s_init_sl * sub_seg_len;
@@ -1211,8 +1219,8 @@ impl TwoLaneHighways {
         } else {
             let rad = 0.0;
             let sup_ele = 0.0;
-            (s_init_fl, hor_class) = self.estimate_average_speed_sf(seg_num, seg_length, vd_fl, phv_fl, rad, sup_ele);
-            (s_init_sl, hor_class) = self.estimate_average_speed_sf(seg_num, seg_length, vd_sl, phv_sl, rad, sup_ele);
+            (s_init_fl, _) = self.estimate_average_speed_sf(seg_num, seg_length, vd_fl, phv_fl, rad, sup_ele);
+            (s_init_sl, _) = self.estimate_average_speed_sf(seg_num, seg_length, vd_sl, phv_sl, rad, sup_ele);
         }
 
 
@@ -1239,7 +1247,7 @@ impl TwoLaneHighways {
     }
 
 
-    pub fn determine_segment_los(&self, seg_num: usize, fd: f64, s_pl: f64, cap: f64) -> char {
+    pub fn determine_segment_los(&self, seg_num: usize, fd: f64, s_pl: f64, cap: i32) -> char {
         let mut los: char = 'F';
         
         let vd = self.segments[seg_num].get_flow_rate();
