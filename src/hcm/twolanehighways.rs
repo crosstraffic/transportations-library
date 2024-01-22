@@ -27,6 +27,8 @@ pub struct Segment {
     pub length: f64,
     /// Segment percent grade.
     pub grade: f64,
+    /// Posted speed limit, mi/hr.
+    pub spl: f64,
     /// Whether the segment has horizontal class or not.
     pub is_hc: bool,
     /// Demand volume for direction i, veh/hr.
@@ -53,6 +55,8 @@ pub struct Segment {
     pub phv: f64,
     /// Percent Followers
     pub pf: f64,
+    /// Followers Density
+    pub fd: f64,
     // /// Horizontal class of the segment.
     pub hor_class: i32,
 }
@@ -61,8 +65,6 @@ pub struct Segment {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TwoLaneHighways {
     pub segments: Vec<Segment>,
-    /// Posted speed limit, mi/hr.
-    pub spl: f64,
     /// Lane width, ft.
     pub lane_width: f64,
     /// Shoulder width, ft.
@@ -70,8 +72,10 @@ pub struct TwoLaneHighways {
     /// Access point density (access points/mi).
     /// https://highways.dot.gov/safety/other/access-management-driveways
     pub apd: f64,
-    // /// Percentage multiplier for heavy vehicles in the faster / passing lane
+    /// Percentage multiplier for heavy vehicles in the faster / passing lane
     pub pmhvfl: f64,
+    /// Effective distance to passing lane
+    pub l_de: f64,
 }
 
 /// Implement methods for SubSegment
@@ -121,12 +125,13 @@ impl SubSegment {
 /// Implement methods for Segment
 impl Segment {
     /// Method to create a new Segment instance
-    pub fn new(passing_type: usize, length: f64, grade: f64, is_hc: bool, volume: f64, volume_op: f64, flow_rate: f64, flow_rate_o: f64, capacity: i32,
-            ffs: f64, avg_speed: f64, vertical_class: i32, subsegments:Vec<SubSegment>, phf: f64, phv: f64, pf: f64, hor_class: i32) -> Segment {
+    pub fn new(passing_type: usize, length: f64, grade: f64, spl: f64, is_hc: bool, volume: f64, volume_op: f64, flow_rate: f64, flow_rate_o: f64, capacity: i32,
+            ffs: f64, avg_speed: f64, vertical_class: i32, subsegments:Vec<SubSegment>, phf: f64, phv: f64, pf: f64, fd: f64, hor_class: i32) -> Segment {
         Segment {
             passing_type,
             length,
             grade,
+            spl,
             is_hc,
             volume,
             volume_op,
@@ -140,6 +145,7 @@ impl Segment {
             phf,
             phv,
             pf,
+            fd,
             hor_class,
         }
     }
@@ -148,7 +154,7 @@ impl Segment {
     // fn get_passing_type<'a>(&'a self) -> &'a str {
     //     return &self.passing_type
     // }
-    fn get_passing_type(&self) -> usize {
+    pub fn get_passing_type(&self) -> usize {
         return self.passing_type
     }
 
@@ -161,6 +167,10 @@ impl Segment {
 
     fn get_grade(&self) -> f64 {
         return self.grade
+    }
+
+    fn get_spl(&self) -> f64 {
+        return self.spl
     }
 
     fn get_is_hc(&self) -> bool {
@@ -255,6 +265,14 @@ impl Segment {
        self.pf = pf
     }
 
+    fn get_followers_density(&self) -> f64 {
+        self.fd
+    }
+
+    fn set_followers_density(&mut self, fd: f64) {
+        self.fd = fd
+    }
+
     // fn get_hor_class(&self) -> i32 {
     //     return self.hor_class
     // }
@@ -270,14 +288,14 @@ impl TwoLaneHighways {
     /// * `segment number` - the number of segments
     /// 
 
-    pub fn new(segments: Vec<Segment>, spl: f64, lane_width: f64, shoulder_width: f64, apd: f64, pmhvfl: f64) -> TwoLaneHighways {
+    pub fn new(segments: Vec<Segment>, lane_width: f64, shoulder_width: f64, apd: f64, pmhvfl: f64, l_de: f64) -> TwoLaneHighways {
         TwoLaneHighways {
             segments: segments,
-            spl: spl,
             lane_width: lane_width,
             shoulder_width: shoulder_width,
             apd: apd,
             pmhvfl: pmhvfl,
+            l_de: l_de,
         }
     }
 
@@ -512,7 +530,7 @@ impl TwoLaneHighways {
     /// Step 4: Determine free-flow speed
     pub fn determine_free_flow_speed(&mut self, seg_num: usize) -> f64 {
 
-        let spl = self.spl;
+        let spl = self.segments[seg_num].get_spl();
         let vc = self.segments[seg_num].get_vertical_class();
         let vo = self.segments[seg_num].get_volume_op();
         let lw = self.lane_width;
@@ -586,7 +604,8 @@ impl TwoLaneHighways {
 
     /// Step 5: Estimate average speed
     pub fn estimate_average_speed(&mut self, seg_num: usize) -> (f64, i32) {
-        let bffs = math::round_to_significant_digits(1.14 * self.spl, 3);
+        let spl = self.segments[seg_num].get_spl();
+        let bffs = math::round_to_significant_digits(1.14 * spl, 3);
 
         // Get variables from segments
         let mut s: f64; // average speed
@@ -633,7 +652,7 @@ impl TwoLaneHighways {
                     self.segments[seg_num].set_subsegments_hor_class(i, seg_hor_class);
                     tot_s += math::round_to_significant_digits(seg_s * subseg_length * 5280.0, 3);
 
-                    println!("Sub Segments: {i}, Speed: {seg_s}: Length: {subseg_length}");
+                    // println!("Sub Segments: {i}, Speed: {seg_s}: Length: {subseg_length}");
                 }
                 i += 1;
             }
@@ -1143,7 +1162,8 @@ impl TwoLaneHighways {
     }
 
     pub fn estimate_average_speed_sf(&mut self, seg_num: usize, length: f64, vd: f64, phv: f64, rad: f64, sup_ele: f64) -> (f64, i32) {
-        let bffs = 1.14 * self.spl;
+        let spl = self.segments[seg_num].get_spl();
+        let bffs = 1.14 * spl;
 
         // Get variables from segments
         let s: f64; // average speed
@@ -1190,15 +1210,16 @@ impl TwoLaneHighways {
         let pm_hv_fl = self.pmhvfl;
         
         // Calculate passing lane parameters
-        let nhv = f64::ceil(vd * phv / 100.0);
+        let nhv = f64::round(vd * phv / 100.0);
         let p_v_fl = 0.92183 - 0.05022 * f64::ln(vd) - 0.00030 * nhv;
-        let vd_fl = f64::ceil(vd * p_v_fl);
-        let vd_sl = f64::ceil(vd * (1.0 - p_v_fl));
+        let vd_fl = f64::round(vd * p_v_fl);
+        let vd_sl = f64::round(vd * (1.0 - p_v_fl));
         let phv_fl = phv * pm_hv_fl;
         let nhv_sl = f64::ceil(nhv - (vd_fl * phv_fl / 100.0));
         let phv_sl = nhv_sl / vd_sl * 100.0;
         let mut fl_tot: f64 = 0.0;
         let mut sl_tot: f64 = 0.0;
+
 
         // Subsection
         let mut j = 0;
@@ -1214,8 +1235,8 @@ impl TwoLaneHighways {
                 sl_tot += s_init_sl * sub_seg_len;
                 j += 1;
             }
-            s_init_fl = s_init_fl / seg_length;
-            s_init_sl = s_init_sl / seg_length;
+            s_init_fl = fl_tot / seg_length;
+            s_init_sl = sl_tot / seg_length;
         } else {
             let rad = 0.0;
             let sup_ele = 0.0;
@@ -1234,23 +1255,116 @@ impl TwoLaneHighways {
         // it's acutually fd at the midpoint of the PL segment but used for LOS calculation
         let fd_mid = (pf_fl * vd_fl / s_mid_fl + pf_sl * vd_sl / s_mid_sl) / 200.0 ;
 
+        self.segments[seg_num].set_followers_density(fd_mid);
+
         fd_mid
     }
 
 
-    pub fn determine_follower_density_pc_pz(&self, seg_num: usize) -> f64 {
+    pub fn determine_follower_density_pc_pz(&mut self, seg_num: usize) -> f64 {
         let s = self.segments[seg_num].get_avg_speed();
         let pf = self.segments[seg_num].get_percent_followers();
         let vd = self.segments[seg_num].get_flow_rate();
         let fd = (pf * vd) / (100.0 * s);
+
+        self.segments[seg_num].set_followers_density(fd);
         fd
     }
 
+    pub fn determine_adjustment_to_follower_density(&mut self, seg_num: usize) -> f64 {
+        let seg_len = self.segments.len();
+        let mut is_pl_list: Vec<bool> = Vec::new();
+        let s = self.segments[seg_num].get_avg_speed();
+        let mut pl_loc = 100;
+        let pass_type = self.segments[seg_num].get_passing_type();
 
-    pub fn determine_segment_los(&self, seg_num: usize, fd: f64, s_pl: f64, cap: i32) -> char {
+        for s_num in 0..seg_len {
+            let p_type = self.segments[s_num].get_passing_type();
+            if p_type == 2 {
+                is_pl_list.push(true);
+                pl_loc = s_num; // TODO: if there are more than three PL section
+            } else {
+                is_pl_list.push(false);
+            }
+        }
+
+        // Accumulate segments length from PL on upstream
+        let mut l_d: f64 = 0.0;
+        if pl_loc <= seg_num {
+            for s_num in pl_loc..seg_num+1 {
+                l_d += self.segments[s_num].get_length();
+            }
+        }
+
+        // Calculate downstream distance from start of passing lane
+        let mut fd_adj: f64 = 0.0;
+        let pf = self.segments[seg_num].get_percent_followers();
+        let pl = is_pl_list.len();
+        if seg_num > 0 && is_pl_list.len() > 0{
+            // let pf_u = self.segments[seg_num-1].get_percent_followers();
+            let pf_u = self.segments[pl_loc-1].get_percent_followers();
+            let vd = self.segments[seg_num].get_flow_rate();
+            let vd_u = self.segments[seg_num-1].get_flow_rate();
+            let fd_u = self.segments[seg_num-1].get_followers_density();
+            let mut l_de: f64 = 0.0; // effective distance
+
+            let x_2 = 0.1 * f64::max(0.0, pf_u - 30.0);
+            let x_3a = 3.5 * f64::ln(f64::max(0.3, self.segments[pl_loc].get_length()));
+            let x_3b = 0.75 * self.segments[pl_loc].get_length();
+
+            // Determine effective distance of PL
+            if pass_type == 2 {
+                let x_4a = 0.01 * vd_u;
+                let x_4b = 0.005 * vd_u;
+                let y_1a = 27.0 + x_2 + x_3a - x_4a;
+                let y_2a = 3.0 + x_2 + x_3b - x_4b;
+                let y_3 = (95.0 * self.segments[seg_num-1].get_followers_density() * s) / (pf_u * vd_u);
+
+                // Solve for downstream effective length of passing lane from start of PL (LDE)
+                // The percentage improvement to the percent followers becomes zero
+                let l_de_1 = f64::exp(y_1a / 8.75);
+
+                // Follower density is at least 95% of the level entering the passing lane
+                let l_de_2 = f64::max(0.1, f64::exp(-1.0 * (f64::max(0.0, -1.0 * y_1a + 32.0) - 27.0) / 8.75));
+
+                l_de = f64::min(l_de_1, l_de_2);
+                self.l_de = l_de;
+
+                let pf_improve = f64::max(0.0, y_1a - 8.75 * f64::ln(f64::max(0.1, l_de)));
+                let s_improve = f64::max(0.0, y_2a - 0.8 * l_de);
+                let y_3 = (100.0 - pf_improve) / (100.0 + s_improve);
+                
+                fd_adj = (pf_u / 100.0) * (1.0 - pf_improve / 100.0) * vd_u / (s * (1.0 + s_improve / 100.0));
+                // fd_adj = (pf_u / 100.0) * (1.0 - pf_improve / 100.0) * vd_u / (58.8 * (1.0 + s_improve / 100.0));
+            } else {
+                // Determine adjustment to follower density
+                // if segment is within effective distance of neaest upstream passing lane
+                // Passing Lane itself can also be placed within the effective length
+
+                if l_d < self.l_de {
+
+                    let x_1a = 8.75 * f64::ln(f64::max(0.1, l_d));
+                    let x_1b = 0.8 * l_d;
+                    let x_4c = 0.01 * self.segments[seg_num].get_flow_rate();
+                    let x_4d = 0.005 * self.segments[seg_num].get_flow_rate();
+                    let y_1b = 27.0 - x_1a + x_2 + x_3a - x_4c;
+                    let y_2b = 3.0 - x_1b + x_2 + x_3b - x_4d;
+                    let pf_improve = math::round_up_to_first_decimal(f64::max(0.0, y_1b));
+                    let s_improve = math::round_up_to_first_decimal(f64::max(0.0, y_2b));
+                    
+                    fd_adj = math::round_up_to_first_decimal(pf) / 100.0 * (1.0 - pf_improve / 100.0) * math::round_to_significant_digits(vd, 3) / (math::round_up_to_first_decimal(s) * (1.0 + s_improve / 100.0));
+                }
+            }
+        }
+        fd_adj
+    }
+
+
+    pub fn determine_segment_los(&self, seg_num: usize, s_pl: f64, cap: i32) -> char {
         let mut los: char = 'F';
         
         let vd = self.segments[seg_num].get_flow_rate();
+        let fd = self.segments[seg_num].get_followers_density();
 
         if s_pl >= 50.0 {
             if fd <= 2.0 { los = 'A' }
@@ -1271,10 +1385,12 @@ impl TwoLaneHighways {
         los
     }
 
-    // /// Calculate segment LOS
-    // fn calc_seg_LOS(&self) -> String {}
-    
-    // /// Calculate LOS
-    // fn calc_LOS(&self) -> String {}
+
+    pub fn determine_facility_LOS(&self, seg_num: usize) -> char {
+        let mut los: char = 'F';
+
+        los
+    }
+
 }
 

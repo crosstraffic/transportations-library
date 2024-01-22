@@ -4,6 +4,7 @@
             "passing_type": 0,
             "length": 0.75,
             "grade": 0.0,
+            "spl": 50.0,
             "is_hc": false,
             "volume": 752.0,
             "volume_op": 0.0,
@@ -14,23 +15,18 @@
             "avg_speed": 0.0,
             "vertical_class": 1,
             "subsegments": [
-                {
-                    "length": 0.0,
-                    "avg_speed": 0.0,
-                    "hor_class": 0,
-                    "design_rad": 0.0,
-                    "sup_ele": 0.0
-                }
+        
             ],
             "phf": 0.94,
             "phv": 5.0,
             "pf": 0.0,
+            "fd": 0.0,
             "hor_class": 0
         }
     ],
-    "spl": 50.0,
     "lane_width": 12.0,
     "shoulder_width": 6.0,
     "apd": 0.0,
-    "pmhvfl": 0.0
+    "pmhvfl": 0.4,
+    "l_de": 0.0
 }
