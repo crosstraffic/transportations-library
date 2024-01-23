@@ -160,7 +160,7 @@ impl Segment {
 
     /// Get total length
     /// Need to check segment length is equal to the total length of subsegments
-    fn get_length(&self) -> f64 {
+    pub fn get_length(&self) -> f64 {
         return self.length
         // TODO
     }
@@ -332,7 +332,7 @@ impl TwoLaneHighways {
                 _min = 0.5;
                 _max = 1.1;
             }
-        } else if (vc == 4) && (vc == 5) {
+        } else if (vc == 4) || (vc == 5) {
             if pt == 0 {
                 _min = 0.5;
                 _max = 3.0;
@@ -371,6 +371,7 @@ impl TwoLaneHighways {
             demand_flow_o = 1500.0;
             capacity = 1700;
         } else if pt == 2 {
+            demand_flow_o = 0.0;
             if phv < 5.0 {
                 capacity = 1500;
             } else if phv >= 5.0 && phv < 10.0 {
@@ -532,7 +533,7 @@ impl TwoLaneHighways {
 
         let spl = self.segments[seg_num].get_spl();
         let vc = self.segments[seg_num].get_vertical_class();
-        let vo = self.segments[seg_num].get_volume_op();
+        let vo = self.segments[seg_num].get_flow_rate_o();
         let lw = self.lane_width;
         let sw = self.shoulder_width;
         let apd = self.apd;
@@ -667,12 +668,14 @@ impl TwoLaneHighways {
         (res_s, seg_hor_class)
     }
 
-    fn calc_speed(&self, seg_length: f64, bffs: f64, ffs: f64, pt: usize, vc: i32, vd: f64, vo: f64, phv: f64, phf: f64, is_hc:bool, rad: f64, sup_ele: f64) -> (f64, i32) {
+    fn calc_speed(&self, seg_length: f64, bffs: f64, mut ffs: f64, pt: usize, vc: i32, vd: f64, vo: f64, phv: f64, phf: f64, is_hc:bool, rad: f64, sup_ele: f64) -> (f64, i32) {
         // Parameter initialization
         let (mut b0, mut b1, mut b2, mut b3, mut b4, mut b5) = (0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000);
         let (mut c0, mut c1, mut c2, mut c3) = (0.0000, 0.0000, 0.0000, 0.0000);
         let (mut d0, mut d1, mut d2, mut d3) = (0.0000, 0.0000, 0.0000, 0.0000);
         let (mut f0, mut f1, mut f2, mut f3, mut f4, mut f5, mut f6, mut f7, mut f8) = (0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000);
+
+        ffs = math::round_up_to_n_decimal(ffs, 1);
 
         let mut s: f64;
         let mut hor_class: i32 = 0;
@@ -733,8 +736,8 @@ impl TwoLaneHighways {
                 c2 = 0.2656;
                 d0 = -5.7775;
                 d2 = 0.1373;
-                b3 = c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length);
-                b4 = d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv);
+                b3 = math::round_up_to_n_decimal(c0 + c1 * f64::sqrt(seg_length) + c2 * ffs + c3 * ffs * f64::sqrt(seg_length), 4);
+                b4 = math::round_up_to_n_decimal(d0 + d1 * f64::sqrt(phv) + d2 * ffs + d3 * ffs * f64::sqrt(phv), 4);
                 f0 = 0.67689;
                 f1 = 0.00534;
                 f2 = -0.13037;
@@ -858,8 +861,8 @@ impl TwoLaneHighways {
             f7 * seg_length * phv,
         );
 
-        ms = math::round_to_significant_digits(ms, 5);
-        ps = math::round_to_significant_digits(ps, 5);
+        ms = math::round_up_to_n_decimal(ms, 3);
+        ps = math::round_up_to_n_decimal(ps, 3);
 
         // Length of horizontal curves = radius x central angle x pi/180
         // determine horizontal class
@@ -922,12 +925,14 @@ impl TwoLaneHighways {
         (s, hor_class)
     }
 
-    fn calc_percent_followers(&self, seg_length: f64, ffs: f64, cap: i32, pt: usize, vc: i32, vd: f64, vo: f64, phv: f64) -> f64{
+    fn calc_percent_followers(&self, seg_length: f64, mut ffs: f64, cap: i32, pt: usize, vc: i32, vd: f64, vo: f64, phv: f64) -> f64{
 
         let (mut b0, mut b1, mut b2, mut b3, mut b4, mut b5, mut b6, mut b7) = (0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000);
         let (mut c0, mut c1, mut c2, mut c3, mut c4, mut c5, mut c6, mut c7) = (0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000);
         let (mut d1, mut d2) = (0.000000, 0.000000);
         let (mut e0, mut e1, mut e2, mut e3, mut e4) = (0.000000, 0.000000, 0.000000, 0.000000, 0.000000);
+
+        ffs = math::round_up_to_n_decimal(ffs, 2);
 
         // Percent followers at capacity
         let mut pf_cap = 0.0;
@@ -942,7 +947,7 @@ impl TwoLaneHighways {
                 b4 = 13.64266;
                 b5 = -0.00050;
                 b6 = -0.05500;
-                b7 = 7.13758;
+                b7 = 7.13760;
                 c0 = 18.01780;
                 c1 = 10.00000;
                 c2 = -21.60000;
@@ -950,7 +955,7 @@ impl TwoLaneHighways {
                 c4 = 12.05214;
                 c5 = -0.00750;
                 c6 = -0.06700;
-                c7 = 11.60405;
+                c7 = 11.60410;
             } else if vc == 2 {
                 b0 = 58.21104;
                 b1 = 5.73387;
@@ -1001,7 +1006,7 @@ impl TwoLaneHighways {
                 c4 = -11.95763;
                 c5 = -0.10000;
                 c6 = 0.00172;
-                c7 = 14.56611;
+                c7 = 14.70067;
             } else if vc == 5 {
                 b0 = 3.32968;
                 b1 = -0.84377;
@@ -1327,7 +1332,7 @@ impl TwoLaneHighways {
                 // Follower density is at least 95% of the level entering the passing lane
                 let l_de_2 = f64::max(0.1, f64::exp(-1.0 * (f64::max(0.0, -1.0 * y_1a + 32.0) - 27.0) / 8.75));
 
-                l_de = f64::min(l_de_1, l_de_2);
+                l_de = math::round_up_to_n_decimal(f64::min(l_de_1, l_de_2), 1);
                 self.l_de = l_de;
 
                 let pf_improve = f64::max(0.0, y_1a - 8.75 * f64::ln(f64::max(0.1, l_de)));
@@ -1336,6 +1341,7 @@ impl TwoLaneHighways {
                 
                 fd_adj = (pf_u / 100.0) * (1.0 - pf_improve / 100.0) * vd_u / (s * (1.0 + s_improve / 100.0));
                 // fd_adj = (pf_u / 100.0) * (1.0 - pf_improve / 100.0) * vd_u / (58.8 * (1.0 + s_improve / 100.0));
+
             } else {
                 // Determine adjustment to follower density
                 // if segment is within effective distance of neaest upstream passing lane
@@ -1349,10 +1355,10 @@ impl TwoLaneHighways {
                     let x_4d = 0.005 * self.segments[seg_num].get_flow_rate();
                     let y_1b = 27.0 - x_1a + x_2 + x_3a - x_4c;
                     let y_2b = 3.0 - x_1b + x_2 + x_3b - x_4d;
-                    let pf_improve = math::round_up_to_first_decimal(f64::max(0.0, y_1b));
-                    let s_improve = math::round_up_to_first_decimal(f64::max(0.0, y_2b));
-                    
-                    fd_adj = math::round_up_to_first_decimal(pf) / 100.0 * (1.0 - pf_improve / 100.0) * math::round_to_significant_digits(vd, 3) / (math::round_up_to_first_decimal(s) * (1.0 + s_improve / 100.0));
+                    let pf_improve = math::round_up_to_n_decimal(f64::max(0.0, y_1b), 1);
+                    let s_improve = math::round_up_to_n_decimal(f64::max(0.0, y_2b), 1);
+
+                    fd_adj = math::round_up_to_n_decimal(pf, 1) / 100.0 * (1.0 - pf_improve / 100.0) * math::round_to_significant_digits(vd, 3) / (math::round_up_to_n_decimal(s, 1) * (1.0 + s_improve / 100.0));
                 }
             }
         }
@@ -1386,8 +1392,22 @@ impl TwoLaneHighways {
     }
 
 
-    pub fn determine_facility_LOS(&self, seg_num: usize) -> char {
+    pub fn determine_facility_los(&self, fd: f64, s_pl: f64) -> char {
         let mut los: char = 'F';
+        
+        if s_pl >= 50.0 {
+            if fd <= 2.0 { los = 'A' }
+            else if fd > 2.0 && fd <= 4.0 { los = 'B' }
+            else if fd > 4.0 && fd <= 8.0 { los = 'C' }
+            else if fd > 8.0 && fd <= 12.0 { los = 'D' }
+            else if fd > 12.0 { los = 'E' };
+        } else {
+            if fd <= 2.5 { los = 'A' }
+            else if fd > 2.5 && fd <= 5.0 { los = 'B' }
+            else if fd > 5.0 && fd <= 10.0 { los = 'C' }
+            else if fd > 10.0 && fd <= 15.0 { los = 'D' }
+            else if fd > 15.0 { los = 'E' }
+        }
 
         los
     }
