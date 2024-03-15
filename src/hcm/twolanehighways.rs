@@ -1,5 +1,41 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use crate::utils::math;
+
+pub trait SegmentOperations: for<'de> Deserialize<'de> {
+    fn new(passing_type: usize, length: f64, grade: f64, spl: f64, is_hc: bool, volume: f64, volume_op: f64, flow_rate: f64, flow_rate_o: f64, capacity: i32,
+            ffs: f64, avg_speed: f64, vertical_class: i32, subsegments:Vec<SubSegment>, phf: f64, phv: f64, pf: f64, fd: f64, hor_class: i32) -> Segment;
+    fn get_passing_type(&self) -> usize;
+    fn get_length(&self) -> f64;
+    fn get_grade(&self) -> f64;
+    fn get_volume(&self) -> f64;
+    fn get_volume_op(&self) -> f64;
+    fn get_phf(&self) -> f64;
+    fn get_phv(&self) -> f64;
+    fn get_vertical_class(&self) -> i32;
+    fn get_subsegments(&self) -> &Vec<SubSegment>;
+    fn get_avg_speed(&self) -> f64;
+    fn get_spl(&self) -> f64;
+    fn get_flow_rate(&self) -> f64;
+    fn get_flow_rate_o(&self) -> f64;
+    fn get_capacity(&self) -> i32;
+    fn get_ffs(&self) -> f64;
+    fn get_is_hc(&self) -> bool;
+    fn get_percent_followers(&self) -> f64;
+    fn get_followers_density(&self) -> f64;
+    fn get_hor_class(&self) -> i32;
+
+    fn set_flow_rate(&mut self, demand_flow_i: f64);
+    fn set_flow_rate_o(&mut self, demand_flow_o: f64);
+    fn set_capacity(&mut self, capacity: i32);
+    fn set_vertical_class(&mut self, ver_align: i32);
+    fn set_ffs(&mut self, ffs: f64);
+    fn set_avg_speed(&mut self, avg_speed: f64);
+    fn set_percent_followers(&mut self, pf: f64);
+    fn set_followers_density(&mut self, fd: f64);
+    fn set_subsegments_avg_speed(&mut self, index: usize, avg_speed: f64);
+    fn set_subsegments_hor_class(&mut self, index: usize, hor_class: i32);
+
+}
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,7 +54,7 @@ pub struct SubSegment {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Segment {
-    /// Passing Type.
+    /// Passing Type. TODO: Defined with enum?
     /// 0 -> Passing Constrained
     /// 1 -> Passing Zone
     /// 2 -> Passing Lane
@@ -63,8 +99,12 @@ pub struct Segment {
 
 /// Two Lane Highways on chapter 15 of HCM.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+// #[serde(bound(deserialize = "T: SegmentOperations"))]
+// pub struct TwoLaneHighways<T: SegmentOperations> {
 pub struct TwoLaneHighways {
+    // pub segments: Vec<Box<dyn SegmentOperations>>,
     pub segments: Vec<Segment>,
+    // pub segments: Vec<T>,
     /// Lane width, ft.
     pub lane_width: f64,
     /// Shoulder width, ft.
@@ -92,37 +132,38 @@ impl SubSegment {
     }
 
     /// Method to get the length of the SubSegment
-    fn get_length(&self) -> f64 {
+    pub fn get_length(&self) -> f64 {
         self.length / 5280.0
     }
 
-    fn get_avg_speed(&self) -> f64 {
+    pub fn get_avg_speed(&self) -> f64 {
         self.avg_speed
     }
 
-    fn set_avg_speed(&mut self, avg_speed: f64) {
+    pub fn set_avg_speed(&mut self, avg_speed: f64) {
         self.avg_speed = avg_speed
     }
 
-    fn get_hor_class(&self) -> i32 {
+    pub fn get_hor_class(&self) -> i32 {
         self.hor_class
     }
 
-    fn set_hor_class(&mut self, hor_class: i32) {
+    pub fn set_hor_class(&mut self, hor_class: i32) {
         self.hor_class = hor_class
     }
 
-    fn get_design_rad(&self) -> f64 {
+    pub fn get_design_rad(&self) -> f64 {
         self.design_rad
     }
 
-    fn get_sup_ele(&self) -> f64 {
+    pub fn get_sup_ele(&self) -> f64 {
         self.sup_ele
     }
 }
 
 
 /// Implement methods for Segment
+// impl SegmentOperations for Segment {
 impl Segment {
     /// Method to create a new Segment instance
     pub fn new(passing_type: usize, length: f64, grade: f64, spl: f64, is_hc: bool, volume: f64, volume_op: f64, flow_rate: f64, flow_rate_o: f64, capacity: i32,
@@ -165,27 +206,27 @@ impl Segment {
         // TODO
     }
 
-    fn get_grade(&self) -> f64 {
+    pub fn get_grade(&self) -> f64 {
         return self.grade
     }
 
-    fn get_spl(&self) -> f64 {
+    pub fn get_spl(&self) -> f64 {
         return self.spl
     }
 
-    fn get_is_hc(&self) -> bool {
+    pub fn get_is_hc(&self) -> bool {
         return self.is_hc
     }
 
-    fn get_volume(&self) -> f64 {
+    pub fn get_volume(&self) -> f64 {
         return self.volume
     }
 
-    fn get_volume_op(&self) -> f64 {
+    pub fn get_volume_op(&self) -> f64 {
         return self.volume_op
     }
 
-    fn get_flow_rate(&self) -> f64 {
+    pub fn get_flow_rate(&self) -> f64 {
         return self.flow_rate
     }
 
@@ -193,7 +234,7 @@ impl Segment {
         self.flow_rate = flow_rate
     }
 
-    fn get_flow_rate_o(&self) -> f64 {
+    pub fn get_flow_rate_o(&self) -> f64 {
         return self.flow_rate_o
     }
 
@@ -201,7 +242,7 @@ impl Segment {
         self.flow_rate_o = flow_rate_o
     }
 
-    fn get_capacity(&self) -> i32 {
+    pub fn get_capacity(&self) -> i32 {
         self.capacity
     }
 
@@ -209,7 +250,7 @@ impl Segment {
         self.capacity = capacity
     }
 
-    fn get_ffs(&self) -> f64 {
+    pub fn get_ffs(&self) -> f64 {
         return self.ffs
     }
 
@@ -217,7 +258,7 @@ impl Segment {
         self.ffs = ffs
     }
 
-    fn get_avg_speed(&self) -> f64 {
+    pub fn get_avg_speed(&self) -> f64 {
         return self.avg_speed
     }
 
@@ -225,7 +266,7 @@ impl Segment {
         self.avg_speed = avg_speed
     }
 
-    fn get_vertical_class(&self) -> i32 {
+    pub fn get_vertical_class(&self) -> i32 {
         return self.vertical_class
     }
     
@@ -249,15 +290,15 @@ impl Segment {
         }
     }
 
-    fn get_phf(&self) -> f64 {
+    pub fn get_phf(&self) -> f64 {
         return self.phf
     }
 
-    fn get_phv(&self) -> f64 {
+    pub fn get_phv(&self) -> f64 {
         return self.phv
     }
 
-    fn get_percent_followers(&self) -> f64 {
+    pub fn get_percent_followers(&self) -> f64 {
         self.pf
     }
 
@@ -265,7 +306,7 @@ impl Segment {
        self.pf = pf
     }
 
-    fn get_followers_density(&self) -> f64 {
+    pub fn get_followers_density(&self) -> f64 {
         self.fd
     }
 
@@ -273,12 +314,13 @@ impl Segment {
         self.fd = fd
     }
 
-    // fn get_hor_class(&self) -> i32 {
-    //     return self.hor_class
-    // }
+    pub fn get_hor_class(&self) -> i32 {
+        return self.hor_class
+    }
 }
 
 
+// impl<T: SegmentOperations> TwoLaneHighways<T> {
 impl TwoLaneHighways {
 
     /// Returns a segment LOS and LOS
@@ -288,6 +330,7 @@ impl TwoLaneHighways {
     /// * `segment number` - the number of segments
     /// 
 
+    // pub fn new(segments: Vec<T>, lane_width: f64, shoulder_width: f64, apd: f64, pmhvfl: f64, l_de: f64) -> TwoLaneHighways<T> {
     pub fn new(segments: Vec<Segment>, lane_width: f64, shoulder_width: f64, apd: f64, pmhvfl: f64, l_de: f64) -> TwoLaneHighways {
         TwoLaneHighways {
             segments: segments,
@@ -299,6 +342,7 @@ impl TwoLaneHighways {
         }
     }
 
+    // pub fn get_segments(&self) -> &Vec<T> {
     pub fn get_segments(&self) -> &Vec<Segment> {
         return &self.segments
     }
@@ -645,10 +689,14 @@ impl TwoLaneHighways {
                     (s, hor_class) = self.calc_speed(seg_length, bffs, ffs, pt, vc, vd, vo, phv, phf, is_hc, rad, sup_ele);
                     tot_s += s * subseg_length * 5280.0;
 
+                    // self.segments[seg_num].get_subsegments()[i].set_avg_speed(s);
+                    // self.segments[seg_num].get_subsegments()[i].set_hor_class(hor_class);
                     self.segments[seg_num].set_subsegments_avg_speed(i, s);
                     self.segments[seg_num].set_subsegments_hor_class(i, hor_class);
 
                 } else { // Tangent Section
+                    // self.segments[seg_num].get_subsegments()[i].set_avg_speed(seg_s);
+                    // self.segments[seg_num].get_subsegments()[i].set_hor_class(seg_hor_class);
                     self.segments[seg_num].set_subsegments_avg_speed(i, seg_s);
                     self.segments[seg_num].set_subsegments_hor_class(i, seg_hor_class);
                     tot_s += math::round_to_significant_digits(seg_s * subseg_length * 5280.0, 3);

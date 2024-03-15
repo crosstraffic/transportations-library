@@ -11,6 +11,8 @@ mod twolanehighways_test {
     use std::io::BufReader;
     use std::fs;
 
+    use crate::SegmentOperations;
+
     use super::TwoLaneHighways;
     use super::Segment;
     use super::SubSegment;
@@ -32,55 +34,83 @@ mod twolanehighways_test {
     }
 
 
+    // fn settings<T: SegmentOperations>(setting_file_loc: String) -> TwoLaneHighways<T> {
     fn settings(setting_file_loc: String) -> TwoLaneHighways {
         let f = File::open(setting_file_loc).expect("Unable to open file");
         let reader = BufReader::new(f);
 
+        // let twolanehighways: TwoLaneHighways<T> = serde_json::from_reader(reader).expect("Failed to parse JSON");
         let twolanehighways: TwoLaneHighways = serde_json::from_reader(reader).expect("Failed to parse JSON");
 
         twolanehighways
     }
 
 
+    // fn case_initialize<T: SegmentOperations>(tlh: TwoLaneHighways<T>) -> (TwoLaneHighways<Segment>, usize) {
     fn case_initialize(tlh: TwoLaneHighways) -> (TwoLaneHighways, usize) {
 
         let seg_len = tlh.segments.len();
         let mut segments_vec =  Vec::new();
 
         for seg_num in 0..seg_len {
-            let subseg_len = tlh.segments[seg_num].subsegments.len();
+            // let subseg_len = tlh.segments[seg_num].subsegments.len();
+            let subseg_len = tlh.segments[seg_num].get_subsegments().len();
             let mut subsegments_vec = Vec::new();
             for subseg_num in 0..subseg_len {
                 let subsegment = SubSegment::new(
-                    tlh.segments[seg_num].subsegments[subseg_num].length,
-                    tlh.segments[seg_num].subsegments[subseg_num].avg_speed,
-                    tlh.segments[seg_num].subsegments[subseg_num].hor_class,
-                    tlh.segments[seg_num].subsegments[subseg_num].design_rad,
-                    tlh.segments[seg_num].subsegments[subseg_num].sup_ele,
+                    // tlh.segments[seg_num].subsegments[subseg_num].length,
+                    // tlh.segments[seg_num].subsegments[subseg_num].avg_speed,
+                    // tlh.segments[seg_num].subsegments[subseg_num].hor_class,
+                    // tlh.segments[seg_num].subsegments[subseg_num].design_rad,
+                    // tlh.segments[seg_num].subsegments[subseg_num].sup_ele,
+                    tlh.segments[seg_num].get_subsegments()[subseg_num].length,
+                    tlh.segments[seg_num].get_subsegments()[subseg_num].avg_speed,
+                    tlh.segments[seg_num].get_subsegments()[subseg_num].hor_class,
+                    tlh.segments[seg_num].get_subsegments()[subseg_num].design_rad,
+                    tlh.segments[seg_num].get_subsegments()[subseg_num].sup_ele,
                 );
                 subsegments_vec.push(subsegment);
             }
 
             let segment = Segment::new(
-                tlh.segments[seg_num].passing_type,
-                tlh.segments[seg_num].length,
-                tlh.segments[seg_num].grade,
-                tlh.segments[seg_num].spl,
-                tlh.segments[seg_num].is_hc,
-                tlh.segments[seg_num].volume,
-                tlh.segments[seg_num].volume_op,
-                tlh.segments[seg_num].flow_rate,
-                tlh.segments[seg_num].flow_rate_o,
-                tlh.segments[seg_num].capacity,
-                tlh.segments[seg_num].ffs,
-                tlh.segments[seg_num].avg_speed,
-                tlh.segments[seg_num].vertical_class,
+                // tlh.segments[seg_num].passing_type,
+                // tlh.segments[seg_num].length,
+                // tlh.segments[seg_num].grade,
+                // tlh.segments[seg_num].spl,
+                // tlh.segments[seg_num].is_hc,
+                // tlh.segments[seg_num].volume,
+                // tlh.segments[seg_num].volume_op,
+                // tlh.segments[seg_num].flow_rate,
+                // tlh.segments[seg_num].flow_rate_o,
+                // tlh.segments[seg_num].capacity,
+                // tlh.segments[seg_num].ffs,
+                // tlh.segments[seg_num].avg_speed,
+                // tlh.segments[seg_num].vertical_class,
+                // subsegments_vec,
+                // tlh.segments[seg_num].phf,
+                // tlh.segments[seg_num].phv,
+                // tlh.segments[seg_num].pf,
+                // tlh.segments[seg_num].fd,
+                // tlh.segments[seg_num].hor_class,
+                tlh.segments[seg_num].get_passing_type(),
+                tlh.segments[seg_num].get_length(),
+                tlh.segments[seg_num].get_grade(),
+                tlh.segments[seg_num].get_spl(),
+                tlh.segments[seg_num].get_is_hc(),
+                tlh.segments[seg_num].get_volume(),
+                tlh.segments[seg_num].get_volume_op(),
+                tlh.segments[seg_num].get_flow_rate(),
+                tlh.segments[seg_num].get_flow_rate_o(),
+                tlh.segments[seg_num].get_capacity(),
+                tlh.segments[seg_num].get_ffs(),
+                tlh.segments[seg_num].get_avg_speed(),
+                tlh.segments[seg_num].get_vertical_class(),
                 subsegments_vec,
-                tlh.segments[seg_num].phf,
-                tlh.segments[seg_num].phv,
-                tlh.segments[seg_num].pf,
-                tlh.segments[seg_num].fd,
-                tlh.segments[seg_num].hor_class,
+                tlh.segments[seg_num].get_phf(),
+                tlh.segments[seg_num].get_phv(),
+                tlh.segments[seg_num].get_percent_followers(),
+                tlh.segments[seg_num].get_followers_density(),
+                tlh.segments[seg_num].get_hor_class(),
             );
             segments_vec.push(segment);
         }
@@ -106,7 +136,8 @@ mod twolanehighways_test {
         let setting_files = read_files();
 
         for (index, s_file) in setting_files.iter().enumerate() {
-            let tlh = settings(s_file.clone());
+            // let tlh: TwoLaneHighways<Segment> = settings(s_file.clone());
+            let tlh: TwoLaneHighways = settings(s_file.clone());
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
 
             for seg_num in 0..seg_len {
@@ -124,7 +155,8 @@ mod twolanehighways_test {
 
         let setting_files = read_files();
         for (index, s_file) in setting_files.iter().enumerate() {
-            let tlh = settings(s_file.clone());
+            // let tlh: TwoLaneHighways<Segment> = settings(s_file.clone());
+            let tlh: TwoLaneHighways = settings(s_file.clone());
 
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
 
@@ -144,7 +176,8 @@ mod twolanehighways_test {
 
         let setting_files = read_files();
         for (index, s_file) in setting_files.iter().enumerate() {
-            let tlh = settings(s_file.clone());
+            // let tlh : TwoLaneHighways<Segment>= settings(s_file.clone());
+            let tlh : TwoLaneHighways = settings(s_file.clone());
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
 
             for seg_num in 0..seg_len {
@@ -161,7 +194,8 @@ mod twolanehighways_test {
         let setting_files = read_files();
 
         for (index, s_file) in setting_files.iter().enumerate() {
-            let tlh = settings(s_file.clone());
+            // let tlh : TwoLaneHighways<Segment>= settings(s_file.clone());
+            let tlh : TwoLaneHighways = settings(s_file.clone());
 
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
 
@@ -179,7 +213,8 @@ mod twolanehighways_test {
         let ans_s = vec![[53.7, 0.0, 0.0, 0.0, 0.0, 0.0], [49.5, 0.0, 0.0, 0.0, 0.0, 0.0], [58.8, 57.8, 58.9, 59.2, 58.9, 0.0], [48.0, 43.9, 50.8, 49.2, 56.0, 58.3]];
         let setting_files = read_files();
         for (index, s_file) in setting_files.iter().enumerate() {
-            let tlh = settings(s_file.clone());
+            // let tlh : TwoLaneHighways<Segment>= settings(s_file.clone());
+            let tlh : TwoLaneHighways = settings(s_file.clone());
 
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
 
@@ -204,7 +239,8 @@ mod twolanehighways_test {
         let ans_pf = vec![[67.7, 0.0, 0.0, 0.0, 0.0, 0.0], [67.7, 0.0, 0.0, 0.0, 0.0, 0.0], [69.7, 60.7, 68.0, 67.8, 67.7, 0.0], [86.9, 89.3, 83.9, 86.9, 78.2, 78.4]];
         let setting_files = read_files();
         for (index, s_file) in setting_files.iter().enumerate() {
-            let tlh = settings(s_file.clone());
+            // let tlh : TwoLaneHighways<Segment>= settings(s_file.clone());
+            let tlh : TwoLaneHighways = settings(s_file.clone());
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
 
             for seg_num in 0..seg_len {
@@ -222,7 +258,8 @@ mod twolanehighways_test {
         let ans_fd = vec![[10.1, 0.0, 0.0, 0.0, 0.0, 0.0], [10.9, 0.0, 0.0, 0.0, 0.0, 0.0], [10.7, 9.1, 10.0, 9.7, 9.8, 0.0], [22.1, 24.9, 20.2, 21.6, 17.1, 16.4]];
         let setting_files = read_files();
         for (index, s_file) in setting_files.iter().enumerate() {
-            let tlh = settings(s_file.clone());
+            // let tlh : TwoLaneHighways<Segment>= settings(s_file.clone());
+            let tlh : TwoLaneHighways = settings(s_file.clone());
 
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
 
@@ -243,7 +280,8 @@ mod twolanehighways_test {
         let ans_fd_adj = vec![[0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 10.3, 8.3, 8.2, 8.8, 0.0], [0.0, 0.0, 0.0, 0.0, 18.0, 13.2]];
         let setting_files = read_files();
         for (index, s_file) in setting_files.iter().enumerate() {
-            let tlh = settings(s_file.clone());
+            // let tlh : TwoLaneHighways<Segment>= settings(s_file.clone());
+            let tlh : TwoLaneHighways = settings(s_file.clone());
 
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
 
@@ -268,7 +306,9 @@ mod twolanehighways_test {
         let ans_los = vec![['D', '\0', '\0', '\0', '\0', '\0'], ['D', '\0', '\0', '\0', '\0', '\0'], ['D', 'B', 'D', 'D', 'D', '\0'], ['E', 'E', 'E', 'E', 'C', 'E']];
         let setting_files = read_files();
         for (index, s_file) in setting_files.iter().enumerate() {
-            let tlh = settings(s_file.clone());
+            // let tlh : TwoLaneHighways<Segment>= settings(s_file.clone());
+            let tlh : TwoLaneHighways = settings(s_file.clone());
+
 
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
 
@@ -296,7 +336,8 @@ mod twolanehighways_test {
 
         let setting_files = read_files();
         for (index, s_file) in setting_files.iter().enumerate() {
-            let tlh = settings(s_file.clone());
+            // let tlh : TwoLaneHighways<Segment>= settings(s_file.clone());
+            let tlh : TwoLaneHighways = settings(s_file.clone());
 
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
             let mut tot_len: f64 = 0.0;
