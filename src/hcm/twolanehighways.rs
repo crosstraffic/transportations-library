@@ -93,6 +93,8 @@ pub struct Segment {
     pub pf: f64,
     /// Followers Density
     pub fd: f64,
+    /// Followers Density in the middle of PL section
+    pub fd_mid: f64,
     // /// Horizontal class of the segment.
     pub hor_class: i32,
 }
@@ -133,7 +135,7 @@ impl SubSegment {
 
     /// Method to get the length of the SubSegment
     pub fn get_length(&self) -> f64 {
-        self.length / 5280.0
+        self.length
     }
 
     pub fn get_avg_speed(&self) -> f64 {
@@ -167,7 +169,7 @@ impl SubSegment {
 impl Segment {
     /// Method to create a new Segment instance
     pub fn new(passing_type: usize, length: f64, grade: f64, spl: f64, is_hc: bool, volume: f64, volume_op: f64, flow_rate: f64, flow_rate_o: f64, capacity: i32,
-            ffs: f64, avg_speed: f64, vertical_class: i32, subsegments:Vec<SubSegment>, phf: f64, phv: f64, pf: f64, fd: f64, hor_class: i32) -> Segment {
+            ffs: f64, avg_speed: f64, vertical_class: i32, subsegments:Vec<SubSegment>, phf: f64, phv: f64, pf: f64, fd: f64, fd_mid: f64, hor_class: i32) -> Segment {
         Segment {
             passing_type,
             length,
@@ -187,6 +189,7 @@ impl Segment {
             phv,
             pf,
             fd,
+            fd_mid,
             hor_class,
         }
     }
@@ -312,6 +315,14 @@ impl Segment {
 
     fn set_followers_density(&mut self, fd: f64) {
         self.fd = fd
+    }
+
+    pub fn get_followers_density_mid(&self) -> f64 {
+        self.fd_mid
+    }
+
+    fn set_followers_density_mid(&mut self, fd_mid: f64) {
+        self.fd_mid = fd_mid
     }
 
     pub fn get_hor_class(&self) -> i32 {
@@ -657,7 +668,7 @@ impl TwoLaneHighways {
         let mut tot_s: f64 = 0.0; // total speed
         let res_s: f64; // Results speed
         let mut hor_class: i32;
-        let seg_s:f64;
+        let seg_s: f64;
         let seg_hor_class: i32;
         let ffs = self.segments[seg_num].get_ffs();
         let pt = self.segments[seg_num].get_passing_type();
@@ -682,12 +693,12 @@ impl TwoLaneHighways {
             // let mut sup_ele: Vec<f64>; // = (0..seg_num).collect();
             let mut i = 0;
             while i < subseg_num {
-                let subseg_length = self.segments[seg_num].get_subsegments()[i].get_length();
+                let subseg_length = self.segments[seg_num].get_subsegments()[i].get_length() / 5280.0;
                 let rad = self.segments[seg_num].get_subsegments()[i].get_design_rad();
                 let sup_ele = self.segments[seg_num].get_subsegments()[i].get_sup_ele();
                 if rad > 0.0 {
                     (s, hor_class) = self.calc_speed(seg_length, bffs, ffs, pt, vc, vd, vo, phv, phf, is_hc, rad, sup_ele);
-                    tot_s += s * subseg_length * 5280.0;
+                    tot_s += s * subseg_length;
 
                     // self.segments[seg_num].get_subsegments()[i].set_avg_speed(s);
                     // self.segments[seg_num].get_subsegments()[i].set_hor_class(hor_class);
@@ -699,13 +710,13 @@ impl TwoLaneHighways {
                     // self.segments[seg_num].get_subsegments()[i].set_hor_class(seg_hor_class);
                     self.segments[seg_num].set_subsegments_avg_speed(i, seg_s);
                     self.segments[seg_num].set_subsegments_hor_class(i, seg_hor_class);
-                    tot_s += math::round_to_significant_digits(seg_s * subseg_length * 5280.0, 3);
+                    tot_s += math::round_up_to_n_decimal(seg_s, 1) * subseg_length;
 
                     // println!("Sub Segments: {i}, Speed: {seg_s}: Length: {subseg_length}");
                 }
                 i += 1;
             }
-            res_s = tot_s / (seg_length * 5280.0) as f64;
+            res_s = tot_s / (seg_length) as f64;
         } else {
             res_s = seg_s;
         }
@@ -716,7 +727,7 @@ impl TwoLaneHighways {
         (res_s, seg_hor_class)
     }
 
-    fn calc_speed(&self, seg_length: f64, bffs: f64, mut ffs: f64, pt: usize, vc: i32, vd: f64, vo: f64, phv: f64, phf: f64, is_hc:bool, rad: f64, sup_ele: f64) -> (f64, i32) {
+    fn calc_speed(&self, seg_length: f64, bffs: f64, mut ffs: f64, pt: usize, vc: i32, vd: f64, vo: f64, phv: f64, phf: f64, is_hc: bool, rad: f64, sup_ele: f64) -> (f64, i32) {
         // Parameter initialization
         let (mut b0, mut b1, mut b2, mut b3, mut b4, mut b5) = (0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000);
         let (mut c0, mut c1, mut c2, mut c3) = (0.0000, 0.0000, 0.0000, 0.0000);
@@ -886,6 +897,8 @@ impl TwoLaneHighways {
                 f7 = -0.01053;
             }
         }
+        b3 = math::round_up_to_n_decimal(b3, 3);
+        b4 = math::round_up_to_n_decimal(b4, 3);
         // slope coefficient for average speed calculation
         let mut ms = f64::max(
         b5,
@@ -1228,7 +1241,7 @@ impl TwoLaneHighways {
         let vo = self.segments[seg_num].get_flow_rate_o();
         let is_hc = self.segments[seg_num].get_is_hc();
 
-        (s, hor_class) = self.calc_speed(length, bffs, ffs, pt, vc, vd, vo, phv, phf, is_hc, rad, sup_ele);
+        (s, hor_class) = self.calc_speed(length, bffs, ffs, 2, vc, vd, vo, phv, phf, is_hc, rad, sup_ele);
         
         (s, hor_class)
     }
@@ -1250,7 +1263,7 @@ impl TwoLaneHighways {
     // Step 7: Calculate passing lane parameters
 
     // Step 8: Determine follower density
-    pub fn determine_follower_density_pl(&mut self, seg_num: usize) -> f64 {
+    pub fn determine_follower_density_pl(&mut self, seg_num: usize) -> (f64, f64) {
         let mut s_init_fl: f64 = 0.0;
         let mut s_init_sl: f64 = 0.0;
         let pf_fl: f64;
@@ -1269,16 +1282,17 @@ impl TwoLaneHighways {
         let vd_sl = f64::round(vd * (1.0 - p_v_fl));
         let phv_fl = phv * pm_hv_fl;
         let nhv_sl = f64::ceil(nhv - (vd_fl * phv_fl / 100.0));
-        let phv_sl = nhv_sl / vd_sl * 100.0;
+        let phv_sl = math::round_up_to_n_decimal(nhv_sl / vd_sl * 100.0, 1);
         let mut fl_tot: f64 = 0.0;
         let mut sl_tot: f64 = 0.0;
 
 
         // Subsection
         let mut j = 0;
-        if subseg_num > 0 {
+        // One subseg list is set to be initialized with 0 inputs
+        if subseg_num > 1 {
             while j < subseg_num {
-                let sub_seg_len = self.segments[seg_num].get_subsegments()[j].get_length();
+                let sub_seg_len = self.segments[seg_num].get_subsegments()[j].get_length() / 5280.0;
                 let rad = self.segments[seg_num].get_subsegments()[j].get_design_rad();
                 let sup_ele = self.segments[seg_num].get_subsegments()[j].get_sup_ele();
                 (s_init_fl, _) = self.estimate_average_speed_sf(seg_num, sub_seg_len, vd_fl, phv_fl, rad, sup_ele);
@@ -1298,19 +1312,23 @@ impl TwoLaneHighways {
         }
 
 
-        pf_fl= self.estimate_percent_followers_sf(seg_num, vd_fl, phv_fl);
+        pf_fl = self.estimate_percent_followers_sf(seg_num, vd_fl, phv_fl);
         pf_sl = self.estimate_percent_followers_sf(seg_num, vd_sl, phv_sl);
 
         let sda = 2.750 + 0.00056 * vd + 3.8521 * phv / 100.0;
         let s_mid_fl = s_init_fl + sda / 2.0;
         let s_mid_sl = s_init_sl - sda / 2.0;
+        // println!("{}, {}, {}, {}", s_init_fl, s_init_sl, s_mid_fl, s_mid_sl);
 
         // it's acutually fd at the midpoint of the PL segment but used for LOS calculation
         let fd_mid = (pf_fl * vd_fl / s_mid_fl + pf_sl * vd_sl / s_mid_sl) / 200.0 ;
 
-        self.segments[seg_num].set_followers_density(fd_mid);
+        self.segments[seg_num].set_followers_density_mid(fd_mid);
 
-        fd_mid
+        let fd = self.determine_follower_density_pc_pz(seg_num);
+        self.segments[seg_num].set_followers_density(fd);
+
+        (fd, fd_mid)
     }
 
 
@@ -1418,7 +1436,13 @@ impl TwoLaneHighways {
         let mut los: char = 'F';
         
         let vd = self.segments[seg_num].get_flow_rate();
-        let fd = self.segments[seg_num].get_followers_density();
+        let pt = self.segments[seg_num].get_passing_type();
+        let fd: f64;
+        if pt == 2 {
+            fd = self.segments[seg_num].get_followers_density_mid();
+        } else {
+            fd = self.segments[seg_num].get_followers_density();
+        }
 
         if s_pl >= 50.0 {
             if fd <= 2.0 { los = 'A' }

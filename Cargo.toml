@@ -3,6 +3,12 @@ name = "transportations_library"
 version = "0.1.0"
 authors = ["Rei Tamaru <tamaru@wisc.edu>"]
 edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Knowledge stack for transportation."
+documentation = ""
+homepage = ""
+repository = "https://github.com/crosstraffic/transportations-library"
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

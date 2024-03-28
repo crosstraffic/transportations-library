@@ -11,7 +11,7 @@ mod twolanehighways_test {
     use std::io::BufReader;
     use std::fs;
 
-    use crate::SegmentOperations;
+    // use crate::SegmentOperations;
 
     use super::TwoLaneHighways;
     use super::Segment;
@@ -110,6 +110,7 @@ mod twolanehighways_test {
                 tlh.segments[seg_num].get_phv(),
                 tlh.segments[seg_num].get_percent_followers(),
                 tlh.segments[seg_num].get_followers_density(),
+                tlh.segments[seg_num].get_followers_density_mid(),
                 tlh.segments[seg_num].get_hor_class(),
             );
             segments_vec.push(segment);
@@ -200,7 +201,6 @@ mod twolanehighways_test {
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
 
             for seg_num in 0..seg_len {
-                println!("{seg_num}");
                 let (_, _, _) = twolanehighways.determine_demand_flow(seg_num);
                 let ffs = twolanehighways.determine_free_flow_speed(seg_num);
                 assert_eq!(ans_ffs[index][seg_num], math::round_up_to_n_decimal(ffs, 2));
@@ -210,9 +210,10 @@ mod twolanehighways_test {
 
     #[test]
     pub fn estimate_average_speed_test() {
-        let ans_s = vec![[53.7, 0.0, 0.0, 0.0, 0.0, 0.0], [49.5, 0.0, 0.0, 0.0, 0.0, 0.0], [58.8, 57.8, 58.9, 59.2, 58.9, 0.0], [48.0, 43.9, 50.8, 49.2, 56.0, 58.3]];
+        let ans_s = vec![[53.7, 0.0, 0.0, 0.0, 0.0, 0.0], [49.5, 0.0, 0.0, 0.0, 0.0, 0.0], [58.8, 57.8, 58.9, 59.2, 58.9, 0.0], [47.9, 43.9, 50.8, 49.2, 56.0, 58.3]];
         let setting_files = read_files();
         for (index, s_file) in setting_files.iter().enumerate() {
+            println!("Case {}", index);
             // let tlh : TwoLaneHighways<Segment>= settings(s_file.clone());
             let tlh : TwoLaneHighways = settings(s_file.clone());
 
@@ -253,22 +254,29 @@ mod twolanehighways_test {
     }
 
     #[test]
-    pub fn determine_follower_density_pc_pz_test() {
+    pub fn determine_follower_density_test() {
         // let ans_fd = vec![[10.1, 0.0, 0.0, 0.0, 0.0, 0.0], [10.9, 0.0, 0.0, 0.0, 0.0, 0.0], [10.7, 9.1, 10.0, 9.8, 9.8, 0.0], [22.2, 24.9, 20.2, 21.6, 17.2, 16.4]];
         let ans_fd = vec![[10.1, 0.0, 0.0, 0.0, 0.0, 0.0], [10.9, 0.0, 0.0, 0.0, 0.0, 0.0], [10.7, 9.1, 10.0, 9.7, 9.8, 0.0], [22.1, 24.9, 20.2, 21.6, 17.1, 16.4]];
         let setting_files = read_files();
         for (index, s_file) in setting_files.iter().enumerate() {
             // let tlh : TwoLaneHighways<Segment>= settings(s_file.clone());
+            println!("Case {}", index);
             let tlh : TwoLaneHighways = settings(s_file.clone());
 
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
+
+            let mut fd: f64;
 
             for seg_num in 0..seg_len {
                 let (_, _, _) = twolanehighways.determine_demand_flow(seg_num);
                 let _ = twolanehighways.determine_free_flow_speed(seg_num);
                 let (_, _) = twolanehighways.estimate_average_speed(seg_num);
                 let _ = twolanehighways.estimate_percent_followers(seg_num);
-                let fd = twolanehighways.determine_follower_density_pc_pz(seg_num);
+                if twolanehighways.get_segments()[seg_num].passing_type == 2 {
+                    (fd, _) = twolanehighways.determine_follower_density_pl(seg_num);
+                } else {
+                    fd = twolanehighways.determine_follower_density_pc_pz(seg_num);
+                }
 
                 assert_eq!(ans_fd[index][seg_num], math::round_up_to_n_decimal(fd, 1));
             }
@@ -318,7 +326,7 @@ mod twolanehighways_test {
                 let (s, _) = twolanehighways.estimate_average_speed(seg_num);
                 let _ = twolanehighways.estimate_percent_followers(seg_num);
                 if twolanehighways.get_segments()[seg_num].get_passing_type() == 2 {
-                    let _ = twolanehighways.determine_follower_density_pl(seg_num);
+                    let (_, _) = twolanehighways.determine_follower_density_pl(seg_num);
                 } else {
                     let _ = twolanehighways.determine_follower_density_pc_pz(seg_num);
                 }
@@ -344,6 +352,7 @@ mod twolanehighways_test {
             let mut fd_f: f64 = 0.0;
             let mut s_tot: f64 = 0.0;
             let mut fd: f64;
+            let mut fd_mid: f64;
 
             for seg_num in 0..seg_len {
                 let (_, _, _) = twolanehighways.determine_demand_flow(seg_num);
@@ -351,11 +360,12 @@ mod twolanehighways_test {
                 let (s, _) = twolanehighways.estimate_average_speed(seg_num);
                 let _ = twolanehighways.estimate_percent_followers(seg_num);
                 if twolanehighways.get_segments()[seg_num].get_passing_type() == 2 {
-                    fd = twolanehighways.determine_follower_density_pl(seg_num);
+                    (_, fd_mid) = twolanehighways.determine_follower_density_pl(seg_num);
+                    fd_f += fd_mid * twolanehighways.get_segments()[seg_num].get_length();
                 } else {
                     fd = twolanehighways.determine_follower_density_pc_pz(seg_num);
+                    fd_f += fd * twolanehighways.get_segments()[seg_num].get_length();
                 }
-                fd_f += fd * twolanehighways.get_segments()[seg_num].get_length();
                 tot_len += twolanehighways.get_segments()[seg_num].get_length();
                 s_tot += s * twolanehighways.get_segments()[seg_num].get_length();
             }
