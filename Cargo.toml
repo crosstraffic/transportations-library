@@ -9,6 +9,10 @@ documentation = ""
 homepage = ""
 repository = "https://github.com/crosstraffic/transportations-library"
 readme = "README.md"
+exclude = [
+    ".gitignore",
+    "vscode/settings.json",
+]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
