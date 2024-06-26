@@ -88,7 +88,7 @@ dependencies = [
 
 [[package]]
 name = "transportations_library"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "assert_approx_eq",
  "round",
