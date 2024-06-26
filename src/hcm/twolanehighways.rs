@@ -1,42 +1,6 @@
 use serde::{Deserialize, Serialize};
 use crate::utils::math;
 
-pub trait SegmentOperations: for<'de> Deserialize<'de> {
-    fn new(passing_type: usize, length: f64, grade: f64, spl: f64, is_hc: bool, volume: f64, volume_op: f64, flow_rate: f64, flow_rate_o: f64, capacity: i32,
-            ffs: f64, avg_speed: f64, vertical_class: i32, subsegments:Vec<SubSegment>, phf: f64, phv: f64, pf: f64, fd: f64, hor_class: i32) -> Segment;
-    fn get_passing_type(&self) -> usize;
-    fn get_length(&self) -> f64;
-    fn get_grade(&self) -> f64;
-    fn get_volume(&self) -> f64;
-    fn get_volume_op(&self) -> f64;
-    fn get_phf(&self) -> f64;
-    fn get_phv(&self) -> f64;
-    fn get_vertical_class(&self) -> i32;
-    fn get_subsegments(&self) -> &Vec<SubSegment>;
-    fn get_avg_speed(&self) -> f64;
-    fn get_spl(&self) -> f64;
-    fn get_flow_rate(&self) -> f64;
-    fn get_flow_rate_o(&self) -> f64;
-    fn get_capacity(&self) -> i32;
-    fn get_ffs(&self) -> f64;
-    fn get_is_hc(&self) -> bool;
-    fn get_percent_followers(&self) -> f64;
-    fn get_followers_density(&self) -> f64;
-    fn get_hor_class(&self) -> i32;
-
-    fn set_flow_rate(&mut self, demand_flow_i: f64);
-    fn set_flow_rate_o(&mut self, demand_flow_o: f64);
-    fn set_capacity(&mut self, capacity: i32);
-    fn set_vertical_class(&mut self, ver_align: i32);
-    fn set_ffs(&mut self, ffs: f64);
-    fn set_avg_speed(&mut self, avg_speed: f64);
-    fn set_percent_followers(&mut self, pf: f64);
-    fn set_followers_density(&mut self, fd: f64);
-    fn set_subsegments_avg_speed(&mut self, index: usize, avg_speed: f64);
-    fn set_subsegments_hor_class(&mut self, index: usize, hor_class: i32);
-
-}
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubSegment {
@@ -46,6 +10,8 @@ pub struct SubSegment {
     pub avg_speed: f64,
     /// Design radius of subsegment, ft.
     pub design_rad: f64,
+    /// Central Angel (Not used in HCM. Option for the visualization), deg.
+    pub central_angle: f64,
     /// Horizontal Class
     pub hor_class: i32,
     /// Superelevation of subsegment, %.
@@ -123,12 +89,13 @@ pub struct TwoLaneHighways {
 /// Implement methods for SubSegment
 impl SubSegment {
     /// Method to create a new SubSegment instance
-    pub fn new(length: f64, avg_speed: f64, hor_class: i32, design_rad: f64, sup_ele: f64) -> SubSegment {
+    pub fn new(length: f64, avg_speed: f64, hor_class: i32, design_rad: f64, central_angle: f64, sup_ele: f64) -> SubSegment {
         SubSegment {
             length,
             avg_speed,
             hor_class,
             design_rad,
+            central_angle,
             sup_ele,
         }
     }
@@ -156,6 +123,14 @@ impl SubSegment {
 
     pub fn get_design_rad(&self) -> f64 {
         self.design_rad
+    }
+
+    pub fn set_central_angle(&mut self, central_angle: f64) {
+        self.central_angle = central_angle
+    }
+
+    pub fn get_central_angle(&self) -> f64 {
+        self.central_angle
     }
 
     pub fn get_sup_ele(&self) -> f64 {

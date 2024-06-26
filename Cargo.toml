@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Rei Tamaru <tamaru@wisc.edu>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
+documentation = "https://docs.rs/transportations_library"
 description = "Knowledge stack for transportation."
 repository = "https://github.com/crosstraffic/transportations-library"
 readme = "README.md"

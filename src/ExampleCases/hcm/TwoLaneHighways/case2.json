@@ -20,6 +20,7 @@
                     "avg_speed": 0.0,
                     "hor_class": 0,
                     "design_rad": 0.0,
+                    "central_angle": 0.0, 
                     "sup_ele": 0.0
                 },
                 {
@@ -27,6 +28,7 @@
                     "avg_speed": 0.0,
                     "hor_class": 3,
                     "design_rad": 450.0,
+                    "central_angle": 55.0, 
                     "sup_ele": 3.0
                 },
                 {
@@ -34,6 +36,7 @@
                     "avg_speed": 0.0,
                     "hor_class": 0,
                     "design_rad": 0.0,
+                    "central_angle": 0.0, 
                     "sup_ele": 0.0
                 },
                 {
@@ -41,6 +44,7 @@
                     "avg_speed": 0.0,
                     "hor_class": 4,
                     "design_rad": 300.0,
+                    "central_angle": 70.0, 
                     "sup_ele": 2.0
                 },
                 {
@@ -48,6 +52,7 @@
                     "avg_speed": 0.0,
                     "hor_class": 0,
                     "design_rad": 0.0,
+                    "central_angle": 0.0, 
                     "sup_ele": 0.0
                 },
                 {
@@ -55,6 +60,7 @@
                     "avg_speed": 0.0,
                     "hor_class": 5,
                     "design_rad": 275.0,
+                    "central_angle": 45.0, 
                     "sup_ele": 5.0
                 },
                 {
@@ -62,6 +68,7 @@
                     "avg_speed": 0.0,
                     "hor_class": 0,
                     "design_rad": 0.0,
+                    "central_angle": 0.0, 
                     "sup_ele": 0.0
                 },
                 {
@@ -69,6 +76,7 @@
                     "avg_speed": 0.0,
                     "hor_class": 2,
                     "design_rad": 750.0,
+                    "central_angle": 35.0, 
                     "sup_ele": 0.0
                 },
                 {
@@ -76,6 +84,7 @@
                     "avg_speed": 0.0,
                     "hor_class": 0,
                     "design_rad": 0.0,
+                    "central_angle": 0.0, 
                     "sup_ele": 0.0
                 },
                 {
@@ -83,6 +92,7 @@
                     "avg_speed": 0.0,
                     "hor_class": 1,
                     "design_rad": 1100.0,
+                    "central_angle": 40.0, 
                     "sup_ele": 4.0
                 },
                 {
@@ -90,6 +100,7 @@
                     "avg_speed": 0.0,
                     "hor_class": 0,
                     "design_rad": 0.0,
+                    "central_angle": 0.0, 
                     "sup_ele": 0.0
                 }
             ],

@@ -58,40 +58,17 @@ mod twolanehighways_test {
             let mut subsegments_vec = Vec::new();
             for subseg_num in 0..subseg_len {
                 let subsegment = SubSegment::new(
-                    // tlh.segments[seg_num].subsegments[subseg_num].length,
-                    // tlh.segments[seg_num].subsegments[subseg_num].avg_speed,
-                    // tlh.segments[seg_num].subsegments[subseg_num].hor_class,
-                    // tlh.segments[seg_num].subsegments[subseg_num].design_rad,
-                    // tlh.segments[seg_num].subsegments[subseg_num].sup_ele,
                     tlh.segments[seg_num].get_subsegments()[subseg_num].length,
                     tlh.segments[seg_num].get_subsegments()[subseg_num].avg_speed,
                     tlh.segments[seg_num].get_subsegments()[subseg_num].hor_class,
                     tlh.segments[seg_num].get_subsegments()[subseg_num].design_rad,
+                    tlh.segments[seg_num].get_subsegments()[subseg_num].central_angle,
                     tlh.segments[seg_num].get_subsegments()[subseg_num].sup_ele,
                 );
                 subsegments_vec.push(subsegment);
             }
 
             let segment = Segment::new(
-                // tlh.segments[seg_num].passing_type,
-                // tlh.segments[seg_num].length,
-                // tlh.segments[seg_num].grade,
-                // tlh.segments[seg_num].spl,
-                // tlh.segments[seg_num].is_hc,
-                // tlh.segments[seg_num].volume,
-                // tlh.segments[seg_num].volume_op,
-                // tlh.segments[seg_num].flow_rate,
-                // tlh.segments[seg_num].flow_rate_o,
-                // tlh.segments[seg_num].capacity,
-                // tlh.segments[seg_num].ffs,
-                // tlh.segments[seg_num].avg_speed,
-                // tlh.segments[seg_num].vertical_class,
-                // subsegments_vec,
-                // tlh.segments[seg_num].phf,
-                // tlh.segments[seg_num].phv,
-                // tlh.segments[seg_num].pf,
-                // tlh.segments[seg_num].fd,
-                // tlh.segments[seg_num].hor_class,
                 tlh.segments[seg_num].get_passing_type(),
                 tlh.segments[seg_num].get_length(),
                 tlh.segments[seg_num].get_grade(),
