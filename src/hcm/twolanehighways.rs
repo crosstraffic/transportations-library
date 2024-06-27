@@ -1324,6 +1324,7 @@ impl TwoLaneHighways {
         let mut pl_loc = 100;
         let pass_type = self.segments[seg_num].get_passing_type();
 
+
         for s_num in 0..seg_len {
             let p_type = self.segments[s_num].get_passing_type();
             if p_type == 2 {
@@ -1345,8 +1346,8 @@ impl TwoLaneHighways {
         // Calculate downstream distance from start of passing lane
         let mut fd_adj: f64 = 0.0;
         let pf = self.segments[seg_num].get_percent_followers();
-        let pl = is_pl_list.len();
-        if seg_num > 0 && is_pl_list.len() > 0{
+
+        if seg_num > 0 && is_pl_list.iter().filter(|&&x| x).count() > 0{
             // let pf_u = self.segments[seg_num-1].get_percent_followers();
             let pf_u = self.segments[pl_loc-1].get_percent_followers();
             let vd = self.segments[seg_num].get_flow_rate();

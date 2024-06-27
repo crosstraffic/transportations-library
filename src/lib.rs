@@ -190,7 +190,6 @@ mod twolanehighways_test {
         let ans_s = vec![[53.7, 0.0, 0.0, 0.0, 0.0, 0.0], [49.5, 0.0, 0.0, 0.0, 0.0, 0.0], [58.8, 57.8, 58.9, 59.2, 58.9, 0.0], [47.9, 43.9, 50.8, 49.2, 56.0, 58.3]];
         let setting_files = read_files();
         for (index, s_file) in setting_files.iter().enumerate() {
-            println!("Case {}", index);
             // let tlh : TwoLaneHighways<Segment>= settings(s_file.clone());
             let tlh : TwoLaneHighways = settings(s_file.clone());
 
@@ -233,11 +232,10 @@ mod twolanehighways_test {
     #[test]
     pub fn determine_follower_density_test() {
         // let ans_fd = vec![[10.1, 0.0, 0.0, 0.0, 0.0, 0.0], [10.9, 0.0, 0.0, 0.0, 0.0, 0.0], [10.7, 9.1, 10.0, 9.8, 9.8, 0.0], [22.2, 24.9, 20.2, 21.6, 17.2, 16.4]];
-        let ans_fd = vec![[10.1, 0.0, 0.0, 0.0, 0.0, 0.0], [10.9, 0.0, 0.0, 0.0, 0.0, 0.0], [10.7, 9.1, 10.0, 9.7, 9.8, 0.0], [22.1, 24.9, 20.2, 21.6, 17.1, 16.4]];
+        let ans_fd = vec![[10.1, 0.0, 0.0, 0.0, 0.0, 0.0], [10.9, 0.0, 0.0, 0.0, 0.0, 0.0], [10.7, 9.1, 10.0, 9.7, 9.8, 0.0], [22.2, 24.9, 20.2, 21.6, 17.1, 16.4]];
         let setting_files = read_files();
         for (index, s_file) in setting_files.iter().enumerate() {
             // let tlh : TwoLaneHighways<Segment>= settings(s_file.clone());
-            println!("Case {}", index);
             let tlh : TwoLaneHighways = settings(s_file.clone());
 
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
@@ -271,6 +269,8 @@ mod twolanehighways_test {
             let (mut twolanehighways, seg_len) = case_initialize(tlh);
 
             for seg_num in 0..seg_len {
+                println!("Case {}", index);
+                println!("Segment {}", seg_num);
                 let (_, _, _) = twolanehighways.determine_demand_flow(seg_num);
                 let _ = twolanehighways.determine_free_flow_speed(seg_num);
                 let (_, _) = twolanehighways.estimate_average_speed(seg_num);
