@@ -13,14 +13,21 @@ exclude = [
     "vscode/settings.json",
 ]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+pybindings = ["pyo3"]
+
 
 [dependencies]
 assert_approx_eq = "1.1.0"
 round = "0.1.0"
 serde = { version = "1.0.193", features = ["derive"] }
 serde_json = "1.0"
+pyo3 = { version = "0.21.2", features = ["extension-module"], optional = true}
 
 [lib]
 name = "transportations_library"
 path = "src/lib.rs"
+
+[package.metadata.maturin]
+name = "transportations_library"

@@ -1,3 +1,3 @@
 pub use twolanehighways::*;
 
-mod twolanehighways;
+pub mod twolanehighways;
