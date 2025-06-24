@@ -12,6 +12,7 @@ exclude = [
     ".gitignore",
     "vscode/settings.json",
 ]
+publish = false
 
 
 [features]
@@ -28,6 +29,7 @@ pyo3 = { version = "0.21.2", features = ["extension-module"], optional = true}
 [lib]
 name = "transportations_library"
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
 
 [package.metadata.maturin]
 name = "transportations_library"
