@@ -1,4 +1,8 @@
-use crate::hcm::twolanehighways::{SubSegment as LibSubSegment, Segment as LibSegment, TwoLaneHighways as LibTwoLaneHighways};
+use crate::hcm::twolanehighways::{
+    Segment as LibSegment,
+    SubSegment as LibSubSegment,
+    TwoLaneHighways as LibTwoLaneHighways,
+};
 
 #[cfg(feature = "pybindings")]
 use pyo3::prelude::*;
@@ -16,11 +20,16 @@ pub struct SubSegment {
 #[cfg(feature = "pybindings")]
 #[pymethods]
 impl SubSegment {
-
     #[new]
-    pub fn new(length: f64, avg_speed: f64, hor_class: i32, design_rad: f64, central_angle: f64, sup_ele: f64) -> Self {
+    pub fn new(
+        length: f64,
+        avg_speed: f64,
+        hor_class: i32,
+        design_rad: f64,
+        central_angle: f64,
+        sup_ele: f64,
+    ) -> Self {
         SubSegment {
-
             inner: LibSubSegment::new(
                 length,
                 avg_speed,
@@ -31,7 +40,7 @@ impl SubSegment {
             ),
         }
     }
-    
+
     pub fn get_length(&self) -> f64 {
         self.inner.get_length()
     }
@@ -55,11 +64,7 @@ impl SubSegment {
     pub fn get_sup_ele(&self) -> f64 {
         self.inner.get_sup_ele()
     }
-
-
 }
-
-
 
 #[cfg(feature = "pybindings")]
 #[pyclass]
@@ -71,12 +76,33 @@ pub struct Segment {
 #[cfg(feature = "pybindings")]
 #[pymethods]
 impl Segment {
-
     #[new]
-    pub fn new(passing_type: usize, length: f64, grade: f64, spl: f64, is_hc: bool, volume: f64, volume_op: f64, flow_rate: f64, flow_rate_o: f64, capacity: i32,
-        ffs: f64, avg_speed: f64, vertical_class: i32, py_subsegments: Vec<SubSegment>, phf: f64, phv: f64, pf: f64, fd: f64, fd_mid: f64, hor_class: i32) -> Self {
-
-        let subsegments: Vec<LibSubSegment> = py_subsegments.into_iter().map(|py_subseg| py_subseg.inner).collect();
+    pub fn new(
+        passing_type: usize,
+        length: f64,
+        grade: f64,
+        spl: f64,
+        is_hc: bool,
+        volume: f64,
+        volume_op: f64,
+        flow_rate: f64,
+        flow_rate_o: f64,
+        capacity: i32,
+        ffs: f64,
+        avg_speed: f64,
+        vertical_class: i32,
+        py_subsegments: Vec<SubSegment>,
+        phf: f64,
+        phv: f64,
+        pf: f64,
+        fd: f64,
+        fd_mid: f64,
+        hor_class: i32,
+    ) -> Self {
+        let subsegments: Vec<LibSubSegment> = py_subsegments
+            .into_iter()
+            .map(|py_subseg| py_subseg.inner)
+            .collect();
 
         Segment {
             inner: LibSegment::new(
@@ -103,7 +129,6 @@ impl Segment {
             ),
         }
     }
-
 
     pub fn get_passing_type(&self) -> usize {
         self.inner.get_passing_type()
@@ -138,7 +163,7 @@ impl Segment {
     }
 
     // // pub fn set_flow_rate(&mut self, flow_rate: f64) {
-        
+
     // // }
 
     pub fn get_flow_rate_o(&self) -> f64 {
@@ -146,7 +171,7 @@ impl Segment {
     }
 
     // // pub fn set_flow_rate_o(&mut self, flow_rate_o: f64) {
-        
+
     // // }
 
     pub fn get_capacity(&self) -> i32 {
@@ -181,7 +206,8 @@ impl Segment {
     //     &self.inner.subsegments
     // }
     pub fn get_subsegments<'py>(&self, py: Python<'py>) -> &'py PyList {
-        let subsegments: Vec<Py<SubSegment>> = self.inner
+        let subsegments: Vec<Py<SubSegment>> = self
+            .inner
             .subsegments
             .iter()
             .map(|subseg| {
@@ -200,7 +226,7 @@ impl Segment {
     pub fn get_vertical_class(&self) -> i32 {
         self.inner.get_vertical_class()
     }
-    
+
     // // pub fn set_vertical_class(&mut self, vertical_class: i32) {
     // //     self.vertical_class = vertical_class
     // // }
@@ -237,33 +263,30 @@ impl Segment {
     }
 }
 
-
-
 #[cfg(feature = "pybindings")]
 #[pyclass]
 #[derive(Debug, Clone)]
-pub struct TwoLaneHighways{
+pub struct TwoLaneHighways {
     inner: LibTwoLaneHighways,
 }
 
 #[cfg(feature = "pybindings")]
 #[pymethods]
 impl TwoLaneHighways {
-
     #[new]
-    pub fn new(py_segments: Vec<Segment>, lane_width: f64, shoulder_width: f64, apd: f64, pmhvfl: f64, l_de: f64) -> Self {
-
-        let segments: Vec<LibSegment> = py_segments.into_iter().map(|py_seg| py_seg.inner).collect();
+    pub fn new(
+        py_segments: Vec<Segment>,
+        lane_width: f64,
+        shoulder_width: f64,
+        apd: f64,
+        pmhvfl: f64,
+        l_de: f64,
+    ) -> Self {
+        let segments: Vec<LibSegment> =
+            py_segments.into_iter().map(|py_seg| py_seg.inner).collect();
 
         TwoLaneHighways {
-            inner: LibTwoLaneHighways::new(
-                segments, 
-                lane_width, 
-                shoulder_width, 
-                apd, 
-                pmhvfl, 
-                l_de
-            ),
+            inner: LibTwoLaneHighways::new(segments, lane_width, shoulder_width, apd, pmhvfl, l_de),
         }
     }
 
@@ -276,22 +299,15 @@ impl TwoLaneHighways {
     //     &self.inner.segments
     // }
     pub fn get_segments<'py>(&self, py: Python<'py>) -> &'py PyList {
-        let segments: Vec<Py<Segment>> = self.inner
+        let segments: Vec<Py<Segment>> = self
+            .inner
             .segments
             .iter()
-            .map(|seg| {
-                Py::new(
-                    py,
-                    Segment {
-                        inner: seg.clone(),
-                    },
-                )
-                .unwrap()
-            })
+            .map(|seg| Py::new(py, Segment { inner: seg.clone() }).unwrap())
             .collect();
         PyList::new(py, segments)
     }
-    
+
     pub fn identify_vertical_class(&mut self, seg_num: usize) -> Vec<f64> {
         let mut _min = 0.0;
         let mut _max = 0.0;
@@ -300,7 +316,7 @@ impl TwoLaneHighways {
     }
 
     pub fn determine_demand_flow(&mut self, seg_num: usize) -> Vec<f64> {
-        let (demand_flow_i , demand_flow_o, capacity) = self.inner.determine_demand_flow(seg_num);
+        let (demand_flow_i, demand_flow_o, capacity) = self.inner.determine_demand_flow(seg_num);
 
         vec![demand_flow_i, demand_flow_o, capacity as f64]
     }
@@ -322,8 +338,18 @@ impl TwoLaneHighways {
         self.inner.estimate_percent_followers(seg_num)
     }
 
-    pub fn estimate_average_speed_sf(&mut self, seg_num: usize, length: f64, vd: f64, phv: f64, rad: f64, sup_ele: f64) -> Vec<f64> {
-        let (s, hor_class) = self.inner.estimate_average_speed_sf(seg_num, length, vd, phv, rad, sup_ele);
+    pub fn estimate_average_speed_sf(
+        &mut self,
+        seg_num: usize,
+        length: f64,
+        vd: f64,
+        phv: f64,
+        rad: f64,
+        sup_ele: f64,
+    ) -> Vec<f64> {
+        let (s, hor_class) = self
+            .inner
+            .estimate_average_speed_sf(seg_num, length, vd, phv, rad, sup_ele);
         vec![s, hor_class as f64]
     }
 
@@ -353,7 +379,6 @@ impl TwoLaneHighways {
     }
 }
 
-
 #[cfg(feature = "pybindings")]
 #[pymodule]
 fn transportations_library(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -361,6 +386,5 @@ fn transportations_library(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()>
     m.add_class::<Segment>()?;
     m.add_class::<TwoLaneHighways>()?;
 
-    
     Ok(())
 }
