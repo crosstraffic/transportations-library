@@ -29,8 +29,9 @@ jobs:
             - name: Build and test with maturin
               run: |
                 uv venv .venv
-                source .venv/bin/activate
-                pip install maturin numpy pytest
+                echo "VIRTUAL_ENV=$PWD/.venv" >> $GITHUB_ENV
+                echo "$PWD/.venv/bin" >> $GITHUB_PATH
+                .venv/bin/pip install maturin numpy pytest
                 maturin develop
                 pytest tests/
 
