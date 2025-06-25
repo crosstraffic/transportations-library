@@ -18,7 +18,6 @@ classifiers = [
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
-python-source = "python"
 module-name = "transportations_library"
 
 [project.urls]
