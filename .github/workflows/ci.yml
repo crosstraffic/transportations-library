@@ -18,19 +18,31 @@ jobs:
             - name: Set up Python
               uses: actions/setup-python@v5
               with:
-                  python-version: ${{ matrix.python-version }}
+                python-version: ${{ matrix.python-version }}
+
+            - name: Install uv
+              run: pip install uv
+
+            - name: Create virtual environment
+              run: uv venv .venv
 
             - name: Install Rust
               uses: dtolnay/rust-toolchain@stable
 
-            - name: Install maturin
-              run: pip install maturin numpy
+            - name: Activate environment and install tools
+              run: |
+                source .venv/bin/activate
+                pip install maturin numpy pytest
 
-            - name: Build Python extension (dev mode)
-              run: maturin develop
+            - name: Develop install using maturin
+              run: |
+                source .venv/bin/activate
+                maturin develop
 
             - name: Run Python tests
-              run: pytest tests/
+              run: |
+                source .venv/bin/activate
+                pytest tests/
 
             - name: Run Rust tests
               run: cargo test
