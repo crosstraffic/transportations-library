@@ -16,8 +16,13 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=6.0",
+    "pytest-cov",
+]
+
 [tool.maturin]
-features = ["pyo3/extension-module"]
 module-name = "transportations_library"
 
 [project.urls]

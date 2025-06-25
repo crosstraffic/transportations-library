@@ -35,7 +35,8 @@ jobs:
             - name: Build and test with maturin + uv
               run: |
                 source .venv/bin/activate
-                maturin develop
+                cargo clean
+                maturin develop --release
                 pytest tests
 
             - name: Run Rust tests

@@ -4,8 +4,8 @@
 //! A comprehensive Rust library implementing transportation engineering methodologies
 //! from the Highway Capacity Manual (HCM) and other sources.
 
-pub mod copython;
 pub mod hcm;
+pub mod copython;
 mod utils;
 
 use std::fmt;
@@ -14,10 +14,11 @@ use serde_json;
 
 // Re-export main types for easier access
 pub use crate::hcm::*;
+pub use copython::py_transportationslibrary::*;
 
 // Library metadata
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const NAME: &str = "transportation-library";
+pub const NAME: &str = "transportation_library";
 
 /// Library-wide error types
 #[derive(Debug)]
