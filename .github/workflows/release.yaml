@@ -39,6 +39,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       CARGO_PROFILE_RELEASE_LTO: "fat"
+    needs: [build]
     steps:
       # Largely inspired by https://github.com/starship/starship/blob/35a0a20f5c4fea6a08e1b91ff631b089eef8fc50/.github/workflows/deploy.yml
       - uses: actions/checkout@v4
@@ -80,40 +81,11 @@ jobs:
           rustup target add aarch64-apple-darwin
           cargo build --release --target universal2-apple-darwin
 
-      - name: Archive binary (windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          cd target/${{ matrix.target }}/release
-          7z a ../../../${{ matrix.name }} ${{ github.event.repository.name }}.exe
-          cd -
-
-      - name: Archive binary (linux and macOS)
-        if: matrix.os != 'windows-latest'
-        run: |
-          cd target/${{ matrix.target }}/release
-          tar czvf ../../../${{ matrix.name }} ${{ github.event.repository.name }}
-          cd -
-
-      - name: Archive binary (macOS aarch64)
-        if: matrix.os == 'macos-latest'
-        run: |
-          cd target/aarch64-apple-darwin/release
-          tar czvf ../../../maturin-aarch64-apple-darwin.tar.gz ${{ github.event.repository.name }}
-          cd -
-
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.target }}
           path: dist
-
-      - name: Upload binary artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: binaries-${{ matrix.target }}
-          path: |
-            *.tar.gz
-            *.zip
 
   changelog:
     name: Generate changelog and GitHub release
