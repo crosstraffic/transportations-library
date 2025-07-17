@@ -1,26 +1,164 @@
-## About
-This is the repository for the knowledge stack of transporation.
+<h1 align="center">Transportations Library</h1>
 
-## What this covers.
+A comprehensive Rust-based library implementing transportation engineering methodologies (e.g. the Highway Capacity Manual (HCM)) with Python bindings.
 
-This covers Highway Capacity Manual (HCM) and Green Book.
+## What this covers
 
-HCM
-- Chapter 15 (Two Lane Highways)
+Currently implements:
 
-## Test
-1. Make sure you have Rust installed. You can install it from [rustup.rs](https://rustup.rs/).
+- Highway Capacity Manual (HCM) Chapter 15: Two-Lane Highways analysis
+- Other chapters are to be added in future releases
 
-2. Prepare the virtual environment with `uv venv .venv`.
+## Installation
+### Prerequisites
 
-3. To activate the environment, type (Ubuntu) `source .venv/bin/activate` and (Windows) `.venv\Scripts\activate`.
+- Rust: Install from [rustup.rs](https://rustup.rs/)
+- Python: 3.8 or higher
+- UV: Modern Python package manager (recommended)
 
-4. Then `maturin develop` to build the Rust library and make it available in Python.
+**Using UV (Recommended)**
+```bash
+# Clone the repository
+git clone https://github.com/crosstraffic/transportations-library
+cd transportations-library
 
-5. Run the tests with `cargo test` for Rust, and `pytest ./tests` for Python wrapper.
+# Create and activate virtual environment
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-Note: If you want to have changes in the Rust code to be reflected in Python, you need to run `cargo clean` and `maturin develop` again after making changes.
+# Install in development mode
+uv pip install maturin pytest
+maturin develop --release
+```
 
-## TODO
+**Using pip**
+```bash
+# Install dependencies
+pip install maturin pytest
 
-Add new chapter on HCM.
+# Build and install
+maturin develop --release
+```
+
+**From PyPI**
+```bash
+pip install transportations-library
+```
+
+### Quick Start
+
+For Two Lane Highways.
+
+**Python Usage**
+```python
+import transportations_library as tl
+
+# Create a highway segment
+segment = tl.Segment(
+    passing_type=0,     # Passing Constrained
+    length=1.5,         # 1.5 miles
+    grade=2.0,          # 2% grade
+    spl=55.0,           # 55 mph speed limit
+    volume=800.0,       # 800 veh/hr
+    phf=0.95,           # Peak hour factor
+    phv=5.0             # 5% heavy vehicles
+)
+
+# Create highway facility
+highway = tl.TwoLaneHighways([segment])
+
+# Perform complete analysis
+seg_num = 0
+demand_flow, opposing_flow, capacity = highway.determine_demand_flow(seg_num)
+ffs = highway.determine_free_flow_speed(seg_num)
+avg_speed, _ = highway.estimate_average_speed(seg_num)
+percent_followers = highway.estimate_percent_followers(seg_num)
+follower_density = highway.determine_follower_density_pc_pz(seg_num)
+los = highway.determine_segment_los(seg_num, avg_speed, capacity)
+
+print(f"Level of Service: {los}")
+print(f"Average Speed: {avg_speed:.1f} mph")
+print(f"Follower Density: {follower_density:.1f} followers/mile")
+```
+
+Subsegment sections.
+```python
+# Highway with horizontal curves
+subsegments = [
+    tl.SubSegment(length=2640.0, design_rad=800.0, sup_ele=4.0),  # Curved section
+    tl.SubSegment(length=2640.0, design_rad=0.0, sup_ele=0.0)     # Tangent section
+]
+
+segment_with_curves = tl.Segment(
+    passing_type=0, length=1.0, grade=3.0, spl=55.0,
+    is_hc=True,  # Has horizontal curves
+    subsegments=subsegments,
+    volume=900.0, phf=0.92, phv=8.0
+)
+
+highway = tl.TwoLaneHighways([segment_with_curves])
+# ... perform analysis
+```
+
+## Testing
+
+### Run Tests
+```bash
+# Rust tests
+cargo test
+
+# Python tests  
+pytest tests/
+
+# With coverage
+pytest tests/ --cov=transportations_library
+
+# Integration tests for chapter 15
+cargo test --test chapter15_integration
+```
+
+**Note**: If you want to have changes in the Rust code to be reflected in Python, you need to run `cargo clean` and `maturin develop` again after making changes.
+
+### Example Test Cases
+The library includes comprehensive test cases based on HCM examples:
+
+- Case 1: Basic passing constrained segment
+- Case 2: Segment with horizontal curves
+- Case 3: Multi-segment facility with different passing types
+- Case 4: Steep grade conditions with heavy vehicles
+
+## Development
+### Project Structure
+```plaintext
+transportations-library/
+├── src/
+│   ├── hcm/
+│   │   ├── chapter15/           # Two-lane highways implementation
+│   │   └── common.rs            # Shared HCM utilities
+│   ├── copython/                # Python bindings
+│   ├── utils.rs                 # Mathematical utilities
+│   └── lib.rs                   # Library root
+├── tests/                       # Integration tests
+├── examples/                    # Usage examples
+└── Cargo.toml                   # Rust configuration
+```
+
+### Building from Source
+```bash
+# Development build
+cargo build
+
+# Release build  
+cargo build --release
+
+# Build Python wheel
+maturin build --release
+
+# Development install with changes
+cargo clean && maturin develop --release
+```
+
+
+---
+
+**Note**: This library implements established transportation engineering methodologies for educational and professional use. Users should verify results and apply appropriate engineering judgment for real-world applications.
