@@ -9,26 +9,6 @@ on:
       - "v*"
 
 jobs:
-  release-crates-io:
-    name: Release crates.io
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    environment:
-      name: crates.io
-      url: ${{ steps.set_url.outputs.env_url }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: cargo login
-        run: cargo login ${{ secrets.CRATES_IO_TOKEN }}
-      - name: cargo publish
-        run: cargo publish
-      - name: Set environment url
-        id: set_url
-        run: |
-          VERSION=$(echo $GITHUB_REF | sed -e "s#refs/tags/v##g")
-          echo "env_url=https://crates.io/crates/maturin/$VERSION" >> $GITHUB_OUTPUT
-
   build:
     name: Build ${{ matrix.target }}
     strategy:
@@ -157,6 +137,27 @@ jobs:
         run: npx changelogithub
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-crates-io:
+    name: Release crates.io
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    environment:
+      name: crates.io
+      url: ${{ steps.set_url.outputs.env_url }}
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo login
+        run: cargo login ${{ secrets.CRATES_IO_TOKEN }}
+      - name: cargo publish
+        run: cargo publish
+      - name: Set environment url
+        id: set_url
+        run: |
+          VERSION=$(echo $GITHUB_REF | sed -e "s#refs/tags/v##g")
+          echo "env_url=https://crates.io/crates/maturin/$VERSION" >> $GITHUB_OUTPUT
 
   release-pypi:
     permissions:

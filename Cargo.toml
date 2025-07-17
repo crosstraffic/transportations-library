@@ -5,14 +5,26 @@ authors = ["Rei Tamaru <tamaru@wisc.edu>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/transportations_library"
-description = "Knowledge stack for transportation."
+description = "A comprehensive Rust-based library implementing transportation engineering methodologies (e.g. the Highway Capacity Manual (HCM)) with Python bindings."
 repository = "https://github.com/crosstraffic/transportations-library"
 readme = "README.md"
 exclude = [
     ".gitignore",
-    "vscode/settings.json",
+    ".vscode/settings.json",
+    ".github/*",
+    ".venv/*",
+    "tests/*",
 ]
+keywords = ["rust", "pypi", "pyo3", "transportation", "library"]
 publish = false
+
+[[bin]]
+name = "transportations_library"
+
+[lib]
+name = "transportations_library"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 assert_approx_eq = "1.1.0"
@@ -24,11 +36,6 @@ pyo3 = { version = "0.21.2", features = ["extension-module"], optional = true}
 [features]
 default = ["pybindings"]
 pybindings = ["pyo3"]
-
-[lib]
-name = "transportations_library"
-path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]
 
 [package.metadata.maturin]
 name = "transportations_library"
