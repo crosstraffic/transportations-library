@@ -15,15 +15,15 @@ jobs:
       fail-fast: false
       matrix:
         target:
-          - x86_64-unknown-linux-musl
+          - x86_64-unknown-linux-gnu
           - x86_64-apple-darwin
           - x86_64-pc-windows-msvc
           - i686-pc-windows-msvc
           - aarch64-pc-windows-msvc
         include:
-          - target: x86_64-unknown-linux-musl
+          - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            name: maturin-x86_64-unknown-linux-musl.tar.gz
+            name: maturin-x86_64-unknown-linux-gnu.tar.gz
           - target: x86_64-apple-darwin
             os: macos-latest
             name: maturin-x86_64-apple-darwin.tar.gz
@@ -46,10 +46,6 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install musl tools
-        if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get install -y musl-tools
-
       # Install gnu-tar because BSD tar is buggy
       # https://github.com/actions/cache/issues/403
       - name: Install GNU tar (macOS)
@@ -59,19 +55,19 @@ jobs:
           echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
 
       # Those two will also create target/${{ matrix.target }}/maturin
-      - name: Build wheel (with sdist)
-        if: matrix.target == 'x86_64-unknown-linux-musl'
+      - name: Build wheel (Linux)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
-          cargo run -- build --release -b bin --sdist -o dist --target ${{ matrix.target }} --features password-storage --compatibility manylinux2010 musllinux_1_1
+          cargo build --release --target ${{ matrix.target }}
 
       # ring doesn't support aarch64 windows yet
       - name: Build wheel (windows aarch64)
         if: matrix.target == 'aarch64-pc-windows-msvc'
-        run: cargo run -- build --release -b bin -o dist --target ${{ matrix.target }} --no-default-features --features full,native-tls
+        run: cargo build --release --target ${{ matrix.target }} --no-default-features --features full,native-tls
 
       - name: Build wheel (without sdist)
-        if: ${{ matrix.target != 'x86_64-unknown-linux-musl' && matrix.target != 'aarch64-pc-windows-msvc' }}
-        run: cargo run -- build --release -b bin -o dist --target ${{ matrix.target }} --features password-storage
+        if: ${{ matrix.target != 'x86_64-unknown-linux-gnu' && matrix.target != 'aarch64-pc-windows-msvc' }}
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Build wheel (macOS universal2)
         if: matrix.target == 'x86_64-apple-darwin'
@@ -82,7 +78,7 @@ jobs:
           # set SDKROOT for C dependencies like ring and bzip2
           export SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
           rustup target add aarch64-apple-darwin
-          cargo run -- build --release -b bin -o dist --target universal2-apple-darwin --features password-storage
+          cargo build --release --target universal2-apple-darwin
 
       - name: Archive binary (windows)
         if: matrix.os == 'windows-latest'
