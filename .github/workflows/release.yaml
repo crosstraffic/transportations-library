@@ -1,11 +1,33 @@
 name: Build and publish to PyPI
 
+permissions:
+    contents: write
+
 on:
   push:
     tags:
       - "v*"
 
 jobs:
+  changelog:
+    name: Generate changelog and GitHub release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          registry-url: https://registry.npmjs.org/
+          node-version: lts/*
+
+      - name: Generate changelog and GitHub release
+        run: npx changelogithub
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   release:
     runs-on: ubuntu-latest
 
