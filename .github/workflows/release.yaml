@@ -1,0 +1,30 @@
+name: Build and publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build wheels and sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release --sdist
+
+      - name: Publish to PyPI
+        uses: PyO3/maturin-action@v1
+        with:
+          command: upload
+          args: --skip-existing
+        env:
+          MATURIN_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
