@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "transportations_library"
-version = "0.1.3"
+version = "0.1.4"
 authors = [
     { name="raynbowy23" },
 ]
@@ -16,9 +16,13 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=6.0",
+    "pytest-cov",
+]
+
 [tool.maturin]
-features = ["pyo3/extension-module"]
-python-source = "python"
 module-name = "transportations_library"
 
 [project.urls]
