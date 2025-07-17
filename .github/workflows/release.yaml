@@ -139,7 +139,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           command: upload
-          args: --skip-existing
+          args: --skip-existing dist/*
         env:
           MATURIN_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
       - name: Set environment url
