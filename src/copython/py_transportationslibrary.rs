@@ -140,7 +140,7 @@ impl Segment {
         ffs=None,
         avg_speed=None,
         vertical_class=None,
-        py_subsegments=None,
+        subsegments=None,
         phf=None,
         phv=None,
         pf=None,
@@ -162,7 +162,7 @@ impl Segment {
         ffs: Option<f64>,
         avg_speed: Option<f64>,
         vertical_class: Option<i32>,
-        py_subsegments: Option<Vec<SubSegment>>,
+        subsegments: Option<Vec<SubSegment>>,
         phf: Option<f64>,
         phv: Option<f64>,
         pf: Option<f64>,
@@ -174,9 +174,9 @@ impl Segment {
         //     .into_iter()
         //     .map(|py_subseg| py_subseg.inner)
         //     .collect();
-        let lib_subsegments: Option<Vec<LibSubSegment>> = if let Some(py_subsegments) = py_subsegments {
+        let lib_subsegments: Option<Vec<LibSubSegment>> = if let Some(subsegments) = subsegments {
             Some(
-                py_subsegments
+                subsegments
                     .into_iter()
                     .map(|py_subseg| py_subseg.inner)
                     .collect()
@@ -398,9 +398,9 @@ pub struct TwoLaneHighways {
 #[pymethods]
 impl TwoLaneHighways {
     #[new]
-    #[pyo3(signature = (py_segments, lane_width=None, shoulder_width=None, apd=None, pmhvfl=None, l_de=None))]
+    #[pyo3(signature = (segments, lane_width=None, shoulder_width=None, apd=None, pmhvfl=None, l_de=None))]
     pub fn new(
-        py_segments: Vec<Segment>,
+        segments: Vec<Segment>,
         lane_width: Option<f64>,
         shoulder_width: Option<f64>,
         apd: Option<f64>,
@@ -408,7 +408,7 @@ impl TwoLaneHighways {
         l_de: Option<f64>,
     ) -> Self {
         let segments: Vec<LibSegment> =
-            py_segments.into_iter().map(|py_seg| py_seg.inner).collect();
+            segments.into_iter().map(|py_seg| py_seg.inner).collect();
 
         TwoLaneHighways {
             inner: LibTwoLaneHighways::new(segments, lane_width, shoulder_width, apd, pmhvfl, l_de),
