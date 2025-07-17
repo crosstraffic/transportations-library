@@ -16,7 +16,7 @@ exclude = [
     "tests/*",
 ]
 keywords = ["rust", "pypi", "pyo3", "transportation", "library"]
-publish = false
+publish = true
 
 [lib]
 name = "transportations_library"
