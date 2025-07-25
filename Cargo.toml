@@ -18,10 +18,6 @@ exclude = [
 keywords = ["rust", "pypi", "pyo3", "transportation", "library"]
 publish = true
 
-[features]
-default = []
-with-python = ["pyo3"]
-
 [lib]
 name = "transportations_library"
 path = "src/lib.rs"
@@ -37,6 +33,7 @@ pyo3 = { version = "0.21.2", features = ["extension-module"], optional = true}
 [features]
 default = ["pybindings"]
 pybindings = ["pyo3"]
+with-python = ["pyo3"]
 
 [package.metadata.maturin]
 name = "transportations_library"

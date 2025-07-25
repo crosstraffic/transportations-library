@@ -60,7 +60,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist
+          args: --release --features with-python --out dist
           manylinux: ${{ matrix.manylinux }}
           maturin-version: latest
 
@@ -82,7 +82,7 @@ jobs:
       - name: Install maturin
         run: pip install maturin
       - name: Build sdist
-        run: maturin sdist --out dist
+        run: maturin sdist --features with-python --out dist
       - name: Upload source distribution artifact
         uses: actions/upload-artifact@v4
         with:
@@ -109,6 +109,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  wasm-check:
+    name: Check WASM Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build for WASM (no PyO3)
+        run: cargo build --target wasm32-unknown-unknown --no-default-features
+
   release-crates-io:
     name: Release crates.io
     runs-on: ubuntu-latest
@@ -116,19 +128,30 @@ jobs:
     environment:
       name: crates.io
       url: ${{ steps.set_url.outputs.env_url }}
-    needs: [build, sdist]
+    needs: [build, sdist, wasm-check]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
       - name: cargo login
         run: cargo login ${{ secrets.CRATES_IO_TOKEN }}
-      - name: cargo publish
-        run: cargo publish
+
       - name: Set environment url
         id: set_url
         run: |
-          VERSION=$(echo $GITHUB_REF | sed -e "s#refs/tags/v##g")
+          VERSION=${GITHUB_REF#refs/tags/v}
           echo "env_url=https://crates.io/crates/transportations_library/$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Dry run publish check
+        run: cargo publish --locked --dry-run
+
+      - name: cargo publish
+        run: cargo publish --locked
+
 
   release-pypi:
     name: Publish to PyPI

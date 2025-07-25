@@ -268,7 +268,7 @@ checksum = "4873307b7c257eddcb50c9bedf158eb669578359fb28428bef438fec8e6ba7c2"
 
 [[package]]
 name = "transportations_library"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "assert_approx_eq",
  "pyo3",
