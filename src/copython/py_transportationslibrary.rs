@@ -4,19 +4,19 @@ use crate::hcm::twolanehighways::{
     TwoLaneHighways as LibTwoLaneHighways,
 };
 
-#[cfg(feature = "with-python")]
+#[cfg(feature = "pybindings")]
 use pyo3::prelude::*;
-#[cfg(feature = "with-python")]
+#[cfg(feature = "pybindings")]
 use pyo3::types::PyList;
 
-#[cfg(feature = "with-python")]
+#[cfg(feature = "pybindings")]
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct SubSegment {
     pub inner: LibSubSegment,
 }
 
-#[cfg(feature = "with-python")]
+#[cfg(feature = "pybindings")]
 #[pymethods]
 impl SubSegment {
     /// Create a new SubSegment.
@@ -121,14 +121,14 @@ impl SubSegment {
 }
 
 
-#[cfg(feature = "with-python")]
+#[cfg(feature = "pybindings")]
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct Segment {
     pub inner: LibSegment,
 }
 
-#[cfg(feature = "with-python")]
+#[cfg(feature = "pybindings")]
 #[pymethods]
 impl Segment {
     #[new]
@@ -395,14 +395,14 @@ impl Segment {
     }
 }
 
-#[cfg(feature = "with-python")]
+#[cfg(feature = "pybindings")]
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct TwoLaneHighways {
     pub inner: LibTwoLaneHighways,
 }
 
-#[cfg(feature = "with-python")]
+#[cfg(feature = "pybindings")]
 #[pymethods]
 impl TwoLaneHighways {
     #[new]
@@ -555,7 +555,7 @@ impl TwoLaneHighways {
     }
 }
 
-#[cfg(feature = "with-python")]
+#[cfg(feature = "pybindings")]
 #[pymodule]
 fn transportations_library(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<SubSegment>()?;

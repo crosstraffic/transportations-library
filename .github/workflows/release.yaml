@@ -1,4 +1,4 @@
-name: Build and publish to PyPI
+name: Build and publish to crate.io and PyPI
 
 permissions:
     contents: write
@@ -60,7 +60,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --features with-python --out dist
+          args: --release --features pybindings --out dist
           manylinux: ${{ matrix.manylinux }}
           maturin-version: latest
 
@@ -82,7 +82,7 @@ jobs:
       - name: Install maturin
         run: pip install maturin
       - name: Build sdist
-        run: maturin sdist --features with-python --out dist
+        run: maturin sdist --out dist
       - name: Upload source distribution artifact
         uses: actions/upload-artifact@v4
         with:
