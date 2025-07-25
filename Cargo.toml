@@ -24,6 +24,7 @@ pyo3 = { version = "0.21.2", features = ["extension-module"], optional = true}
 [features]
 default = ["pybindings"]
 pybindings = ["pyo3"]
+with-python = ["pyo3"]
 
 [lib]
 name = "transportations_library"
