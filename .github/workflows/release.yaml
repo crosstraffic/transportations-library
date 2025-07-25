@@ -179,6 +179,6 @@ jobs:
       - name: Set environment url
         id: set_url
         run: |
-          PACKAGE_NAME=$(python -c "import tomllib; print(tomllib.load('pyproject.toml')['project']['name'])")
+          PACKAGE_NAME=$(python -c "import tomllib; with open('pyproject.toml', 'rb') as f: print(tomllib.load(f)['project']['name'])")
           VERSION=$(echo $GITHUB_REF | sed -e "s#refs/tags/v##g")
           echo "env_url=https://pypi.org/project/$PACKAGE_NAME/$VERSION" >> $GITHUB_OUTPUT
