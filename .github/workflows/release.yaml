@@ -1,4 +1,4 @@
-name: Build and publish to PyPI
+name: Build and publish to crate.io and PyPI
 
 permissions:
     contents: write
@@ -60,7 +60,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist
+          args: --release --features pybindings --out dist
           manylinux: ${{ matrix.manylinux }}
           maturin-version: latest
 
@@ -109,6 +109,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  wasm-check:
+    name: Check WASM Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build for WASM (no PyO3)
+        run: cargo build --target wasm32-unknown-unknown --no-default-features
+
   release-crates-io:
     name: Release crates.io
     runs-on: ubuntu-latest
@@ -116,19 +128,30 @@ jobs:
     environment:
       name: crates.io
       url: ${{ steps.set_url.outputs.env_url }}
-    needs: [build, sdist]
+    needs: [build, sdist, wasm-check]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
       - name: cargo login
         run: cargo login ${{ secrets.CRATES_IO_TOKEN }}
-      - name: cargo publish
-        run: cargo publish
+
       - name: Set environment url
         id: set_url
         run: |
-          VERSION=$(echo $GITHUB_REF | sed -e "s#refs/tags/v##g")
+          VERSION=${GITHUB_REF#refs/tags/v}
           echo "env_url=https://crates.io/crates/transportations_library/$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Dry run publish check
+        run: cargo publish --locked --dry-run
+
+      - name: cargo publish
+        run: cargo publish --locked
+
 
   release-pypi:
     name: Publish to PyPI
@@ -156,6 +179,10 @@ jobs:
       - name: Set environment url
         id: set_url
         run: |
+<<<<<<< HEAD
           PACKAGE_NAME=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['name'])")
+=======
+          PACKAGE_NAME=$(python -c "import tomllib; with open('pyproject.toml', 'rb') as f: print(tomllib.load(f)['project']['name'])")
+>>>>>>> e4d0105e3451d8e9d557dbb5246b4563e0f0eb8d
           VERSION=$(echo $GITHUB_REF | sed -e "s#refs/tags/v##g")
           echo "env_url=https://pypi.org/project/$PACKAGE_NAME/$VERSION" >> $GITHUB_OUTPUT

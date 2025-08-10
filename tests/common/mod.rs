@@ -224,6 +224,7 @@ pub fn run_complete_analysis(highway: &mut TwoLaneHighways, segment_index: usize
     } else {
         highway.determine_follower_density_pc_pz(segment_index);
     }
+    highway.determine_adjustment_to_follower_density(segment_index);
 }
 
 /// Analyze complete facility and return summary

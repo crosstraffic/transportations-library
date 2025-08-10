@@ -1,6 +1,6 @@
 [package]
 name = "transportations_library"
-version = "0.1.5"
+version = "0.1.6"
 authors = ["Rei Tamaru <tamaru@wisc.edu>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
@@ -31,7 +31,7 @@ serde_json = "1.0"
 pyo3 = { version = "0.21.2", features = ["extension-module"], optional = true}
 
 [features]
-default = ["pybindings"]
+default = []
 pybindings = ["pyo3"]
 
 [package.metadata.maturin]

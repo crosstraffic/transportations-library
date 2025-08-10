@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "transportations_library"
-version = "0.1.5"
+version = "0.1.6"
 authors = [
     { name="raynbowy23" },
 ]
@@ -26,4 +26,4 @@ test = [
 module-name = "transportations_library"
 
 [project.urls]
-Homepage = "https://github.com/crosstraffic/cross-traffic-middleware"
+Homepage = "https://github.com/crosstraffic/transportations_library"
