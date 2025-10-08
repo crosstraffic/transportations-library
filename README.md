@@ -172,7 +172,7 @@ If you use transportations-library or CrossTraffic in your research, please cite
 }
 ```
 
-You can also use the DOI to cite a specific version: [[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15858845.svg)]()](https://doi.org/10.5281/zenodo.17295792)
+You can also use the DOI to cite a specific version: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15858845.svg)](https://doi.org/10.5281/zenodo.17295792)
 
 Alternatively, you can find the citation information in the [CITATION.cff](CITATION.cff) file in this repository, which follows the Citation File Format standard.
 
