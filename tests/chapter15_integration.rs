@@ -1,4 +1,4 @@
-// tests/chapter15_integration.rs
+#[allow(unused_imports)]
 use transportations_library::*;
 
 mod common;
@@ -122,7 +122,7 @@ fn test_different_passing_types() {
         // Run complete analysis for each segment type
         highway.determine_demand_flow(index);
         highway.determine_free_flow_speed(index);
-        let (speed, _) = highway.estimate_average_speed(index);
+        let (_speed, _) = highway.estimate_average_speed(index);
         highway.estimate_percent_followers(index);
 
 
@@ -279,7 +279,7 @@ fn test_edge_cases_and_robustness() {
     for i in 0..high_volume_highway.get_segments().len() {
         high_volume_highway.determine_demand_flow(i);
         high_volume_highway.determine_free_flow_speed(i);
-        let (speed, _) = high_volume_highway.estimate_average_speed(i);
+        let (_speed, _) = high_volume_highway.estimate_average_speed(i);
         let pf = high_volume_highway.estimate_percent_followers(i);
         
         // High volume should result in lower speeds, high percent followers

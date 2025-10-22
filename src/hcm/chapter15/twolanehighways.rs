@@ -1512,8 +1512,8 @@ impl TwoLaneHighways {
 
     // Step 8: Determine follower density
     pub fn determine_follower_density_pl(&mut self, seg_num: usize) -> (f64, f64) {
-        let mut s_init_fl: f64 = 0.0;
-        let mut s_init_sl: f64 = 0.0;
+        let mut s_init_fl: f64;
+        let mut s_init_sl: f64;
         let pf_fl: f64;
         let pf_sl: f64;
 
@@ -1638,7 +1638,7 @@ impl TwoLaneHighways {
             let vd = self.segments[seg_num].get_flow_rate();
             let vd_u = self.segments[seg_num - 1].get_flow_rate();
             let _fd_u = self.segments[seg_num - 1].get_followers_density();
-            let mut l_de: f64 = 0.0; // effective distance
+            let l_de: f64; // effective distance
 
             let x_2 = 0.1 * f64::max(0.0, pf_u - 30.0);
             let x_3a = 3.5 * f64::ln(f64::max(0.3, self.segments[pl_loc].get_length()));
