@@ -1482,7 +1482,7 @@ impl TwoLaneHighways {
         let s: f64; // average speed
         let hor_class: i32;
         let ffs = self.segments[seg_num].get_ffs();
-        let pt = self.segments[seg_num].get_passing_type();
+        let _pt = self.segments[seg_num].get_passing_type();
         let phf = self.segments[seg_num].get_phf();
         let vc = self.segments[seg_num].get_vertical_class();
         let vo = self.segments[seg_num].get_flow_rate_o();
@@ -1637,7 +1637,7 @@ impl TwoLaneHighways {
             let pf_u = self.segments[pl_loc - 1].get_percent_followers();
             let vd = self.segments[seg_num].get_flow_rate();
             let vd_u = self.segments[seg_num - 1].get_flow_rate();
-            let fd_u = self.segments[seg_num - 1].get_followers_density();
+            let _fd_u = self.segments[seg_num - 1].get_followers_density();
             let mut l_de: f64 = 0.0; // effective distance
 
             let x_2 = 0.1 * f64::max(0.0, pf_u - 30.0);
@@ -1650,7 +1650,7 @@ impl TwoLaneHighways {
                 let x_4b = 0.005 * vd_u;
                 let y_1a = 27.0 + x_2 + x_3a - x_4a;
                 let y_2a = 3.0 + x_2 + x_3b - x_4b;
-                let y_3 =
+                let _y_3 =
                     (95.0 * self.segments[seg_num - 1].get_followers_density() * s) / (pf_u * vd_u);
 
                 // Solve for downstream effective length of passing lane from start of PL (LDE)
@@ -1668,7 +1668,7 @@ impl TwoLaneHighways {
 
                 let pf_improve = f64::max(0.0, y_1a - 8.75 * f64::ln(f64::max(0.1, l_de)));
                 let s_improve = f64::max(0.0, y_2a - 0.8 * l_de);
-                let y_3 = (100.0 - pf_improve) / (100.0 + s_improve);
+                let _y_3 = (100.0 - pf_improve) / (100.0 + s_improve);
 
                 fd_adj = (pf_u / 100.0) * (1.0 - pf_improve / 100.0) * vd_u
                     / (s * (1.0 + s_improve / 100.0));
