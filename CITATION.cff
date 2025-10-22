@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Transportations Library: Transportation knowledge management platform"
+abstract: "The repository for the transportation knowledge share written in Rust. It supports the equations in the Highway Capacity Manual, traffic flow theory, and other transportation-related equations."
+authors:
+  - given-names: Rei
+    family-names: Tamaru
+    email: tamaru@wisc.edu
+    orcid: 
+    affiliation: University of Wisconsin-Madison
+repository-code: "https://github.com/crosstraffic/transportations-library"
+url: "https://hcm-calculator.com/"
+license: MIT
+version: 0.1.7
+date-released: 2025-10-08
+keywords:
+  - Transportation
+  - Traffic Control Device
+  - Green Book
+  - Traffic Flow
+  - Highway Capacity Manual
+  - Knowledge Sharing
+  - Knowledge Management
+preferred-citation:
+  type: software
+  title: "Transportations Library: Transportation knowledge management platform"
+  authors:
+    - given-names: Rei
+      family-names: Tamaru
+      email: tamaru@wisc.edu
+      affiliation: University of Wisconsin-Madison
+  version: 0.1.7
+  url: "https://github.com/crosstraffic/transportations-library"
+  year: 2025

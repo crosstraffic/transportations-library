@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "transportations_library"
-version = "0.1.6"
+version = "0.1.7"
 authors = [
     { name="raynbowy23" },
 ]
@@ -14,6 +14,10 @@ classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+    "maturin>=1.9.6",
+    "cffi",
 ]
 
 [project.optional-dependencies]
