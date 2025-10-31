@@ -54,6 +54,14 @@ jobs:
             -i python3.11
             -i python3.12
           manylinux: auto
+        if: matrix.os == 'ubuntu-latest'
+      
+      - name: Build wheels (single version)
+        uses: PyO3/maturin-action@v1
+        with:
+          manylinux: off
+          args: --release --features pybindings --out dist
+        if: matrix.os != 'ubuntu-latest'
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
