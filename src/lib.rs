@@ -5,7 +5,7 @@
 //! from the Highway Capacity Manual (HCM) and other sources.
 
 pub mod hcm;
-// mod copython;
+mod copython;
 mod utils;
 
 use std::fmt;
@@ -14,7 +14,7 @@ use serde_json;
 
 // Re-export main types for easier access
 pub use crate::hcm::*;
-// pub use copython::py_transportationslibrary::*;
+pub use copython::py_transportationslibrary::*;
 
 // Library metadata
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -62,7 +62,7 @@ pub enum FacilityType {
 
 /// Common facility calculation parameters
 pub struct FacilityCalculation {
-    pub segments: Vec<Segment>,
+    pub segments: Vec<CommonSegment>,
     pub lane_widths: Vec<f64>,
     pub city_types: CityType,
 }
@@ -110,7 +110,7 @@ impl Default for GeometricParams {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Segment {
+pub struct CommonSegment {
     /// Passing Type. TODO: Defined with enum?
     /// 0 -> Passing Constrained
     /// 1 -> Passing Zone
@@ -163,7 +163,7 @@ pub struct Segment {
 impl FacilityCalculation {
 
     pub fn new(
-        segments: Vec<Segment>,
+        segments: Vec<CommonSegment>,
         lane_widths: Vec<f64>,
     ) -> Self {
         FacilityCalculation {
