@@ -45,11 +45,13 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           args: |
-            --release --features pybindings --out dist \
-            -i python3.8 \
-            -i python3.9 \
-            -i python3.10 \
-            -i python3.11 \
+            --release
+            --features pybindings
+            --out dist
+            -i python3.8
+            -i python3.9
+            -i python3.10
+            -i python3.11
             -i python3.12
           manylinux: auto
 
