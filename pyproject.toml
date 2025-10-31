@@ -5,6 +5,7 @@ build-backend = "maturin"
 [project]
 name = "transportations_library"
 dynamic = ["version"]
+description = "CrossTraffic transportations library"
 authors = [
     { name="raynbowy23" },
 ]

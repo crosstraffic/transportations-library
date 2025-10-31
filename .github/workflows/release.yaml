@@ -132,6 +132,8 @@ jobs:
         with:
           repository-url: https://test.pypi.org/legacy/
           packages-dir: dist/
+          skip-existing: true
+          verify-metadata: true
 
   release-crates-io:
     name: Release crates.io
