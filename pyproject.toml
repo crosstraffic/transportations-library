@@ -28,6 +28,7 @@ test = [
 ]
 
 [tool.maturin]
+features = ["pybindings"]
 module-name = "transportations_library"
 
 [project.urls]
