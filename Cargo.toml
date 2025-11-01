@@ -1,6 +1,6 @@
 [package]
 name = "transportations_library"
-version = "0.1.9-alpha.4"
+version = "0.1.9-alpha.5"
 authors = ["Rei Tamaru <tamaru@wisc.edu>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"

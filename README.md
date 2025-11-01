@@ -158,6 +158,22 @@ maturin build --release
 cargo clean && maturin develop --release
 ```
 
+### Pipeline
+The project uses GitHub Actions for CI/CD, including:
+- Running tests on push and pull requests
+- Building and publishing to Test PyPI on alpha releases
+- Building and publishing to Cargo and PyPI on new releases
+
+To test the alpha release from Test PyPI, use:
+```bash
+pip install --no-cache-dir --verbose -i https://test.pypi.org/simple/ transportations-library==0.1.9a4
+```
+
+Versioning follows [Semantic Versioning](https://semver.org/).
+
+Also, you can find the latest alpha releases on [Test PyPI](https://test.pypi.org/project/transportations-library/).
+
+
 ### Citation
 
 If you use transportations-library or CrossTraffic in your research, please cite it as follows:
