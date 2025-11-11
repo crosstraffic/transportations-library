@@ -1,5 +1,3 @@
-use std::collections::vec_deque;
-
 use serde::{Deserialize, Serialize};
 
 /// Level of Service enumeration used throughout HCM
@@ -63,7 +61,6 @@ pub enum FacilityType {
 /// Common facility calculation parameters
 pub struct FacilityCalculation {
     pub segments: Vec<CommonSegment>,
-    pub lane_widths: Vec<f64>,
     pub city_types: CityType,
 }
 
@@ -73,6 +70,11 @@ pub struct TrafficFlow {
     pub volume: f64,           // veh/hr
     pub peak_hour_factor: f64, // unitless
     pub heavy_vehicles: f64,   // percentage
+}
+
+pub struct BaseLaneCapacity {
+    pub number_of_lanes: u32,
+    pub speed_limit: u32,
 }
 
 impl TrafficFlow {
@@ -111,38 +113,24 @@ impl Default for GeometricParams {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommonSegment {
-    /// Passing Type. TODO: Defined with enum?
-    /// 0 -> Passing Constrained
-    /// 1 -> Passing Zone
-    /// 2 -> Passing Lane
-    pub passing_type: usize,
     /// Length of segment, mi.
     pub length: f64,
     /// Number of lanes in the segment.
-    pub lanes: i32,
+    pub lane_count: i32,
+    /// Lane width, ft.
+    pub lane_width: Option<f64>,
     /// Segment percent grade.
     pub grade: f64,
     /// Posted speed limit, mi/hr.
     pub spl: f64,
-    /// Whether the segment has horizontal class or not.
-    pub is_hc: Option<bool>,
     /// Demand volume for direction i, veh/hr.
     pub volume: Option<f64>,
-    /// Demand volume for opposite direction o, veh/hr. Required for PZ segments.
-    /// 1500 veh/hr for PC segments and 0 for PL segments.
-    pub volume_op: Option<f64>,
     /// Demand flow rate for analysis direction i, veh/hr
     pub flow_rate: Option<f64>,
-    /// Demand flow rate for opposite direction i, veh/hr
-    pub flow_rate_o: Option<f64>,
     /// Capacity, veh/hr
     pub capacity: Option<i32>,
     /// Free flow speed, mi/hr
     pub ffs: Option<f64>,
-    /// Average speed, mi/hr
-    pub avg_speed: Option<f64>,
-    /// Vertical class of the segment.
-    pub vertical_class: Option<i32>,
     /// Subsegments of the segment.
     // pub subsegments: Option<Vec<SubSegment>>,
     /// Peak hour factor, unitless.
@@ -153,10 +141,6 @@ pub struct CommonSegment {
     pub pf: Option<f64>,
     /// Followers Density
     pub fd: Option<f64>,
-    /// Followers Density in the middle of PL section
-    pub fd_mid: Option<f64>,
-    /// Horizontal class of the segment.
-    pub hor_class: Option<i32>,
 }
 
 
@@ -164,12 +148,11 @@ impl FacilityCalculation {
 
     pub fn new(
         segments: Vec<CommonSegment>,
-        lane_widths: Vec<f64>,
+        city_types: CityType,
     ) -> Self {
         FacilityCalculation {
             segments: segments,
-            lane_widths: lane_widths,
-            city_types: CityType::Urban,
+            city_types: city_types,
         }
     }
 
@@ -177,7 +160,7 @@ impl FacilityCalculation {
     pub fn determine_density(&self) -> f64 {
         let mut facility_density: f64 = 0.0;
         for segment in self.segments.iter() {
-            facility_density += segment.length * (segment.lanes as f64) * segment.fd.unwrap_or(0.0) / ((segment.lanes as f64) * segment.length);
+            facility_density += segment.length * (segment.lane_count as f64) * segment.fd.unwrap_or(0.0) / ((segment.lane_count as f64) * segment.length);
         }
         facility_density
    }
@@ -218,6 +201,51 @@ impl FacilityCalculation {
             d if d <= 29.0 => LevelOfService::D,
             d if d <= 39.0 => LevelOfService::E,
             _ => LevelOfService::F,
+        }
+    }
+}
+
+pub trait LaneCapacity {
+    fn calculate_capacity(&self) -> Option<u32>;
+    fn single_lane_capacity(&self) -> Option<u32>;
+    fn multi_lanes_capacity(&self) -> Option<u32>;
+}
+
+impl LaneCapacity for BaseLaneCapacity {
+
+    fn calculate_capacity(&self) -> Option<u32> {
+        match self.number_of_lanes {
+            1 => self.single_lane_capacity(),
+            n if n >= 2 => self.multi_lanes_capacity(),
+            _ => None,
+        }
+    }
+
+    /// Single lane capacity pc/h/ln
+    fn single_lane_capacity(&self) -> Option<u32> {
+        match self.speed_limit {
+            75 => Some(2400),
+            70 => Some(2400),
+            65 => Some(2350),
+            60 => Some(2300),
+            55 => Some(2250),
+            50 => None,
+            45 => None,
+            _ => None
+        }
+    }
+
+    /// Multi-lanes capacity, pc/h/ln
+    fn multi_lanes_capacity(&self) -> Option<u32> {
+        match self.speed_limit {
+            75 => None,
+            70 => Some(2300),
+            65 => Some(2300),
+            60 => Some(2200),
+            55 => Some(2100),
+            50 => Some(2000),
+            45 => Some(1900),
+            _ => None
         }
     }
 }
