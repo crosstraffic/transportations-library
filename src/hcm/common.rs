@@ -73,7 +73,7 @@ pub struct TrafficFlow {
 }
 
 pub struct BaseLaneCapacity {
-    pub number_of_lanes: u32,
+    pub highway_type: String,
     pub speed_limit: u32,
 }
 
@@ -123,8 +123,6 @@ pub struct CommonSegment {
     pub grade: f64,
     /// Posted speed limit, mi/hr.
     pub spl: f64,
-    /// Demand volume for direction i, veh/hr.
-    pub volume: Option<f64>,
     /// Demand flow rate for analysis direction i, veh/hr
     pub flow_rate: Option<f64>,
     /// Capacity, veh/hr
@@ -136,7 +134,7 @@ pub struct CommonSegment {
     /// Peak hour factor, unitless.
     pub phf: Option<f64>,
     /// Percentage of heavy vehicles, unitless
-    pub phv: Option<f64>,
+    pub phv: f64,
     /// Percent Followers
     pub pf: Option<f64>,
     /// Followers Density
@@ -207,22 +205,22 @@ impl FacilityCalculation {
 
 pub trait LaneCapacity {
     fn calculate_capacity(&self) -> Option<u32>;
-    fn single_lane_capacity(&self) -> Option<u32>;
+    fn basic_lane_capacity(&self) -> Option<u32>;
     fn multi_lanes_capacity(&self) -> Option<u32>;
 }
 
 impl LaneCapacity for BaseLaneCapacity {
 
     fn calculate_capacity(&self) -> Option<u32> {
-        match self.number_of_lanes {
-            1 => self.single_lane_capacity(),
-            n if n >= 2 => self.multi_lanes_capacity(),
+        match self.highway_type.as_str() {
+            "basic" => self.basic_lane_capacity(),
+            "multilane" => self.multi_lanes_capacity(),
             _ => None,
         }
     }
 
-    /// Single lane capacity pc/h/ln
-    fn single_lane_capacity(&self) -> Option<u32> {
+    /// Basic lane capacity pc/h/ln
+    fn basic_lane_capacity(&self) -> Option<u32> {
         match self.speed_limit {
             75 => Some(2400),
             70 => Some(2400),

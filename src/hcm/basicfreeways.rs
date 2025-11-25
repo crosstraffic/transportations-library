@@ -1,3 +1,4 @@
+use crate::utils::math;
 use super::common::{CommonSegment, LevelOfService, LaneCapacity, FacilityCalculation, CityType, BaseLaneCapacity};
 use serde::{Deserialize, Serialize};
 use super::utils::pce_table::{ET_TABLE_30SUT, ET_TABLE_50SUT, ET_TABLE_70SUT};
@@ -14,6 +15,8 @@ pub struct BasicFreeways {
     pub bffs: f64,
     /// Free flow speed, mph.
     pub ffs: f64,
+    /// Adjusted free flow speed, mph.
+    pub ffs_adj: f64,
     /// Capacity, vehicle/hr
     pub capacity: f64,
     /// Number of lanes in analysis direction. Usually it is duplicated in the opposite direction, too.
@@ -44,12 +47,16 @@ pub struct BasicFreeways {
     pub sut_percentage: u32,
     /// City Type: Urban, Suburban, Rural
     pub city_type: CityType,
+    /// Highway type: basic, multilane
+    pub highway_type: String,
     /// Median type: undivided, twltl, divided
     pub median_type: String,
     /// Speed limit, mi/hr
     pub speed_limit: u32,
     /// Adjustment for heavy vehicles
-    pub f_hv: Option<f64>,
+    pub phv: f64,
+    /// Demand volume for direction i, veh/hr.
+    pub v_p: f64,
 }
 
 // impl LaneCapacity for BasicFreeways {
@@ -68,6 +75,7 @@ impl BasicFreeways {
         Self {
             // segments: segments.unwrap_or_default(),
             ffs: 65.0,
+            ffs_adj: 65.0,
             capacity: 2000.0,
             lane_count: 2,
             density: 0.0,
@@ -80,6 +88,7 @@ impl BasicFreeways {
             terrain_type: None,
             sut_percentage: 50,
             city_type: CityType::Urban,
+            highway_type: "basic".to_string(),
             median_type: "divided".to_string(),
             trd: 0,
             bffs: 65.0,
@@ -88,10 +97,12 @@ impl BasicFreeways {
             length: 0.0,
             lw: Some(12.0),
             speed_limit: 65,
-            f_hv: None,
+            phv: 1.0,
+            v_p: 1000.0,
         }
     }
 
+    /// Set segments for the BasicFreeways instance with inputs
     pub fn set_segments(&self) -> Vec<CommonSegment> {
         let basic_segment = CommonSegment {
             length: self.length,
@@ -99,12 +110,11 @@ impl BasicFreeways {
             lane_width: self.lw,
             grade: self.grade,
             spl: self.speed_limit as f64,
-            volume: Some(0.0),
             flow_rate: Some(self.demand_flow_i),
             capacity: Some(self.capacity as i32),
             ffs: Some(self.ffs),
             phf: Some(self.phf),
-            phv: self.f_hv,
+            phv: self.phv,
             pf: Some(1.0),
             fd: Some(self.density),
         };
@@ -261,24 +271,25 @@ impl BasicFreeways {
     pub fn determine_free_flow_speed(&mut self) -> f64 {
 
         // Speed adjustment factor
-        let saf = 0.0;
+        let saf = 1.0;
 
-        if Some(self.lane_count) == Some(1) {
-            self.estimate_single_lane_ffs();
+        if self.highway_type == "basic" {
+            self.estimate_basic_lane_ffs();
         } else {
             self.estimate_multi_lane_ffs();
         }
 
         // Adjusted free-flow speed
-        let ffs_adj = self.ffs * saf;
+        self.ffs_adj = self.ffs * saf;
 
-        ffs_adj
+        self.ffs_adj
     }
 
-    fn estimate_single_lane_ffs(&mut self) -> Result<(), String>{
+    fn estimate_basic_lane_ffs(&mut self) -> Result<(), String>{
         let f_lw = self.adjustment_average_lane_width().unwrap_or(0.0);
         let f_rlc = self.adjustment_right_side_lateral_clearance().unwrap_or(0.0);
 
+        println!("f_lw: {}, f_rlc: {}", f_lw, f_rlc);
         self.ffs = self.bffs - f_lw - f_rlc - 3.22 * f64::powf(self.trd as f64, 0.84);
 
         Ok(())
@@ -299,14 +310,14 @@ impl BasicFreeways {
 
         let caf = 1.0;
 
-        self.capacity = match self.lane_count {
-            1 => 2200.0 + 10.0 * (self.ffs - 50.0),
-            n if n >= 2 => 1900.0 + 20.0 * (self.ffs - 45.0),
+        self.capacity = match self.highway_type.as_str() {
+            "basic" => 2200.0 + 10.0 * (self.ffs_adj - 50.0),
+            "multilane" => 1900.0 + 20.0 * (self.ffs_adj - 45.0),
             _ => 2000.0,
         };
 
         let base_lane_capacity = BaseLaneCapacity {
-            number_of_lanes: self.lane_count as u32,
+            highway_type: self.highway_type.clone(),
             speed_limit: self.speed_limit,
         };
 
@@ -320,7 +331,7 @@ impl BasicFreeways {
         }
     }
 
-    fn adjustment_heavy_vehicle_factor(&mut self) -> Option<f64> {
+    fn adjustment_heavy_vehicle_factor(&mut self) -> f64 {
         match self.terrain_type.as_deref() {
             Some("level") => {
                 self.e_t = Some(2.0);
@@ -336,7 +347,6 @@ impl BasicFreeways {
                 self.e_t = Some(2.0);
             }
         }
-
  
         // HashMap lookup
         if self.sut_percentage == 30 {
@@ -486,23 +496,28 @@ impl BasicFreeways {
             }
         }
 
-        self.f_hv = Some(1.0 / (1.0 + self.p_t.unwrap_or(0.0) * (self.e_t.unwrap_or(0.0) - 1.0)));
+        self.phv = 1.0 / (1.0 + self.p_t.unwrap_or(0.0) * (self.e_t.unwrap_or(0.0) - 1.0));
 
-        self.f_hv
+        math::round_up_to_n_decimal(self.phv, 3)
     }
 
     // Adjusted demand volume
     pub fn estimate_demand_volume(&mut self) -> f64 {
-        let v_p = self.demand_flow_i / (self.phf * self.lane_count as f64 * self.f_hv.unwrap_or(1.0));
+        self.adjustment_heavy_vehicle_factor();
+        self.v_p = self.demand_flow_i / (self.phf * self.lane_count as f64 * self.phv);
 
-        v_p
+        self.v_p
     }
 
     /// Estimate density in the segment per lane, pc/mi/ln
     pub fn estimate_density(&mut self) -> f64 {
-        let density = self.demand_flow_i / self.ffs;
+        // Calculate breakpoint value
+        let bp = 3000;
+        if self.v_p <= bp as f64 {
+            self.density = self.v_p / self.ffs_adj;
+        }
 
-        density
+        self.density
 
     }
 

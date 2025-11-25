@@ -1,11 +1,13 @@
-use crate::utils::math;
-use transportations_library::*;
+use transportations_library::math;
+use transportations_library::twolanehighways::{Segment, SubSegment, TwoLaneHighways};
 
 use std::fs::{self, File};
 use std::io::BufReader;
+use std::path::PathBuf;
 
 fn read_test_files() -> Vec<String> {
-    let examples_root_dir: &str = "src/ExampleCases/hcm/TwoLaneHighways/";
+    let mut examples_root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    examples_root_dir.push("./tests/ExampleCases/hcm/TwoLaneHighways/");
     let paths = fs::read_dir(examples_root_dir).expect("Unable to read directory");
     let mut setting_files: Vec<String> = Vec::new();
 
