@@ -22,7 +22,7 @@ jobs:
       CARGO_PROFILE_RELEASE_LTO: "fat"
     steps:
       # Largely inspired by https://github.com/starship/starship/blob/35a0a20f5c4fea6a08e1b91ff631b089eef8fc50/.github/workflows/deploy.yml
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.10"
@@ -93,7 +93,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -112,7 +112,7 @@ jobs:
     name: Check WASM Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -160,7 +160,7 @@ jobs:
       url: ${{ steps.set_url.outputs.env_url }}
     needs: [build, sdist, wasm-check]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
