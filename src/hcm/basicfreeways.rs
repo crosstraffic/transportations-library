@@ -37,6 +37,8 @@ pub struct BasicFreeways {
     pub e_t: Option<f64>,
     /// Demand flow rate for analysis direction i, veh/hr
     pub demand_flow_i: f64,
+    /// Demand volume for direction i, veh/hr.
+    pub v_p: f64,
     /// Peak hour factor
     pub phf: f64,
     /// Grade, percentage
@@ -55,19 +57,9 @@ pub struct BasicFreeways {
     pub speed_limit: u32,
     /// Adjustment for heavy vehicles
     pub phv: f64,
-    /// Demand volume for direction i, veh/hr.
-    pub v_p: f64,
+    /// Level of Service
+    pub los: Option<LevelOfService>,
 }
-
-// impl LaneCapacity for BasicFreeways {
-//     fn calculate_capacity(&self) -> Option<u32> {
-//         let base_capacity = BaseLaneCapacity {
-//             number_of_lanes: self.lane_count,
-//             speed_limit: self.ffs as u32,
-//         };
-//         base_capacity.calculate_capacity()
-//     }
-// }
 
 impl BasicFreeways {
     /// Method to create a new BasicFreeways instance
@@ -99,6 +91,7 @@ impl BasicFreeways {
             speed_limit: 65,
             phv: 1.0,
             v_p: 1000.0,
+            los: Some('F'.into()),
         }
     }
 
@@ -117,6 +110,7 @@ impl BasicFreeways {
             phv: self.phv,
             pf: Some(1.0),
             fd: Some(self.density),
+            los: self.los.clone(),
         };
         vec![basic_segment]
     }
@@ -137,9 +131,14 @@ impl BasicFreeways {
         self.lane_count
     }
 
+    pub fn set_lane_count(&mut self, lane_count: u32) {
+        self.lane_count = lane_count;
+    }
+
     pub fn get_density(&self) -> f64 {
         self.density
     }
+
 
     /// Adjustment for average lane width
     fn adjustment_average_lane_width(&mut self) -> Result<f64, String> {
@@ -504,9 +503,105 @@ impl BasicFreeways {
     // Adjusted demand volume
     pub fn estimate_demand_volume(&mut self) -> f64 {
         self.adjustment_heavy_vehicle_factor();
-        self.v_p = self.demand_flow_i / (self.phf * self.lane_count as f64 * self.phv);
+        println!("demand_flow_i: {} phf: {}, lane_count {}, self.phv {}", self.demand_flow_i, self.phf, self.lane_count, self.phv);
+        let _lane_count = self.get_lane_count();
+        self.v_p = self.demand_flow_i / (self.phf * self.lane_count as f64 * math::round_up_to_n_decimal(self.phv, 3));
 
         self.v_p
+    }
+
+    // Estimate the number of lanes for design analysis
+    pub fn estimate_number_of_lanes(&mut self) -> (u32, f64){
+        self.adjustment_heavy_vehicle_factor();
+        let msf: f64;
+        if self.highway_type == "basic" {
+            msf = self.determine_basic_max_service_flow_rate();
+        } else {
+            msf = self.determine_multilane_max_service_flow_rate();
+        }
+
+        let demand_flow_rate = self.v_p / (self.phf * self.phv);
+        let required_lanes = demand_flow_rate / msf;
+
+        // Needs to be next-higher integer
+        let required_lanes_res = required_lanes.ceil() as u32;
+
+        self.set_lane_count(required_lanes_res);
+
+        // In case more investigation is needed, it returns intermediate results too
+        (required_lanes_res, required_lanes)
+    }
+
+    pub fn determine_basic_max_service_flow_rate(&mut self) -> f64 {
+        let _ffs = math::round_up_to_nearest_5(self.ffs_adj);
+        let msf = match (_ffs, self.los) {
+            (55, Some(LevelOfService::A)) => 600.0,
+            (55, Some(LevelOfService::B)) => 990.0,
+            (55, Some(LevelOfService::C)) => 1430.0,
+            (55, Some(LevelOfService::D)) => 1910.0,
+            (55, Some(LevelOfService::E)) => 2250.0,
+
+            (60, Some(LevelOfService::A)) => 600.0,
+            (60, Some(LevelOfService::B)) => 1080.0,
+            (60, Some(LevelOfService::C)) => 1560.0,
+            (60, Some(LevelOfService::D)) => 2000.0,
+            (60, Some(LevelOfService::E)) => 2300.0,
+
+            (65, Some(LevelOfService::A)) => 710.0,
+            (65, Some(LevelOfService::B)) => 1170.0,
+            (65, Some(LevelOfService::C)) => 1660.0,
+            (65, Some(LevelOfService::D)) => 2060.0,
+            (65, Some(LevelOfService::E)) => 2350.0,
+
+            (70, Some(LevelOfService::A)) => 770.0,
+            (70, Some(LevelOfService::B)) => 1260.0,
+            (70, Some(LevelOfService::C)) => 1730.0,
+            (70, Some(LevelOfService::D)) => 2110.0,
+            (70, Some(LevelOfService::E)) => 2400.0,
+
+            (75, Some(LevelOfService::A)) => 820.0,
+            (75, Some(LevelOfService::B)) => 1330.0,
+            (75, Some(LevelOfService::C)) => 1780.0,
+            (75, Some(LevelOfService::D)) => 2130.0,
+            (75, Some(LevelOfService::E)) => 2400.0,
+
+            _ =>  2000.0,
+        };
+
+        msf
+    }
+
+    pub fn determine_multilane_max_service_flow_rate(&mut self) -> f64 {
+        let _ffs = math::round_up_to_nearest_5(self.ffs_adj);
+        let msf = match (_ffs, self.los) {
+            (45, Some(LevelOfService::A)) => 490.0,
+            (45, Some(LevelOfService::B)) => 810.0,
+            (45, Some(LevelOfService::C)) => 1170.0,
+            (45, Some(LevelOfService::D)) => 1550.0,
+            (45, Some(LevelOfService::E)) => 1900.0,
+
+            (50, Some(LevelOfService::A)) => 550.0,
+            (50, Some(LevelOfService::B)) => 900.0,
+            (50, Some(LevelOfService::C)) => 1300.0,
+            (50, Some(LevelOfService::D)) => 1680.0,
+            (50, Some(LevelOfService::E)) => 2000.0,
+
+            (55, Some(LevelOfService::A)) => 600.0,
+            (55, Some(LevelOfService::B)) => 990.0,
+            (55, Some(LevelOfService::C)) => 1430.0,
+            (55, Some(LevelOfService::D)) => 1790.0,
+            (55, Some(LevelOfService::E)) => 2100.0,
+
+            (60, Some(LevelOfService::A)) => 660.0,
+            (60, Some(LevelOfService::B)) => 1080.0,
+            (60, Some(LevelOfService::C)) => 1530.0,
+            (60, Some(LevelOfService::D)) => 1890.0,
+            (60, Some(LevelOfService::E)) => 2200.0,
+
+            _ =>  2000.0,
+        };
+
+        msf
     }
 
     /// Estimate density in the segment per lane, pc/mi/ln

@@ -139,6 +139,8 @@ pub struct CommonSegment {
     pub pf: Option<f64>,
     /// Followers Density
     pub fd: Option<f64>,
+    /// Level of Service
+    pub los: Option<LevelOfService>,
 }
 
 
