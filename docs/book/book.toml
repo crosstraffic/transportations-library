@@ -1,0 +1,14 @@
+[book]
+title = "CrossTraffic"
+authors = ["raynbowy23"]
+language = "en"
+src = "src"
+
+[output.html]
+git-repository-url = "https://github.com/crosstraffic/docs/tree/main/book"
+edit-url-template = "https://github.com/crosstraffic/docs/edit/main/book/{path}"
+site-url = "/docs/"
+
+[preprocessor.admonish]
+command = "mdbook-toc"
+renderer = ["html"]
