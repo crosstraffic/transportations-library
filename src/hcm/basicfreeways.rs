@@ -1,5 +1,5 @@
 use crate::utils::math;
-use super::common::{CommonSegment, LevelOfService, LaneCapacity, FacilityCalculation, CityType, BaseLaneCapacity};
+use super::common::{CommonSegment, LevelOfService, FacilityCalculation, CityType};
 use serde::{Deserialize, Serialize};
 use super::utils::pce_table::{ET_TABLE_30SUT, ET_TABLE_50SUT, ET_TABLE_70SUT};
 
@@ -711,29 +711,20 @@ impl BasicFreeways {
     /// Equation 12-7 for multilane highway segments: c = 1,900 + 20 × (FFS - 45)
     pub fn estimate_capacity(&mut self) -> Result<u32, String> {
 
+        // Equation 12-6 for basic freeway: c = 2200 + 10 × (FFS - 50)
+        // Equation 12-7 for multilane highway: c = 1900 + 20 × (FFS - 45)
         self.capacity = match self.highway_type.as_str() {
             "basic" => 2200.0 + 10.0 * (self.ffs_adj - 50.0),
             "multilane" => 1900.0 + 20.0 * (self.ffs_adj - 45.0),
             _ => 2000.0,
         };
 
-        let base_lane_capacity = BaseLaneCapacity {
-            highway_type: self.highway_type.clone(),
-            speed_limit: self.speed_limit,
-        };
-
-        let base_capacity = base_lane_capacity.calculate_capacity().unwrap_or(0);
-
-        // Capacity cannot exceed base capacity from Exhibit 12-4
-        // Basic freeway: max 2,400 pc/h/ln
-        // Multilane highway: max 2,300 pc/h/ln
+        // Capacity cannot exceed maximum from Exhibit 12-4
+        // Basic freeway: max 2,400 pc/h/ln (at FFS >= 70 mi/h)
+        // Multilane highway: max 2,300 pc/h/ln (at FFS = 60 mi/h)
         let max_capacity = if self.highway_type == "basic" { 2400.0 } else { 2300.0 };
         if self.capacity > max_capacity {
             self.capacity = max_capacity;
-        }
-
-        if self.capacity > base_capacity as f64 && base_capacity > 0 {
-            self.capacity = base_capacity as f64;
         }
 
         // Calculate adjusted capacity
