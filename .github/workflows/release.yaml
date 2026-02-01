@@ -135,7 +135,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           path: dist/
           merge-multiple: true
@@ -193,7 +193,7 @@ jobs:
     needs: [build, sdist, changelog]
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           path: dist/
           merge-multiple: true
