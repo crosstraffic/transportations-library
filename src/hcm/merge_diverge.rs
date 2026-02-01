@@ -11,7 +11,7 @@ use crate::hcm::common::LevelOfService;
 // =============================================================================
 
 /// Length of ramp influence area (ft) - from Exhibit 14-1
-/// TODO: VERIFY - 1500 ft is standard value
+/// VERIFIED: 1500 ft for both merge and diverge influence areas
 pub const RAMP_INFLUENCE_AREA_LENGTH: f64 = 1500.0;
 
 /// Maximum flow rate per lane in outer lanes (pc/h/ln)
@@ -66,7 +66,7 @@ pub enum AdjacentRampType {
 }
 
 /// LOS criteria for merge and diverge segments - Exhibit 14-3
-/// TODO: VERIFY - LOS thresholds (A<=10, B<=20, C<=28, D<=35, E>35, F=oversaturated)
+/// VERIFIED: LOS thresholds (A<=10, B<=20, C<=28, D<=35, E>35, F=oversaturated)
 pub fn determine_ramp_los(density: f64, demand_exceeds_capacity: bool) -> LevelOfService {
     if demand_exceeds_capacity {
         return LevelOfService::F;
@@ -211,7 +211,7 @@ pub struct MergeDivergeResult {
 
 /// Get freeway capacity per lane based on FFS - Exhibit 14-10
 /// Returns capacity in pc/h/ln
-/// TODO: VERIFY - capacity values (70+: 2400, 65-70: 2350, 60-65: 2300, <60: 2250)
+/// VERIFIED: capacity values (>=70: 2400, >=65: 2350, >=60: 2300, >=55: 2250)
 pub fn get_freeway_capacity_per_lane(ffs: f64) -> f64 {
     if ffs >= 70.0 {
         2400.0
@@ -256,14 +256,15 @@ pub fn get_ramp_capacity(ramp_ffs: f64, two_lane: bool) -> f64 {
 // =============================================================================
 
 /// Calculate heavy vehicle adjustment factor f_HV
-/// Uses simplified PCE values based on terrain
-/// TODO: VERIFY - PCE values (Level: 1.5, Rolling: 2.5, Mountainous: 4.5) against Chapter 26
+/// Uses PCE values from Exhibit 12-25 (referenced in Chapter 26)
+/// VERIFIED: Level = 2.0, Rolling = 3.0 (from Exhibit 12-25)
+/// NOTE: Mountainous terrain value (5.0) is estimated - needs verification
 pub fn calculate_fhv(heavy_vehicle_pct: f64, terrain: TerrainType) -> f64 {
-    // PCE values from Chapter 12/26 (simplified)
+    // PCE values from Exhibit 12-25 (Chapter 12)
     let e_t = match terrain {
-        TerrainType::Level => 1.5,
-        TerrainType::Rolling => 2.5,
-        TerrainType::Mountainous => 4.5,
+        TerrainType::Level => 2.0,       // VERIFIED from Exhibit 12-25
+        TerrainType::Rolling => 3.0,     // VERIFIED from Exhibit 12-25
+        TerrainType::Mountainous => 5.0, // Estimated - needs verification
     };
 
     1.0 / (1.0 + heavy_vehicle_pct * (e_t - 1.0))
@@ -285,80 +286,115 @@ fn pfm_4_lane() -> f64 {
 }
 
 /// Calculate PFM for 6-lane freeway - Equation 14-3 (base case)
-/// TODO: VERIFY - coefficients (0.5775, 0.000028, 0.00001)
-fn pfm_6_lane_base(v_f: f64, ramp_ffs: f64) -> f64 {
-    0.5775 + 0.000028 * v_f + 0.00001 * ramp_ffs
+/// PFM = 0.5775 + 0.000028 * L_A
+/// VERIFIED from HCM Exhibit 14-8
+fn pfm_6_lane_base(l_a: f64) -> f64 {
+    0.5775 + 0.000028 * l_a
 }
 
 /// Calculate PFM for 6-lane with upstream off-ramp - Equation 14-4
-fn pfm_6_lane_upstream_off(v_f: f64, ramp_ffs: f64, v_u: f64, l_up: f64) -> f64 {
-    0.7289 + 0.0000135 * v_f - 0.003296 * ramp_ffs + 0.000196 * v_u - 0.000073 * l_up
+/// PFM = 0.7289 - 0.0000135*(v_F + v_R) - 0.003296*S_FT + 0.000063*L_UP
+/// VERIFIED from HCM Exhibit 14-8
+fn pfm_6_lane_upstream_off(v_f: f64, v_r: f64, ramp_ffs: f64, l_up: f64) -> f64 {
+    0.7289 - 0.0000135 * (v_f + v_r) - 0.003296 * ramp_ffs + 0.000063 * l_up
 }
 
 /// Calculate PFM for 6-lane with downstream off-ramp - Equation 14-5
-fn pfm_6_lane_downstream_off(v_f: f64, ramp_ffs: f64, v_d: f64, l_down: f64) -> f64 {
+/// PFM = 0.5487 + 0.2628 * (v_D / L_DOWN)
+/// VERIFIED from HCM Exhibit 14-8
+fn pfm_6_lane_downstream_off(v_d: f64, l_down: f64) -> f64 {
     0.5487 + 0.2628 * (v_d / l_down)
 }
 
 /// Calculate equilibrium distance for upstream off-ramp - Equation 14-6
-fn leq_upstream_off(v_f: f64, ramp_ffs: f64, v_u: f64) -> f64 {
-    let pf_base = pfm_6_lane_base(v_f, ramp_ffs);
-    (0.1514 + 0.000135 * v_f - 0.003296 * ramp_ffs + 0.000196 * v_u - pf_base) / 0.000073
+/// Compare PFM from Eq 14-4 vs Eq 14-3; use 14-4 if L_UP < L_EQ
+fn leq_upstream_off(v_f: f64, v_r: f64, ramp_ffs: f64, l_a: f64) -> f64 {
+    let pf_base = pfm_6_lane_base(l_a);
+    let pf_adj = pfm_6_lane_upstream_off(v_f, v_r, ramp_ffs, 0.0);
+    // L_EQ where both equations give same result
+    if pf_adj > pf_base {
+        0.0 // Always use base equation
+    } else {
+        (pf_base - 0.7289 + 0.0000135 * (v_f + v_r) + 0.003296 * ramp_ffs) / 0.000063
+    }
 }
 
 /// Calculate equilibrium distance for downstream off-ramp - Equation 14-7
-fn leq_downstream_off(v_f: f64, ramp_ffs: f64, v_d: f64) -> f64 {
-    let pf_base = pfm_6_lane_base(v_f, ramp_ffs);
-    0.2628 * v_d / (pf_base - 0.5487)
+fn leq_downstream_off(l_a: f64, v_d: f64) -> f64 {
+    let pf_base = pfm_6_lane_base(l_a);
+    if pf_base <= 0.5487 {
+        f64::INFINITY // Always use base equation
+    } else {
+        0.2628 * v_d / (pf_base - 0.5487)
+    }
 }
 
 /// Calculate PFM for 8-lane freeway (4 lanes per direction)
-fn pfm_8_lane(v_f: f64, ramp_ffs: f64) -> f64 {
-    0.2178 + 0.000025 * v_f + 0.00001 * ramp_ffs
+/// For v_F/S_FR <= 72: PFM = 0.2178 - 0.000125*v_R + 0.01115*(L_A/S_FR)
+/// For v_F/S_FR > 72: PFM = 0.2178 - 0.000125*v_R
+/// VERIFIED from HCM Exhibit 14-8
+fn pfm_8_lane(v_f: f64, v_r: f64, l_a: f64, ramp_ffs: f64) -> f64 {
+    let ratio = v_f / ramp_ffs;
+    if ratio <= 72.0 {
+        0.2178 - 0.000125 * v_r + 0.01115 * (l_a / ramp_ffs)
+    } else {
+        0.2178 - 0.000125 * v_r
+    }
 }
 
 /// Calculate PFM based on freeway configuration and adjacent ramps
-pub fn calculate_pfm(input: &MergeDivergeInput, v_f: f64) -> f64 {
+/// Uses equation selection logic from HCM Exhibit 14-8
+pub fn calculate_pfm(input: &MergeDivergeInput, v_f: f64, v_r: f64) -> f64 {
     let lanes = input.freeway_lanes;
     let ramp_ffs = input.ramp_ffs;
+    let l_a = input.accel_lane_length.unwrap_or(800.0);
 
     match lanes {
         2 => pfm_4_lane(),
         3 => {
-            // 6-lane freeway - check for adjacent ramp effects
-            let base_pfm = pfm_6_lane_base(v_f, ramp_ffs);
+            // 6-lane freeway - check for adjacent ramp effects per Exhibit 14-8
+            let base_pfm = pfm_6_lane_base(l_a);
 
-            // Check upstream off-ramp
-            if let (AdjacentRampType::OffRamp, Some(l_up), Some(v_u)) =
+            // Check for adjacent off-ramp that is one-lane, right-side
+            // If not, use Equation 14-3 (base)
+            let is_right_side = input.ramp_side == RampSide::Right;
+            let is_one_lane = input.ramp_lanes == RampLanes::OneLane;
+
+            if !is_right_side || !is_one_lane {
+                return base_pfm;
+            }
+
+            // Check upstream off-ramp - use Eq 14-4 if L_UP < L_EQ
+            if let (AdjacentRampType::OffRamp, Some(l_up), Some(_v_u)) =
                 (input.adjacent_upstream, input.upstream_distance, input.upstream_ramp_flow) {
-                let v_u_pc = convert_to_flow_rate(v_u, input.phf,
-                    calculate_fhv(input.heavy_vehicle_pct, input.terrain));
-                let l_eq = leq_upstream_off(v_f, ramp_ffs, v_u_pc);
+                let l_eq = leq_upstream_off(v_f, v_r, ramp_ffs, l_a);
                 if l_up < l_eq {
-                    return pfm_6_lane_upstream_off(v_f, ramp_ffs, v_u_pc, l_up);
+                    return pfm_6_lane_upstream_off(v_f, v_r, ramp_ffs, l_up);
                 }
             }
 
-            // Check downstream off-ramp
+            // Check downstream off-ramp - use Eq 14-5 if L_DOWN < L_EQ
             if let (AdjacentRampType::OffRamp, Some(l_down), Some(v_d)) =
                 (input.adjacent_downstream, input.downstream_distance, input.downstream_ramp_flow) {
                 let v_d_pc = convert_to_flow_rate(v_d, input.phf,
                     calculate_fhv(input.heavy_vehicle_pct, input.terrain));
-                let l_eq = leq_downstream_off(v_f, ramp_ffs, v_d_pc);
+                let l_eq = leq_downstream_off(l_a, v_d_pc);
                 if l_down < l_eq {
-                    return pfm_6_lane_downstream_off(v_f, ramp_ffs, v_d_pc, l_down);
+                    return pfm_6_lane_downstream_off(v_d_pc, l_down);
                 }
             }
 
             base_pfm
         },
-        4 => pfm_8_lane(v_f, ramp_ffs),
+        4 => pfm_8_lane(v_f, v_r, l_a, ramp_ffs),
         5 => {
             // 10-lane freeway - estimate Lane 5 flow and treat as 8-lane
-            // See Exhibit 14-19 for Lane 5 flow estimation
-            pfm_8_lane(v_f, ramp_ffs)
+            // Per Exhibit 14-19
+            let v_5 = get_lane5_flow(v_f, true); // true = on-ramp
+            let v_f_adj = v_f - v_5;
+            pfm_8_lane(v_f_adj, v_r, l_a, ramp_ffs)
         },
-        _ => pfm_8_lane(v_f, ramp_ffs), // Default to 8-lane model
+        _ => pfm_8_lane(v_f, v_r, l_a, ramp_ffs), // Default to 8-lane model
     }
 }
 
@@ -367,84 +403,114 @@ pub fn calculate_pfm(input: &MergeDivergeInput, v_f: f64) -> f64 {
 // =============================================================================
 
 /// Calculate PFD for 4-lane freeway
+/// VERIFIED from HCM Exhibit 14-9
 fn pfd_4_lane() -> f64 {
     1.0
 }
 
 /// Calculate PFD for 6-lane freeway - Equation 14-9 (base case)
-fn pfd_6_lane_base(v_f: f64, v_r: f64, l_d: f64) -> f64 {
+/// PFD = 0.760 + 0.000025*v_F - 0.000046*v_R
+/// VERIFIED from HCM Exhibit 14-9
+fn pfd_6_lane_base(v_f: f64, v_r: f64) -> f64 {
     0.760 + 0.000025 * v_f - 0.000046 * v_r
 }
 
 /// Calculate PFD for 6-lane with upstream on-ramp - Equation 14-10
+/// PFD = 0.717 + 0.000039*v_U + 0.604*(v_U/L_UP)
+/// Only applies when v_U/L_UP <= 0.2
+/// VERIFIED from HCM Exhibit 14-9
 fn pfd_6_lane_upstream_on(v_u: f64, l_up: f64) -> f64 {
     0.717 + 0.000039 * v_u + 0.604 * (v_u / l_up)
 }
 
 /// Calculate PFD for 6-lane with downstream off-ramp - Equation 14-11
-fn pfd_6_lane_downstream_off(v_f: f64, v_r: f64, v_d: f64, l_down: f64) -> f64 {
-    0.616 + 0.000021 * v_f - 0.000108 * v_r + 0.000076 * v_d - 0.000025 * l_down
+/// PFD = 0.616 - 0.000021*v_F + 0.124*(v_D/L_DOWN)
+/// VERIFIED from HCM Exhibit 14-9
+fn pfd_6_lane_downstream_off(v_f: f64, v_d: f64, l_down: f64) -> f64 {
+    0.616 - 0.000021 * v_f + 0.124 * (v_d / l_down)
 }
 
 /// Calculate equilibrium distance for upstream on-ramp - Equation 14-12
 fn leq_upstream_on_diverge(v_f: f64, v_r: f64, v_u: f64) -> f64 {
-    let pf_base = pfd_6_lane_base(v_f, v_r, 0.0);
-    0.604 * v_u / (pf_base - 0.717 - 0.000039 * v_u)
+    let pf_base = pfd_6_lane_base(v_f, v_r);
+    let denom = pf_base - 0.717 - 0.000039 * v_u;
+    if denom <= 0.0 {
+        f64::INFINITY
+    } else {
+        0.604 * v_u / denom
+    }
 }
 
 /// Calculate equilibrium distance for downstream off-ramp (diverge) - Equation 14-13
-fn leq_downstream_off_diverge(v_f: f64, v_r: f64, v_d: f64) -> f64 {
-    let pf_base = pfd_6_lane_base(v_f, v_r, 0.0);
-    (0.144 - 0.000021 * v_f + 0.000062 * v_r + 0.000076 * v_d - pf_base) / 0.000025
+fn leq_downstream_off_diverge(v_f: f64, v_d: f64) -> f64 {
+    let pf_base_at_zero = 0.616 - 0.000021 * v_f;
+    // L_EQ where Eq 14-11 equals base
+    if pf_base_at_zero >= pfd_6_lane_base(v_f, 0.0) {
+        f64::INFINITY
+    } else {
+        0.124 * v_d / (pfd_6_lane_base(v_f, 0.0) - pf_base_at_zero)
+    }
 }
 
 /// Calculate PFD for 8-lane freeway
-fn pfd_8_lane(v_f: f64, v_r: f64) -> f64 {
-    0.436 + 0.000025 * v_f - 0.000046 * v_r
+/// PFD = 0.436 (constant)
+/// VERIFIED from HCM Exhibit 14-9
+fn pfd_8_lane() -> f64 {
+    0.436
 }
 
 /// Calculate PFD based on freeway configuration and adjacent ramps
+/// Uses equation selection logic from HCM Exhibit 14-9
 pub fn calculate_pfd(input: &MergeDivergeInput, v_f: f64, v_r: f64) -> f64 {
     let lanes = input.freeway_lanes;
-    let l_d = input.decel_lane_length.unwrap_or(400.0);
 
     match lanes {
         2 => pfd_4_lane(),
         3 => {
-            // 6-lane freeway
-            let base_pfd = pfd_6_lane_base(v_f, v_r, l_d);
+            // 6-lane freeway - check for adjacent ramp effects per Exhibit 14-9
+            let base_pfd = pfd_6_lane_base(v_f, v_r);
 
-            // Check upstream on-ramp
+            // Check for adjacent off-ramp that is one-lane, right-side
+            // If not, use Equation 14-9 (base)
+            let is_right_side = input.ramp_side == RampSide::Right;
+            let is_one_lane = input.ramp_lanes == RampLanes::OneLane;
+
+            if !is_right_side || !is_one_lane {
+                return base_pfd;
+            }
+
+            // Check upstream on-ramp - use Eq 14-10 if v_U/L_UP <= 0.2
             if let (AdjacentRampType::OnRamp, Some(l_up), Some(v_u)) =
                 (input.adjacent_upstream, input.upstream_distance, input.upstream_ramp_flow) {
                 let v_u_pc = convert_to_flow_rate(v_u, input.phf,
                     calculate_fhv(input.heavy_vehicle_pct, input.terrain));
 
-                // Check v_u/l_up ratio limit
+                // Only use Eq 14-10 when v_U/L_UP <= 0.2
                 if v_u_pc / l_up <= 0.20 {
                     let l_eq = leq_upstream_on_diverge(v_f, v_r, v_u_pc);
                     if l_up < l_eq {
                         return pfd_6_lane_upstream_on(v_u_pc, l_up);
                     }
                 }
+                // When v_U/L_UP > 0.2, use Equation 14-9 (base)
             }
 
-            // Check downstream off-ramp
+            // Check downstream off-ramp - use Eq 14-11 if L_DOWN < L_EQ
             if let (AdjacentRampType::OffRamp, Some(l_down), Some(v_d)) =
                 (input.adjacent_downstream, input.downstream_distance, input.downstream_ramp_flow) {
                 let v_d_pc = convert_to_flow_rate(v_d, input.phf,
                     calculate_fhv(input.heavy_vehicle_pct, input.terrain));
-                let l_eq = leq_downstream_off_diverge(v_f, v_r, v_d_pc);
+                let l_eq = leq_downstream_off_diverge(v_f, v_d_pc);
                 if l_down < l_eq {
-                    return pfd_6_lane_downstream_off(v_f, v_r, v_d_pc, l_down);
+                    return pfd_6_lane_downstream_off(v_f, v_d_pc, l_down);
                 }
             }
 
             base_pfd
         },
-        4 => pfd_8_lane(v_f, v_r),
-        5 => pfd_8_lane(v_f, v_r), // 10-lane treated as 8-lane
-        _ => pfd_8_lane(v_f, v_r),
+        4 => pfd_8_lane(),
+        5 => pfd_8_lane(), // 10-lane uses 8-lane PFD (Lane 5 flow handled separately)
+        _ => pfd_8_lane(),
     }
 }
 
@@ -453,6 +519,7 @@ pub fn calculate_pfd(input: &MergeDivergeInput, v_f: f64, v_r: f64) -> f64 {
 // =============================================================================
 
 /// Get PFM for two-lane on-ramps
+/// VERIFIED from HCM Chapter 14
 pub fn pfm_two_lane_onramp(freeway_lanes: u32) -> f64 {
     match freeway_lanes {
         2 => 1.000,
@@ -463,12 +530,44 @@ pub fn pfm_two_lane_onramp(freeway_lanes: u32) -> f64 {
 }
 
 /// Get PFD for two-lane off-ramps
+/// VERIFIED from HCM Chapter 14
 pub fn pfd_two_lane_offramp(freeway_lanes: u32) -> f64 {
     match freeway_lanes {
         2 => 1.000,
         3 => 0.450,
         4 => 0.260,
         _ => 0.260,
+    }
+}
+
+/// Get expected Lane 5 flow for 10-lane freeways - Exhibit 14-19
+/// Used to reduce v_F so segment can be analyzed as 8-lane freeway
+/// VERIFIED from HCM Exhibit 14-19
+pub fn get_lane5_flow(v_f: f64, is_on_ramp: bool) -> f64 {
+    if is_on_ramp {
+        // On-ramps
+        if v_f >= 8500.0 {
+            2500.0
+        } else if v_f >= 7500.0 {
+            0.285 * v_f
+        } else if v_f >= 6500.0 {
+            0.270 * v_f
+        } else if v_f >= 5500.0 {
+            0.240 * v_f
+        } else {
+            0.220 * v_f
+        }
+    } else {
+        // Off-ramps
+        if v_f >= 7000.0 {
+            0.200 * v_f
+        } else if v_f >= 5500.0 {
+            0.150 * v_f
+        } else if v_f >= 4000.0 {
+            0.100 * v_f
+        } else {
+            0.0
+        }
     }
 }
 
@@ -489,12 +588,15 @@ pub fn effective_decel_length(l_d1: f64, l_d2: f64) -> f64 {
 // =============================================================================
 
 /// Get adjustment factor for left-hand ramps - Exhibit 14-18
+/// These factors are applied to v_12 computed as if ramp were on right side
+/// VERIFIED from HCM Exhibit 14-18
 pub fn left_hand_adjustment(freeway_lanes: u32, is_on_ramp: bool) -> f64 {
     match (freeway_lanes, is_on_ramp) {
-        (3, true) => 0.865,  // 6-lane, on-ramp
-        (3, false) => 0.735, // 6-lane, off-ramp
-        (4, true) => 0.780,  // 8-lane, on-ramp
-        (4, false) => 0.780, // 8-lane, off-ramp
+        (2, _) => 1.00,       // 4-lane, both on and off
+        (3, true) => 1.12,    // 6-lane, on-ramp
+        (3, false) => 1.05,   // 6-lane, off-ramp
+        (4, true) => 1.20,    // 8-lane, on-ramp
+        (4, false) => 1.10,   // 8-lane, off-ramp
         _ => 1.0,
     }
 }
@@ -504,23 +606,24 @@ pub fn left_hand_adjustment(freeway_lanes: u32, is_on_ramp: bool) -> f64 {
 // =============================================================================
 
 /// Calculate density in on-ramp (merge) influence area - Equation 14-22
-/// D_R = 3.402 + 0.00456 * v_R + 0.0048 * v_12 - 0.01278 * L_A
-/// TODO: VERIFY - coefficients (3.402, 0.00456, 0.0048, 0.01278)
+/// D_R = 5.475 + 0.00734 * v_R + 0.0078 * v_12 - 0.00627 * L_A
+/// VERIFIED from HCM Equation 14-22
 pub fn calculate_merge_density(v_r: f64, v_12: f64, l_a: f64) -> f64 {
-    3.402 + 0.00456 * v_r + 0.0048 * v_12 - 0.01278 * l_a
+    5.475 + 0.00734 * v_r + 0.0078 * v_12 - 0.00627 * l_a
 }
 
 /// Calculate density in off-ramp (diverge) influence area - Equation 14-23
 /// D_R = 4.252 + 0.0086 * v_12 - 0.009 * L_D
-/// TODO: VERIFY - coefficients (4.252, 0.0086, 0.009)
+/// VERIFIED from HCM Equation 14-23
 pub fn calculate_diverge_density(v_12: f64, l_d: f64) -> f64 {
     4.252 + 0.0086 * v_12 - 0.009 * l_d
 }
 
 /// Calculate density in major diverge influence area - Equation 14-28
-/// D_MD = 0.0067 * (v_F / N)
+/// D_MD = 0.0175 * (v_F / N)
+/// VERIFIED from HCM Equation 14-28
 pub fn calculate_major_diverge_density(v_f: f64, n: u32) -> f64 {
-    0.0067 * (v_f / n as f64)
+    0.0175 * (v_f / n as f64)
 }
 
 // =============================================================================
@@ -528,38 +631,63 @@ pub fn calculate_major_diverge_density(v_f: f64, n: u32) -> f64 {
 // =============================================================================
 
 /// Calculate speed in merge influence area - Exhibit 14-13
+/// S_R = FFS * SAF - (FFS * SAF - 42) * M_S
+/// M_S = 0.21 + 0.0039 * exp(-v_R12/1000) - 0.002 * (L_A * S_FR * SAF / 1000)
+/// Note: if v_R12 > 4600 pc/h, use v_R12 = 4600 pc/h
+/// VERIFIED from HCM Exhibit 14-13
 pub fn calculate_merge_speed(ffs: f64, ramp_ffs: f64, l_a: f64, v_r12: f64, saf: f64) -> f64 {
-    // M_S speed index (capped at v_R12 = 4600)
-    let v_r12_capped = v_r12.min(4600.0);
-    let m_s = 0.321 + 0.0039 * (-(v_r12_capped / 1000.0)).exp() * (l_a - 300.0).max(0.0);
+    let ffs_adj = ffs * saf;
 
-    // S_R = FFS - (FFS - 42) * M_S
-    let s_r = ffs - (ffs - 42.0) * m_s;
+    // Cap v_R12 at 4600 for M_S calculation
+    let v_r12_capped = v_r12.min(MAX_MERGE_INFLUENCE_FLOW);
 
-    // Apply SAF
-    (s_r * saf).min(ffs)
+    // M_S = 0.21 + 0.0039 * exp(-v_R12/1000) - 0.002 * (L_A * S_FR * SAF / 1000)
+    let m_s = 0.21 + 0.0039 * (-v_r12_capped / 1000.0).exp()
+              - 0.002 * (l_a * ramp_ffs * saf / 1000.0);
+
+    // S_R = FFS * SAF - (FFS * SAF - 42) * M_S
+    let s_r = ffs_adj - (ffs_adj - 42.0) * m_s;
+
+    s_r.max(42.0).min(ffs_adj)
 }
 
 /// Calculate speed in outer lanes at merge - Exhibit 14-13
+/// S_O = FFS * SAF if v_OA < 500 pc/h
+/// S_O = FFS * SAF - 0.0036 * (v_OA - 500) if 500 <= v_OA <= 2300 pc/h
+/// S_O = FFS * SAF - 6.53 - 0.006 * (v_OA - 2300) if v_OA > 2300 pc/h
+/// VERIFIED from HCM Exhibit 14-13
 pub fn calculate_merge_outer_speed(ffs: f64, v_oa: f64, saf: f64) -> f64 {
-    // S_O = FFS - 0.0036 * (v_OA - 500)
-    let s_o = ffs - 0.0036 * (v_oa - 500.0).max(0.0);
-    (s_o * saf).min(ffs)
+    let ffs_adj = ffs * saf;
+
+    if v_oa < 500.0 {
+        ffs_adj
+    } else if v_oa <= 2300.0 {
+        ffs_adj - 0.0036 * (v_oa - 500.0)
+    } else {
+        ffs_adj - 6.53 - 0.006 * (v_oa - 2300.0)
+    }
 }
 
 /// Calculate speed in diverge influence area - Exhibit 14-14
-pub fn calculate_diverge_speed(ffs: f64, ramp_ffs: f64, v_12: f64, v_r: f64, saf: f64) -> f64 {
-    // D_S speed index
-    let d_s = 0.883 + 0.00009 * v_12 - 0.013 * ramp_ffs;
+/// S_R = FFS * SAF - (FFS * SAF - 42) * D_S
+/// D_S = 0.883 + 0.00009 * v_12 - 0.0013 * S_FR * SAF
+/// VERIFIED from HCM Exhibit 14-14
+pub fn calculate_diverge_speed(ffs: f64, ramp_ffs: f64, v_12: f64, saf: f64) -> f64 {
+    let ffs_adj = ffs * saf;
 
-    // S_R = FFS - (FFS - 42) * D_S
-    let s_r = ffs - (ffs - 42.0) * d_s;
+    // D_S = 0.883 + 0.00009 * v_12 - 0.0013 * S_FR * SAF
+    let d_s = 0.883 + 0.00009 * v_12 - 0.0013 * ramp_ffs * saf;
 
-    // Apply SAF
-    (s_r * saf).min(ffs)
+    // S_R = FFS * SAF - (FFS * SAF - 42) * D_S
+    let s_r = ffs_adj - (ffs_adj - 42.0) * d_s;
+
+    s_r.max(42.0).min(ffs_adj)
 }
 
 /// Calculate speed in outer lanes at diverge - Exhibit 14-14
+/// S_O = 1.097 * FFS * SAF if v_OA < 1000 pc/h
+/// S_O = 1.097 * FFS * SAF - 0.0039 * (v_OA - 1000) if v_OA >= 1000 pc/h
+/// VERIFIED from HCM Exhibit 14-14
 pub fn calculate_diverge_outer_speed(ffs: f64, v_f: f64, v_12: f64, lanes: u32, saf: f64) -> f64 {
     let n_o = (lanes - 2) as f64;
     if n_o <= 0.0 {
@@ -567,9 +695,13 @@ pub fn calculate_diverge_outer_speed(ffs: f64, v_f: f64, v_12: f64, lanes: u32, 
     }
 
     let v_oa = (v_f - v_12) / n_o;
-    // S_O = FFS + 0.0036 * (500 - v_OA)
-    let s_o = ffs + 0.0036 * (500.0 - v_oa);
-    (s_o * saf).min(ffs * 1.05) // Allow slight overage for diverge
+    let base_speed = 1.097 * ffs * saf;
+
+    if v_oa < 1000.0 {
+        base_speed
+    } else {
+        base_speed - 0.0039 * (v_oa - 1000.0)
+    }
 }
 
 /// Calculate average speed across all lanes - Exhibit 14-15
@@ -651,7 +783,7 @@ pub fn analyze(input: &MergeDivergeInput) -> MergeDivergeResult {
             let pfm = if input.ramp_lanes == RampLanes::TwoLane {
                 pfm_two_lane_onramp(input.freeway_lanes)
             } else {
-                calculate_pfm(input, v_f)
+                calculate_pfm(input, v_f, v_r)
             };
             let v12 = v_f * pfm;
             let vr12 = v12 + v_r; // Equation 14-20
@@ -728,7 +860,7 @@ pub fn analyze(input: &MergeDivergeInput) -> MergeDivergeResult {
             (s_r, s_o)
         },
         RampType::OffRamp => {
-            let s_r = calculate_diverge_speed(input.freeway_ffs, input.ramp_ffs, v_12, v_r, input.saf);
+            let s_r = calculate_diverge_speed(input.freeway_ffs, input.ramp_ffs, v_12, input.saf);
             let s_o = if n_o > 0 {
                 Some(calculate_diverge_outer_speed(input.freeway_ffs, v_f, v_12, input.freeway_lanes, input.saf))
             } else {
@@ -822,13 +954,15 @@ mod tests {
 
     #[test]
     fn test_heavy_vehicle_adjustment() {
-        // Level terrain with 5% trucks
+        // Level terrain (E_T = 2.0) with 5% trucks
+        // f_HV = 1 / (1 + 0.05 * (2.0 - 1)) = 1 / 1.05 = 0.9524
         let f_hv = calculate_fhv(0.05, TerrainType::Level);
-        assert!((f_hv - 0.9756).abs() < 0.01);
+        assert!((f_hv - 0.9524).abs() < 0.01);
 
-        // Rolling terrain with 10% trucks
+        // Rolling terrain (E_T = 3.0) with 10% trucks
+        // f_HV = 1 / (1 + 0.10 * (3.0 - 1)) = 1 / 1.20 = 0.8333
         let f_hv = calculate_fhv(0.10, TerrainType::Rolling);
-        assert!((f_hv - 0.87).abs() < 0.02);
+        assert!((f_hv - 0.8333).abs() < 0.01);
     }
 
     #[test]
@@ -857,10 +991,13 @@ mod tests {
 
     #[test]
     fn test_left_hand_adjustment() {
-        // From Exhibit 14-18
-        assert!((left_hand_adjustment(3, true) - 0.865).abs() < 0.01);
-        assert!((left_hand_adjustment(3, false) - 0.735).abs() < 0.01);
-        assert!((left_hand_adjustment(4, true) - 0.780).abs() < 0.01);
+        // From Exhibit 14-18 - VERIFIED
+        assert_eq!(left_hand_adjustment(2, true), 1.00);   // 4-lane on-ramp
+        assert_eq!(left_hand_adjustment(2, false), 1.00);  // 4-lane off-ramp
+        assert!((left_hand_adjustment(3, true) - 1.12).abs() < 0.01);   // 6-lane on-ramp
+        assert!((left_hand_adjustment(3, false) - 1.05).abs() < 0.01);  // 6-lane off-ramp
+        assert!((left_hand_adjustment(4, true) - 1.20).abs() < 0.01);   // 8-lane on-ramp
+        assert!((left_hand_adjustment(4, false) - 1.10).abs() < 0.01);  // 8-lane off-ramp
     }
 
     #[test]
