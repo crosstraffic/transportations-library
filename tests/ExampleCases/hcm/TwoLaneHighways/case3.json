@@ -1,0 +1,129 @@
+{
+    "segments": [
+        {
+            "passing_type": 0,
+            "length": 0.75,
+            "grade": 0.0,
+            "spl": 55.0,
+            "is_hc": false,
+            "volume": 850.0,
+            "volume_op": 0.0,
+            "flow_rate": 0.0,
+            "flow_rate_o": 0.0,
+            "capacity": 0,
+            "ffs": 0.0,
+            "avg_speed": 0.0,
+            "vertical_class": 1,
+            "subsegments": [
+           
+            ],
+            "phf": 0.94,
+            "phv": 8.0,
+            "pf": 0.0,
+            "fd": 0.0,
+            "fd_mid": 0.0,
+            "hor_class": 0
+        },
+        {
+            "passing_type": 2,
+            "length": 1.5,
+            "grade": 0.0,
+            "spl": 55.0,
+            "is_hc": false,
+            "volume": 825.0,
+            "volume_op": 0.0,
+            "flow_rate": 0.0,
+            "flow_rate_o": 0.0,
+            "capacity": 0,
+            "ffs": 0.0,
+            "avg_speed": 0.0,
+            "vertical_class": 1,
+            "subsegments": [
+              
+            ],
+            "phf": 0.95,
+            "phv": 8.0,
+            "pf": 0.0,
+            "fd": 0.0,
+            "fd_mid": 0.0,
+            "hor_class": 0
+        },
+        {
+            "passing_type": 0,
+            "length": 1.0,
+            "grade": 0.0,
+            "spl": 55.0,
+            "is_hc": false,
+            "volume": 820.0,
+            "volume_op": 0.0,
+            "flow_rate": 0.0,
+            "flow_rate_o": 0.0,
+            "capacity": 0,
+            "ffs": 0.0,
+            "avg_speed": 0.0,
+            "vertical_class": 1,
+            "subsegments": [
+              
+            ],
+            "phf": 0.95,
+            "phv": 8.0,
+            "pf": 0.0,
+            "fd": 0.0,
+            "fd_mid": 0.0,
+            "hor_class": 0
+        },
+        {
+            "passing_type": 1,
+            "length": 0.5,
+            "grade": 0.0,
+            "spl": 55.0,
+            "is_hc": false,
+            "volume": 800.0,
+            "volume_op": 500.0,
+            "flow_rate": 0.0,
+            "flow_rate_o": 0.0,
+            "capacity": 0,
+            "ffs": 0.0,
+            "avg_speed": 0.0,
+            "vertical_class": 1,
+            "subsegments": [
+                
+            ],
+            "phf": 0.94,
+            "phv": 7.5,
+            "pf": 0.0,
+            "fd": 0.0,
+            "fd_mid": 0.0,
+            "hor_class": 0
+        },
+        {
+            "passing_type": 0,
+            "length": 1.75,
+            "grade": 0.0,
+            "spl": 55.0,
+            "is_hc": false,
+            "volume": 795.0,
+            "volume_op": 0.0,
+            "flow_rate": 0.0,
+            "flow_rate_o": 0.0,
+            "capacity": 0,
+            "ffs": 0.0,
+            "avg_speed": 0.0,
+            "vertical_class": 1,
+            "subsegments": [
+              
+            ],
+            "phf": 0.935,
+            "phv": 8.0,
+            "pf": 0.0,
+            "fd": 0.0,
+            "fd_mid": 0.0,
+            "hor_class": 0
+        }
+    ],
+    "lane_width": 12.0,
+    "shoulder_width": 6.0,
+    "apd": 0.0,
+    "pmhvfl": 0.4,
+    "l_de": 0.0
+}

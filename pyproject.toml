@@ -16,7 +16,9 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
-dependencies = []
+dependencies = [
+    "pymupdf4llm>=0.0.17",
+]
 
 [project.optional-dependencies]
 test = [
