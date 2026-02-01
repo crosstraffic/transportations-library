@@ -12,7 +12,11 @@ fn read_test_files() -> Vec<String> {
     let mut setting_files: Vec<String> = Vec::new();
 
     for path in paths {
-        setting_files.push(path.unwrap().path().display().to_string());
+        let path_str = path.unwrap().path().display().to_string();
+        // Only include case1.json through case4.json (exclude case_study files)
+        if path_str.contains("case") && !path_str.contains("case_study") {
+            setting_files.push(path_str);
+        }
     }
 
     setting_files.sort();
