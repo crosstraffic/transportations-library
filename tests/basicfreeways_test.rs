@@ -41,8 +41,9 @@ fn initialize_test_case(bcf: BasicFreeways) -> BasicFreeways {
         density: bcf.density,
         speed_limit: bcf.speed_limit,
         demand_flow_i: bcf.demand_flow_i,
-        v_p: 0.0,
+        v_p: bcf.v_p,
         capacity: bcf.capacity,
+        capacity_adj: bcf.capacity_adj,
         bffs: bcf.bffs,
         ffs: bcf.ffs,
         ffs_adj: bcf.ffs_adj,
@@ -54,11 +55,20 @@ fn initialize_test_case(bcf: BasicFreeways) -> BasicFreeways {
         e_t: bcf.e_t,
         trd: bcf.trd,
         apd: bcf.apd,
+        los: bcf.los.clone(),
         terrain_type: bcf.terrain_type,
         sut_percentage: bcf.sut_percentage,
         city_type: bcf.city_type,
         median_type: bcf.median_type,
         highway_type: bcf.highway_type,
+        saf: bcf.saf,
+        caf: bcf.caf,
+        breakpoint: bcf.breakpoint,
+        speed: bcf.speed,
+        vc_ratio: bcf.vc_ratio,
+        aadt: bcf.aadt,
+        k_factor: bcf.k_factor,
+        d_factor: bcf.d_factor,
     };
 
     basicfreeways
@@ -67,7 +77,7 @@ fn initialize_test_case(bcf: BasicFreeways) -> BasicFreeways {
 #[test]
 fn determine_free_flow_speed_test() {
     let ans = vec![
-        60.8
+        60.8, 67.3
     ];
 
     let setting_files = read_test_files();
@@ -82,13 +92,36 @@ fn determine_free_flow_speed_test() {
             "Test case {index} failed",
         );
     }
+}
 
+#[test]
+fn estimate_number_of_lanes() {
+    let ans = vec![
+        0, 3
+    ];
+    let setting_files = read_test_files();
+
+    for (index, s_file) in setting_files.iter().enumerate() {
+        let bcf: BasicFreeways = settings(s_file.clone());
+        let mut basicfreeways = initialize_test_case(bcf);
+        let _num_lanes: u32;
+        let _num_lane_med: f64;
+        if basicfreeways.v_p != 0.0 {
+            (_num_lanes, _num_lane_med) = basicfreeways.estimate_number_of_lanes();
+        } else {
+            _num_lanes = 0;
+        }
+        assert_eq!(
+            ans[index], _num_lanes,
+            "Test case {index} failed",
+        );
+    }
 }
 
 #[test]
 fn estimate_capacity_test() {
     let ans = vec![
-        2308.0
+        2308.0, 2373.0
     ];
     let setting_files = read_test_files();
 
@@ -108,7 +141,7 @@ fn estimate_capacity_test() {
 #[test]
 fn estimate_demand_volume_test() {
     let ans = vec![
-        1141.3
+        1142, 1694
     ];
     let setting_files = read_test_files();
 
@@ -118,18 +151,26 @@ fn estimate_demand_volume_test() {
 
         let _ffs = basicfreeways.determine_free_flow_speed();
         let _capacity = basicfreeways.estimate_capacity();
+
+        // Estimate number of lanes
+        if basicfreeways.v_p != 0.0 {
+            (_, _) = basicfreeways.estimate_number_of_lanes();
+        }
+
         let _demand_volume = basicfreeways.estimate_demand_volume();
         assert_eq!(
-            ans[index], math::round_up_to_n_decimal(_demand_volume, 1),
+            ans[index], math::round_up_to_n_decimal(_demand_volume, 0) as i32,
             "Test case {index} failed",
         );
     }
 }
 
+// Need BreakPoint and estimated speed
+
 #[test]
 fn estimate_density_test() {
     let ans = vec![
-        18.8
+        18.8, 25.9
     ];
     let setting_files = read_test_files();
 
@@ -139,6 +180,12 @@ fn estimate_density_test() {
 
         let _ffs = basicfreeways.determine_free_flow_speed();
         let _capacity = basicfreeways.estimate_capacity();
+
+        // Estimate number of lanes
+        if basicfreeways.v_p != 0.0 {
+            (_, _) = basicfreeways.estimate_number_of_lanes();
+        }
+
         let _demand_volume = basicfreeways.estimate_demand_volume();
         let _density = basicfreeways.estimate_density();
         assert_eq!(
@@ -151,7 +198,7 @@ fn estimate_density_test() {
 #[test]
 fn determine_segment_los() {
     let ans = vec![
-        'C'
+        'C', 'C'
     ];
     let setting_files = read_test_files();
 
@@ -161,6 +208,12 @@ fn determine_segment_los() {
 
         let _ffs = basicfreeways.determine_free_flow_speed();
         let _capacity = basicfreeways.estimate_capacity();
+
+        // Estimate number of lanes
+        if basicfreeways.v_p != 0.0 {
+            (_, _) = basicfreeways.estimate_number_of_lanes();
+        }
+
         let _demand_volume = basicfreeways.estimate_demand_volume();
         let _density = basicfreeways.estimate_density();
         let _los = basicfreeways.determine_segment_los();

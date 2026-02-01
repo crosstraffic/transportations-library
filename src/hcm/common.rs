@@ -6,6 +6,38 @@ pub enum LevelOfService {
     A, B, C, D, E, F
 }
 
+/// Bicycle Level of Service criteria from Exhibit 12-31
+/// Used for Two-Lane and Multilane Highways
+/// The bicycle LOS score is based on traveler perception model
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BicycleLOS {
+    /// Bicycle LOS score (typically 0.5 to 6.5)
+    pub score: f64,
+    /// Resulting LOS letter
+    pub los: LevelOfService,
+}
+
+impl BicycleLOS {
+    /// Determine bicycle LOS from score
+    /// Exhibit 12-31: Bicycle LOS for Two-Lane and Multilane Highways
+    pub fn from_score(score: f64) -> Self {
+        let los = match score {
+            s if s <= 1.5 => LevelOfService::A,
+            s if s <= 2.5 => LevelOfService::B,
+            s if s <= 3.5 => LevelOfService::C,
+            s if s <= 4.5 => LevelOfService::D,
+            s if s <= 5.5 => LevelOfService::E,
+            _ => LevelOfService::F,
+        };
+        Self { score, los }
+    }
+
+    /// Get the LOS letter
+    pub fn get_los(&self) -> LevelOfService {
+        self.los
+    }
+}
+
 /// City type enumeration for urban vs rural contexts
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CityType {
@@ -139,6 +171,8 @@ pub struct CommonSegment {
     pub pf: Option<f64>,
     /// Followers Density
     pub fd: Option<f64>,
+    /// Level of Service
+    pub los: Option<LevelOfService>,
 }
 
 
