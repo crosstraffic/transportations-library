@@ -390,6 +390,7 @@ pub enum Month {
 /// Ratios relative to Monday in January
 pub fn get_urban_demand_ratio(month: Month, day: DayOfWeek) -> f64 {
     // [month][day_of_week]
+    // From Exhibit 11-18: Default Urban Freeway Demand Ratios (ADT/Mondays in January)
     let ratios: [[f64; 7]; 12] = [
         // Jan: Mon, Tue, Wed, Thu, Fri, Sat, Sun
         [1.00, 1.00, 1.02, 1.05, 1.17, 1.01, 0.89],
@@ -424,6 +425,7 @@ pub fn get_urban_demand_ratio(month: Month, day: DayOfWeek) -> f64 {
 /// Ratios relative to Monday in January
 pub fn get_rural_demand_ratio(month: Month, day: DayOfWeek) -> f64 {
     // [month][day_of_week]
+    // From Exhibit 11-19: Default Rural Freeway Demand Ratios (ADT/Mondays in January)
     let ratios: [[f64; 7]; 12] = [
         // Jan: Mon, Tue, Wed, Thu, Fri, Sat, Sun
         [1.00, 0.96, 0.98, 1.03, 1.22, 1.11, 1.06],
@@ -878,15 +880,25 @@ mod tests {
 
     #[test]
     fn test_urban_demand_ratio() {
+        // From Exhibit 11-18: Default Urban Freeway Demand Ratios
         // Monday in January should be 1.00
         assert!((get_urban_demand_ratio(Month::January, DayOfWeek::Monday) - 1.00).abs() < 0.01);
-        // Friday in July should be highest
+        // Tuesday in January should be 1.00
+        assert!((get_urban_demand_ratio(Month::January, DayOfWeek::Tuesday) - 1.00).abs() < 0.01);
+        // Sunday in January should be 0.89
+        assert!((get_urban_demand_ratio(Month::January, DayOfWeek::Sunday) - 0.89).abs() < 0.01);
+        // Friday in July should be 1.62
         assert!((get_urban_demand_ratio(Month::July, DayOfWeek::Friday) - 1.62).abs() < 0.01);
     }
 
     #[test]
     fn test_rural_demand_ratio() {
-        // Friday in July has highest ratio for rural
+        // From Exhibit 11-19: Default Rural Freeway Demand Ratios
+        // Monday in January should be 1.00
+        assert!((get_rural_demand_ratio(Month::January, DayOfWeek::Monday) - 1.00).abs() < 0.01);
+        // Tuesday in January should be 0.96
+        assert!((get_rural_demand_ratio(Month::January, DayOfWeek::Tuesday) - 0.96).abs() < 0.01);
+        // Friday in July should be 2.03 (highest)
         assert!((get_rural_demand_ratio(Month::July, DayOfWeek::Friday) - 2.03).abs() < 0.01);
     }
 
