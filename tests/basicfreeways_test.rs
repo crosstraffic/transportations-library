@@ -43,6 +43,7 @@ fn initialize_test_case(bcf: BasicFreeways) -> BasicFreeways {
         demand_flow_i: bcf.demand_flow_i,
         v_p: bcf.v_p,
         capacity: bcf.capacity,
+        capacity_adj: bcf.capacity_adj,
         bffs: bcf.bffs,
         ffs: bcf.ffs,
         ffs_adj: bcf.ffs_adj,
@@ -60,6 +61,14 @@ fn initialize_test_case(bcf: BasicFreeways) -> BasicFreeways {
         city_type: bcf.city_type,
         median_type: bcf.median_type,
         highway_type: bcf.highway_type,
+        saf: bcf.saf,
+        caf: bcf.caf,
+        breakpoint: bcf.breakpoint,
+        speed: bcf.speed,
+        vc_ratio: bcf.vc_ratio,
+        aadt: bcf.aadt,
+        k_factor: bcf.k_factor,
+        d_factor: bcf.d_factor,
     };
 
     basicfreeways

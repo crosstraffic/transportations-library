@@ -1,5 +1,6 @@
 {
     "capacity": 0,
+    "capacity_adj": 0,
     "bffs": 75.4,
     "ffs": 0.0,
     "ffs_adj": 0.0,
@@ -23,5 +24,13 @@
     "median_type": "divided",
     "highway_type": "basic",
     "speed_limit": 65,
-    "phv": 1.0
+    "phv": 1.0,
+    "saf": 1.0,
+    "caf": 1.0,
+    "breakpoint": 1000.0,
+    "speed": 0.0,
+    "vc_ratio": 0.0,
+    "aadt": null,
+    "k_factor": 0.09,
+    "d_factor": 0.55
 }
