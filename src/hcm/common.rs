@@ -821,3 +821,227 @@ impl LaneCapacity for BaseLaneCapacity {
         }
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Semantic Firewall - Input Validation (Layer 1 Pre-Check)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Validation error for semantic firewall constraints
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidationError {
+    pub constraint_id: String,
+    pub parameter: String,
+    pub value: String,
+    pub message: String,
+    pub source: String,
+}
+
+/// Result of semantic firewall validation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidationResult {
+    pub is_valid: bool,
+    pub errors: Vec<ValidationError>,
+}
+
+impl ValidationResult {
+    pub fn ok() -> Self {
+        Self { is_valid: true, errors: vec![] }
+    }
+
+    pub fn error(err: ValidationError) -> Self {
+        Self { is_valid: false, errors: vec![err] }
+    }
+
+    pub fn merge(&mut self, other: ValidationResult) {
+        if !other.is_valid {
+            self.is_valid = false;
+            self.errors.extend(other.errors);
+        }
+    }
+}
+
+/// Two-Lane Highway input parameters for validation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TwoLaneHighwayInput {
+    pub lane_width: Option<f64>,
+    pub shoulder_width: Option<f64>,
+    pub hor_class: Option<i32>,
+    pub passing_type: Option<i32>,
+    pub design_rad: Option<f64>,
+    pub speed_limit: Option<f64>,
+}
+
+impl TwoLaneHighwayInput {
+    /// Validate all inputs against semantic firewall constraints
+    /// Returns ValidationResult with all errors found
+    pub fn validate(&self) -> ValidationResult {
+        let mut result = ValidationResult::ok();
+
+        // SF-001: Lane Width (9-12 ft)
+        if let Some(lw) = self.lane_width {
+            if lw < 9.0 || lw > 12.0 {
+                result.merge(ValidationResult::error(ValidationError {
+                    constraint_id: "SF-001".to_string(),
+                    parameter: "lane_width".to_string(),
+                    value: format!("{:.1}", lw),
+                    message: format!(
+                        "Lane width {} ft violates constraint. Must be 9-12 ft per HCM Exhibit 15-8.",
+                        lw
+                    ),
+                    source: "HCM 7th Edition, Exhibit 15-8".to_string(),
+                }));
+            }
+        }
+
+        // SF-002: Shoulder Width (0-8 ft)
+        if let Some(sw) = self.shoulder_width {
+            if sw < 0.0 || sw > 8.0 {
+                result.merge(ValidationResult::error(ValidationError {
+                    constraint_id: "SF-002".to_string(),
+                    parameter: "shoulder_width".to_string(),
+                    value: format!("{:.1}", sw),
+                    message: format!(
+                        "Shoulder width {} ft violates constraint. Must be 0-8 ft per HCM/Green Book.",
+                        sw
+                    ),
+                    source: "HCM 7th Edition, Exhibit 15-8".to_string(),
+                }));
+            }
+        }
+
+        // SF-003: Horizontal Class (0-5)
+        if let Some(hc) = self.hor_class {
+            if hc < 0 || hc > 5 {
+                result.merge(ValidationResult::error(ValidationError {
+                    constraint_id: "SF-003".to_string(),
+                    parameter: "hor_class".to_string(),
+                    value: format!("{}", hc),
+                    message: format!(
+                        "Horizontal class {} is invalid. Must be 0-5 per HCM Exhibit 15-22.",
+                        hc
+                    ),
+                    source: "HCM 7th Edition, Exhibit 15-22".to_string(),
+                }));
+            }
+        }
+
+        // SF-004: Passing Type (0, 1, 2)
+        if let Some(pt) = self.passing_type {
+            if pt < 0 || pt > 2 {
+                result.merge(ValidationResult::error(ValidationError {
+                    constraint_id: "SF-004".to_string(),
+                    parameter: "passing_type".to_string(),
+                    value: format!("{}", pt),
+                    message: format!(
+                        "Passing type {} is invalid. Must be 0 (Constrained), 1 (Zone), or 2 (Lane).",
+                        pt
+                    ),
+                    source: "HCM 7th Edition, Chapter 15.3".to_string(),
+                }));
+            }
+        }
+
+        // SF-005: Speed-Curvature Compatibility
+        if let (Some(rad), Some(spl)) = (self.design_rad, self.speed_limit) {
+            if let Some(min_rad) = min_radius_for_speed(spl as i32) {
+                if rad < min_rad {
+                    result.merge(ValidationResult::error(ValidationError {
+                        constraint_id: "SF-005".to_string(),
+                        parameter: "design_rad".to_string(),
+                        value: format!("{:.0}", rad),
+                        message: format!(
+                            "Design radius {} ft is too small for speed limit {} mph. Minimum: {} ft per Green Book Table 3-7.",
+                            rad, spl, min_rad
+                        ),
+                        source: "AASHTO Green Book, Table 3-7".to_string(),
+                    }));
+                }
+            }
+        }
+
+        result
+    }
+}
+
+/// Validate a single lane width value
+pub fn validate_lane_width(lane_width: f64) -> ValidationResult {
+    if lane_width >= 9.0 && lane_width <= 12.0 {
+        ValidationResult::ok()
+    } else {
+        ValidationResult::error(ValidationError {
+            constraint_id: "SF-001".to_string(),
+            parameter: "lane_width".to_string(),
+            value: format!("{:.1}", lane_width),
+            message: format!("Lane width {} ft must be 9-12 ft", lane_width),
+            source: "HCM Exhibit 15-8".to_string(),
+        })
+    }
+}
+
+/// Validate a single shoulder width value
+pub fn validate_shoulder_width(shoulder_width: f64) -> ValidationResult {
+    if shoulder_width >= 0.0 && shoulder_width <= 8.0 {
+        ValidationResult::ok()
+    } else {
+        ValidationResult::error(ValidationError {
+            constraint_id: "SF-002".to_string(),
+            parameter: "shoulder_width".to_string(),
+            value: format!("{:.1}", shoulder_width),
+            message: format!("Shoulder width {} ft must be 0-8 ft", shoulder_width),
+            source: "HCM Exhibit 15-8".to_string(),
+        })
+    }
+}
+
+/// Validate horizontal class value
+pub fn validate_horizontal_class(hor_class: i32) -> ValidationResult {
+    if hor_class >= 0 && hor_class <= 5 {
+        ValidationResult::ok()
+    } else {
+        ValidationResult::error(ValidationError {
+            constraint_id: "SF-003".to_string(),
+            parameter: "hor_class".to_string(),
+            value: format!("{}", hor_class),
+            message: format!("Horizontal class {} must be 0-5", hor_class),
+            source: "HCM Exhibit 15-22".to_string(),
+        })
+    }
+}
+
+/// Validate passing type value
+pub fn validate_passing_type(passing_type: i32) -> ValidationResult {
+    if passing_type >= 0 && passing_type <= 2 {
+        ValidationResult::ok()
+    } else {
+        ValidationResult::error(ValidationError {
+            constraint_id: "SF-004".to_string(),
+            parameter: "passing_type".to_string(),
+            value: format!("{}", passing_type),
+            message: format!("Passing type {} must be 0, 1, or 2", passing_type),
+            source: "HCM Chapter 15.3".to_string(),
+        })
+    }
+}
+
+/// Validate speed-curvature compatibility
+pub fn validate_speed_curvature(design_rad: f64, speed_limit: i32) -> ValidationResult {
+    if let Some(min_rad) = min_radius_for_speed(speed_limit) {
+        if design_rad >= min_rad {
+            ValidationResult::ok()
+        } else {
+            ValidationResult::error(ValidationError {
+                constraint_id: "SF-005".to_string(),
+                parameter: "design_rad".to_string(),
+                value: format!("{:.0}", design_rad),
+                message: format!(
+                    "Radius {} ft < {} ft minimum for {} mph",
+                    design_rad, min_rad, speed_limit
+                ),
+                source: "Green Book Table 3-7".to_string(),
+            })
+        }
+    } else {
+        // Speed not in table, interpolate or accept
+        ValidationResult::ok()
+    }
+}
