@@ -1,5 +1,175 @@
 use serde::{Deserialize, Serialize};
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Lane Marking Types and Colors (MUTCD Chapter 3)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Lane marking line types per MUTCD Section 3A.04
+/// Used for pavement marking classification and OpenDRIVE mapping
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LaneMarkingType {
+    /// Solid line - discourages or prohibits crossing
+    Solid,
+    /// Broken line - permissive condition (10ft segments, 30ft gaps standard)
+    Broken,
+    /// Dotted line - warning of downstream lane change (3ft segments, 9ft gaps)
+    Dotted,
+    /// Double solid - maximum restriction, no crossing either direction
+    DoubleSolid,
+    /// Solid + Broken - no crossing from solid side, permitted from broken side
+    SolidBroken,
+    /// Broken + Solid - permitted from broken side, no crossing from solid side
+    BrokenSolid,
+    /// No marking present
+    None,
+}
+
+/// Lane marking colors per MUTCD Section 3A.03
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MarkingColor {
+    /// White - same direction separation, right edge
+    White,
+    /// Yellow - opposite direction separation, left edge of divided highway
+    Yellow,
+    /// Blue - handicapped parking supplement
+    Blue,
+    /// Red - wrong way / do not enter (raised markers only)
+    Red,
+    /// Purple - toll plaza electronic lanes
+    Purple,
+}
+
+impl LaneMarkingType {
+    /// Convert to OpenDRIVE road_mark_type value
+    pub fn to_opendrive(&self) -> &'static str {
+        match self {
+            LaneMarkingType::Solid => "solid",
+            LaneMarkingType::Broken => "broken",
+            LaneMarkingType::Dotted => "broken", // OpenDRIVE uses broken for both
+            LaneMarkingType::DoubleSolid => "solid solid",
+            LaneMarkingType::SolidBroken => "solid broken",
+            LaneMarkingType::BrokenSolid => "broken solid",
+            LaneMarkingType::None => "none",
+        }
+    }
+}
+
+impl MarkingColor {
+    /// Convert to OpenDRIVE road_mark_color value
+    pub fn to_opendrive(&self) -> &'static str {
+        match self {
+            MarkingColor::White => "white",
+            MarkingColor::Yellow => "yellow",
+            MarkingColor::Blue => "blue",
+            MarkingColor::Red => "red",
+            MarkingColor::Purple => "standard", // OpenDRIVE doesn't have purple
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MUTCD Marking Standards (Section 3A.04)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Normal line width range: 4-6 inches (MUTCD 3A.04)
+pub const MARKING_WIDTH_NORMAL_MIN_IN: f64 = 4.0;
+pub const MARKING_WIDTH_NORMAL_MAX_IN: f64 = 6.0;
+
+/// Wide line width: at least 2x normal (MUTCD 3A.04)
+pub const MARKING_WIDTH_WIDE_MIN_IN: f64 = 8.0;
+
+/// Broken line segment length (ft) - MUTCD 3A.04
+pub const BROKEN_LINE_SEGMENT_FT: f64 = 10.0;
+/// Broken line gap length (ft) - MUTCD 3A.04
+pub const BROKEN_LINE_GAP_FT: f64 = 30.0;
+
+/// Dotted line segment length (ft) - MUTCD 3A.04
+pub const DOTTED_LINE_SEGMENT_FT: f64 = 3.0;
+/// Dotted line gap length (ft) - MUTCD 3A.04
+pub const DOTTED_LINE_GAP_FT: f64 = 9.0;
+
+/// Minimum retroreflectivity for speed >= 35 mph (mcd/m²/lx) - MUTCD 3A.05
+pub const MIN_RETROREFLECTIVITY_35MPH: f64 = 50.0;
+/// Minimum retroreflectivity for speed >= 70 mph (mcd/m²/lx) - MUTCD 3A.05
+pub const MIN_RETROREFLECTIVITY_70MPH: f64 = 100.0;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Horizontal Class Thresholds (HCM Exhibit 15-22, derived from Green Book 3.3)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Horizontal class thresholds based on design radius (ft)
+/// These are simplified thresholds; full classification also considers superelevation
+/// Source: HCM 7th Edition, Exhibit 15-22
+pub const HORIZONTAL_CLASS_THRESHOLDS: [(i32, f64, &str); 6] = [
+    (0, 2550.0, "Tangent"),      // Class 0: R >= 2550 ft (straight)
+    (1, 1350.0, "Gentle"),       // Class 1: 1350 <= R < 2550 ft
+    (2, 750.0, "Moderate"),      // Class 2: 750 <= R < 1350 ft
+    (3, 450.0, "Sharp"),         // Class 3: 450 <= R < 750 ft
+    (4, 300.0, "Very Sharp"),    // Class 4: 300 <= R < 450 ft
+    (5, 0.0, "Severe"),          // Class 5: R < 300 ft
+];
+
+/// Convert design radius (ft) to horizontal class (0-5)
+/// Simplified version without superelevation consideration
+pub fn radius_to_horizontal_class(radius_ft: f64) -> i32 {
+    if radius_ft == 0.0 || radius_ft >= 2550.0 {
+        0 // Tangent
+    } else if radius_ft >= 1350.0 {
+        1 // Gentle
+    } else if radius_ft >= 750.0 {
+        2 // Moderate
+    } else if radius_ft >= 450.0 {
+        3 // Sharp
+    } else if radius_ft >= 300.0 {
+        4 // Very Sharp
+    } else {
+        5 // Severe
+    }
+}
+
+/// Convert curvature (1/m) to horizontal class
+/// curvature = 1/radius, uses OpenDRIVE convention (1/m)
+pub fn curvature_to_horizontal_class(curvature_per_m: f64) -> i32 {
+    if curvature_per_m == 0.0 {
+        return 0; // Tangent (straight)
+    }
+    let radius_m = 1.0 / curvature_per_m.abs();
+    let radius_ft = radius_m * 3.28084; // Convert m to ft
+    radius_to_horizontal_class(radius_ft)
+}
+
+/// Get horizontal class description
+pub fn horizontal_class_description(class: i32) -> &'static str {
+    match class {
+        0 => "Tangent (straight)",
+        1 => "Gentle curve",
+        2 => "Moderate curve",
+        3 => "Sharp curve",
+        4 => "Very sharp curve",
+        5 => "Severe curve",
+        _ => "Unknown",
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Cross Slope Standards (Green Book Section 4.2.2)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Normal paved surface cross slope range (%) - Green Book 4.2.2
+pub const CROSS_SLOPE_PAVED_MIN: f64 = 1.5;
+pub const CROSS_SLOPE_PAVED_MAX: f64 = 2.0;
+
+/// Unpaved surface cross slope range (%) - Green Book Table 4-1
+pub const CROSS_SLOPE_UNPAVED_MIN: f64 = 2.0;
+pub const CROSS_SLOPE_UNPAVED_MAX: f64 = 6.0;
+
+/// Maximum algebraic difference at superelevation edge (%) - Green Book 4.4.3
+pub const MAX_CROSS_SLOPE_BREAK: f64 = 8.0;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Level of Service
+// ═══════════════════════════════════════════════════════════════════════════════
+
 /// Level of Service enumeration used throughout HCM
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LevelOfService {
@@ -123,22 +293,32 @@ impl TrafficFlow {
     }
 }
 
-/// Common geometric parameters
+/// Common geometric parameters (Green Book Chapter 4)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeometricParams {
-    pub lane_width: Option<f64>,      // ft
-    pub shoulder_width: Option<f64>,  // ft
-    pub median_width: Option<f64>,    // ft
-    pub lateral_clearance: Option<f64>, // ft
+    /// Lane width in ft (Green Book 4.3: 9-12 ft, 12 ft preferred)
+    pub lane_width: Option<f64>,
+    /// Shoulder width in ft (Green Book 4.4.2: 2-12 ft)
+    pub shoulder_width: Option<f64>,
+    /// Median width in ft
+    pub median_width: Option<f64>,
+    /// Lateral clearance in ft (HCM adjustment factor input)
+    pub lateral_clearance: Option<f64>,
+    /// Cross slope in % (Green Book 4.2.2: 1.5-2% paved)
+    pub cross_slope: Option<f64>,
+    /// Superelevation in % (Green Book 3.3: max 8-12%)
+    pub superelevation: Option<f64>,
 }
 
 impl Default for GeometricParams {
     fn default() -> Self {
         Self {
-            lane_width: Some(12.0),
-            shoulder_width: Some(6.0),
+            lane_width: Some(12.0),        // Green Book preferred
+            shoulder_width: Some(6.0),     // Green Book typical
             median_width: None,
-            lateral_clearance: Some(6.0),
+            lateral_clearance: Some(6.0),  // HCM base condition
+            cross_slope: Some(2.0),        // Green Book typical paved
+            superelevation: None,          // Only on curves
         }
     }
 }
