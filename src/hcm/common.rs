@@ -259,6 +259,99 @@ pub const SUPERELEVATION_MAX_URBAN: f64 = 6.0;
 pub const SUPERELEVATION_MIN: f64 = 2.0;
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Minimum Radius for Design Speed (Green Book Table 3-7)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Minimum radius (ft) for design speed with emax=8% (Green Book Table 3-7)
+/// Index by speed: [15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80] mph
+pub const MIN_RADIUS_FOR_SPEED: [(i32, f64); 14] = [
+    (15, 50.0),
+    (20, 90.0),
+    (25, 170.0),
+    (30, 230.0),
+    (35, 340.0),
+    (40, 430.0),
+    (45, 560.0),
+    (50, 710.0),
+    (55, 835.0),
+    (60, 1000.0),
+    (65, 1150.0),
+    (70, 1310.0),
+    (75, 1560.0),
+    (80, 1810.0),
+];
+
+/// Get minimum curve radius for a given design speed (mph)
+/// Returns minimum radius in feet, or None if speed not in table
+pub fn min_radius_for_speed(speed_mph: i32) -> Option<f64> {
+    MIN_RADIUS_FOR_SPEED
+        .iter()
+        .find(|(s, _)| *s == speed_mph)
+        .map(|(_, r)| *r)
+}
+
+/// Get maximum curvature (1/ft) for a given design speed (mph)
+/// Returns maximum curvature, or None if speed not in table
+pub fn max_curvature_for_speed(speed_mph: i32) -> Option<f64> {
+    min_radius_for_speed(speed_mph).map(|r| 1.0 / r)
+}
+
+/// Check if curvature is safe for given speed
+/// Returns true if curvature is within acceptable range for speed
+pub fn is_curvature_safe_for_speed(curvature_per_ft: f64, speed_mph: i32) -> bool {
+    match max_curvature_for_speed(speed_mph) {
+        Some(max_curv) => curvature_per_ft <= max_curv,
+        None => {
+            // Interpolate for speeds not in table
+            let lower = MIN_RADIUS_FOR_SPEED
+                .iter()
+                .filter(|(s, _)| *s <= speed_mph)
+                .last();
+            let upper = MIN_RADIUS_FOR_SPEED
+                .iter()
+                .find(|(s, _)| *s > speed_mph);
+
+            match (lower, upper) {
+                (Some((s1, r1)), Some((s2, r2))) => {
+                    // Linear interpolation
+                    let ratio = (speed_mph - s1) as f64 / (s2 - s1) as f64;
+                    let min_radius = r1 + ratio * (r2 - r1);
+                    curvature_per_ft <= 1.0 / min_radius
+                }
+                _ => true // Can't determine, assume safe
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Detection Confidence Thresholds
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Minimum confidence thresholds for lane detection parameters
+#[derive(Debug, Clone, Copy)]
+pub struct DetectionConfidenceThresholds {
+    pub lane_width: f64,
+    pub curvature: f64,
+    pub marking_type: f64,
+    pub marking_color: f64,
+    pub lane_count: f64,
+    pub centerline: f64,
+    pub boundary: f64,
+}
+
+/// Default detection confidence thresholds
+pub const DETECTION_CONFIDENCE_THRESHOLDS: DetectionConfidenceThresholds = DetectionConfidenceThresholds {
+    lane_width: 0.85,      // High confidence needed for geometry
+    curvature: 0.80,       // Slightly lower tolerance
+    marking_type: 0.90,    // Safety-critical classification
+    marking_color: 0.90,   // Safety-critical classification
+    lane_count: 0.85,      // Important for capacity
+    centerline: 0.80,      // Position detection
+    boundary: 0.80,        // Position detection
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Horizontal Alignment Class (HCM Exhibit 15-22, derived from Green Book 3.3)
 // ═══════════════════════════════════════════════════════════════════════════════
 
