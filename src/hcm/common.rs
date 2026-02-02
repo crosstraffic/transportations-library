@@ -133,6 +133,13 @@ pub const LANE_WIDTH_LOCAL: LaneWidthStandards = LaneWidthStandards {
     max: 12.0,
 };
 
+/// Multilane highway lane width: 10-12 ft (Green Book 4.3)
+pub const LANE_WIDTH_MULTILANE: LaneWidthStandards = LaneWidthStandards {
+    min: 10.0,
+    standard: 12.0,
+    max: 12.0,
+};
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Shoulder Width Standards (Green Book Section 4.4.2)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -172,6 +179,70 @@ pub const SHOULDER_WIDTH_LOCAL: ShoulderWidthStandards = ShoulderWidthStandards 
     standard: 4.0,
     max: 6.0,
 };
+
+/// Multilane highway shoulder width: 4-10 ft (Green Book 4.4.2)
+pub const SHOULDER_WIDTH_MULTILANE: ShoulderWidthStandards = ShoulderWidthStandards {
+    min: 4.0,
+    standard: 8.0,
+    max: 10.0,
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Median Standards (Green Book Section 4.5)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Median type classification (Green Book 4.5)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MedianType {
+    /// Undivided - no physical separation (painted only)
+    Undivided,
+    /// Two-Way Left Turn Lane (TWLTL) - flush median with turn lane
+    TWLTL,
+    /// Raised median - curbed separation
+    Raised,
+    /// Depressed median - graded separation below roadway
+    Depressed,
+    /// Barrier median - concrete or cable barrier
+    Barrier,
+}
+
+impl MedianType {
+    /// Convert to OpenDRIVE lane type for median representation
+    pub fn to_opendrive(&self) -> &'static str {
+        match self {
+            MedianType::Undivided => "none",
+            MedianType::TWLTL => "bidirectional", // OpenDRIVE bidirectional lane
+            MedianType::Raised => "median",
+            MedianType::Depressed => "median",
+            MedianType::Barrier => "median",
+        }
+    }
+
+    /// Whether the median provides physical separation
+    pub fn is_divided(&self) -> bool {
+        !matches!(self, MedianType::Undivided)
+    }
+
+    /// Whether the median has a barrier
+    pub fn has_barrier(&self) -> bool {
+        matches!(self, MedianType::Barrier)
+    }
+}
+
+/// Minimum median width for TWLTL (Green Book 4.5.2)
+pub const MEDIAN_WIDTH_TWLTL_MIN: f64 = 10.0;
+/// Desirable median width for TWLTL
+pub const MEDIAN_WIDTH_TWLTL_DESIRABLE: f64 = 14.0;
+
+/// Minimum raised median width (Green Book 4.5.3)
+pub const MEDIAN_WIDTH_RAISED_MIN: f64 = 4.0;
+/// Desirable raised median width for left turn storage
+pub const MEDIAN_WIDTH_RAISED_DESIRABLE: f64 = 16.0;
+
+/// Minimum depressed median width (Green Book 4.5.4)
+pub const MEDIAN_WIDTH_DEPRESSED_MIN: f64 = 30.0;
+/// Desirable depressed median width for recovery area
+pub const MEDIAN_WIDTH_DEPRESSED_DESIRABLE: f64 = 60.0;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Superelevation Standards (Green Book Section 3.3.4)
