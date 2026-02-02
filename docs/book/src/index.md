@@ -4,5 +4,5 @@ Welcome to the CrossTraffic documentation hub! This site serves as the central r
 
 API references live on docs.rs per crate.
 
-- Code: <https://github.com/<org>/transportations-library>
+- Code: <https://github.com/crosstraffic/transportations-library>
 - API: <https://docs.rs/transportations-library>

@@ -9,6 +9,9 @@ git-repository-url = "https://github.com/crosstraffic/docs/tree/main/book"
 edit-url-template = "https://github.com/crosstraffic/docs/edit/main/book/{path}"
 site-url = "/docs/"
 
-[preprocessor.admonish]
+# Table of Contents preprocessor
+# Generates TOC where you place <!-- toc --> marker
+[preprocessor.toc]
 command = "mdbook-toc"
 renderer = ["html"]
+max-level = 4
