@@ -1777,3 +1777,186 @@ impl TwoLaneHighways {
         los
     }
 }
+
+/// Bicycle Level of Service for Two-Lane and Multilane Highways (Section 4, Chapter 15)
+/// Based on HCM 7th Edition Equations 15-40 through 15-47 and Exhibit 15-7
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BicycleLOS {
+    /// Outside lane width, ft (default: 12 ft)
+    pub lane_width: f64,
+    /// Paved shoulder width, ft (default: 6 ft)
+    pub shoulder_width: f64,
+    /// Posted speed limit, mi/hr
+    pub speed_limit: f64,
+    /// Number of directional through lanes (1 for two-lane highways)
+    pub num_lanes: i32,
+    /// Pavement condition rating (FHWA 5-point scale: 1=very poor to 5=very good)
+    pub pavement_condition: f64,
+    /// Hourly directional volume, veh/hr
+    pub hourly_volume: f64,
+    /// Peak hour factor (default: 0.88)
+    pub phf: f64,
+    /// Heavy vehicle percentage (decimal, e.g., 0.06 for 6%)
+    pub heavy_vehicle_pct: f64,
+    /// Percent of segment with occupied on-highway parking (decimal)
+    pub pct_on_highway_parking: f64,
+}
+
+impl Default for BicycleLOS {
+    fn default() -> Self {
+        BicycleLOS {
+            lane_width: 12.0,
+            shoulder_width: 6.0,
+            speed_limit: 50.0,
+            num_lanes: 1,
+            pavement_condition: 4.0,
+            hourly_volume: 500.0,
+            phf: 0.88,
+            heavy_vehicle_pct: 0.06,
+            pct_on_highway_parking: 0.0,
+        }
+    }
+}
+
+impl BicycleLOS {
+    /// Create a new BicycleLOS instance
+    pub fn new(
+        lane_width: f64,
+        shoulder_width: f64,
+        speed_limit: f64,
+        num_lanes: i32,
+        pavement_condition: f64,
+        hourly_volume: f64,
+        phf: f64,
+        heavy_vehicle_pct: f64,
+        pct_on_highway_parking: f64,
+    ) -> Self {
+        BicycleLOS {
+            lane_width,
+            shoulder_width,
+            speed_limit,
+            num_lanes,
+            pavement_condition,
+            hourly_volume,
+            phf,
+            heavy_vehicle_pct,
+            pct_on_highway_parking,
+        }
+    }
+
+    /// Step 2: Calculate the directional flow rate in the outside lane (Equation 15-40)
+    /// v_OL = V / (PHF * N)
+    pub fn calculate_flow_rate_outside_lane(&self) -> f64 {
+        self.hourly_volume / (self.phf * self.num_lanes as f64)
+    }
+
+    /// Calculate effective width as a function of traffic volume (Equations 15-44, 15-45)
+    fn calculate_wv(&self) -> f64 {
+        if self.hourly_volume > 160.0 {
+            // Equation 15-44
+            self.lane_width
+        } else {
+            // Equation 15-45
+            self.lane_width + self.shoulder_width
+        }
+    }
+
+    /// Step 3: Calculate the effective width (Equations 15-41 to 15-45)
+    pub fn calculate_effective_width(&self) -> f64 {
+        let ws = self.shoulder_width;
+        let wol = self.lane_width;
+        let wv = self.calculate_wv();
+        let pct_ohp = self.pct_on_highway_parking;
+
+        let we = if ws >= 8.0 {
+            // Equation 15-41: Ws >= 8 ft
+            wol + ws - 20.0 * pct_ohp
+        } else if ws >= 4.0 {
+            // Equation 15-42: 4 ft <= Ws < 8 ft
+            wol + ws - 20.0 * pct_ohp
+        } else {
+            // Equation 15-43: Ws < 4 ft
+            wv + ws * (1.0 - 2.0 * pct_ohp)
+        };
+
+        // Ensure effective width is positive
+        we.max(1.0)
+    }
+
+    /// Step 4: Calculate the effective speed factor (Equation 15-46)
+    /// St = 1.1199 * ln(Spl - 20) + 0.8103
+    pub fn calculate_effective_speed_factor(&self) -> f64 {
+        1.1199 * f64::ln(self.speed_limit - 20.0) + 0.8103
+    }
+
+    /// Step 5: Calculate the BLOS score (Equation 15-47)
+    /// BLOS = 0.507 * ln(v_OL) + 0.199 * St * (1 + 10.38 * HV)^2 + 7.066 * (1/P)^2 - 0.005 * We^2 + 0.760
+    pub fn calculate_blos_score(&self) -> f64 {
+        let v_ol = self.calculate_flow_rate_outside_lane();
+        let st = self.calculate_effective_speed_factor();
+        let we = self.calculate_effective_width();
+        let p = self.pavement_condition;
+
+        // For low volumes (V < 200 veh/h), HV should be limited to max 0.5
+        let hv = if self.hourly_volume < 200.0 {
+            self.heavy_vehicle_pct.min(0.5)
+        } else {
+            self.heavy_vehicle_pct
+        };
+
+        // Handle edge case where v_OL is very small or zero
+        let ln_v_ol = if v_ol > 0.0 { f64::ln(v_ol) } else { 0.0 };
+
+        // Equation 15-47
+        0.507 * ln_v_ol
+            + 0.199 * st * (1.0 + 10.38 * hv).powi(2)
+            + 7.066 * (1.0 / p).powi(2)
+            - 0.005 * we.powi(2)
+            + 0.760
+    }
+
+    /// Determine Bicycle LOS based on BLOS score (Exhibit 15-7)
+    pub fn determine_bicycle_los(&self) -> char {
+        let blos = self.calculate_blos_score();
+
+        if blos <= 1.5 {
+            'A'
+        } else if blos <= 2.5 {
+            'B'
+        } else if blos <= 3.5 {
+            'C'
+        } else if blos <= 4.5 {
+            'D'
+        } else if blos <= 5.5 {
+            'E'
+        } else {
+            'F'
+        }
+    }
+
+    /// Get all bicycle performance measures
+    pub fn analyze(&self) -> BicycleLOSResult {
+        BicycleLOSResult {
+            flow_rate_outside_lane: self.calculate_flow_rate_outside_lane(),
+            effective_width: self.calculate_effective_width(),
+            effective_speed_factor: self.calculate_effective_speed_factor(),
+            blos_score: self.calculate_blos_score(),
+            los: self.determine_bicycle_los(),
+        }
+    }
+}
+
+/// Results from bicycle LOS analysis
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BicycleLOSResult {
+    /// Directional demand flow rate in outside lane (veh/h)
+    pub flow_rate_outside_lane: f64,
+    /// Effective width of the outside through lane (ft)
+    pub effective_width: f64,
+    /// Effective speed factor
+    pub effective_speed_factor: f64,
+    /// Bicycle LOS score
+    pub blos_score: f64,
+    /// Bicycle Level of Service (A-F)
+    pub los: char,
+}
