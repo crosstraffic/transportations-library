@@ -94,6 +94,202 @@ pub const MIN_RETROREFLECTIVITY_35MPH: f64 = 50.0;
 pub const MIN_RETROREFLECTIVITY_70MPH: f64 = 100.0;
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Lane Width Standards (Green Book Section 4.3)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Lane width by facility type (Green Book Table 4-2)
+#[derive(Debug, Clone, Copy)]
+pub struct LaneWidthStandards {
+    pub min: f64,
+    pub standard: f64,
+    pub max: f64,
+}
+
+/// Freeway lane width: 12 ft standard (Green Book 4.3)
+pub const LANE_WIDTH_FREEWAY: LaneWidthStandards = LaneWidthStandards {
+    min: 11.0,
+    standard: 12.0,
+    max: 12.0,
+};
+
+/// Arterial lane width: 10-12 ft (Green Book 4.3)
+pub const LANE_WIDTH_ARTERIAL: LaneWidthStandards = LaneWidthStandards {
+    min: 10.0,
+    standard: 12.0,
+    max: 12.0,
+};
+
+/// Collector lane width: 10-12 ft (Green Book 4.3)
+pub const LANE_WIDTH_COLLECTOR: LaneWidthStandards = LaneWidthStandards {
+    min: 10.0,
+    standard: 11.0,
+    max: 12.0,
+};
+
+/// Local road lane width: 9-12 ft (Green Book 4.3)
+pub const LANE_WIDTH_LOCAL: LaneWidthStandards = LaneWidthStandards {
+    min: 9.0,
+    standard: 10.0,
+    max: 12.0,
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Shoulder Width Standards (Green Book Section 4.4.2)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Shoulder width by facility type (Green Book Table 4-3)
+#[derive(Debug, Clone, Copy)]
+pub struct ShoulderWidthStandards {
+    pub min: f64,
+    pub standard: f64,
+    pub max: f64,
+}
+
+/// Freeway shoulder width: 10-12 ft (Green Book 4.4.2)
+pub const SHOULDER_WIDTH_FREEWAY: ShoulderWidthStandards = ShoulderWidthStandards {
+    min: 10.0,
+    standard: 10.0,
+    max: 12.0,
+};
+
+/// Arterial shoulder width: 4-10 ft (Green Book 4.4.2)
+pub const SHOULDER_WIDTH_ARTERIAL: ShoulderWidthStandards = ShoulderWidthStandards {
+    min: 4.0,
+    standard: 8.0,
+    max: 10.0,
+};
+
+/// Collector shoulder width: 2-8 ft (Green Book 4.4.2)
+pub const SHOULDER_WIDTH_COLLECTOR: ShoulderWidthStandards = ShoulderWidthStandards {
+    min: 2.0,
+    standard: 6.0,
+    max: 8.0,
+};
+
+/// Local road shoulder width: 2-6 ft (Green Book 4.4.2)
+pub const SHOULDER_WIDTH_LOCAL: ShoulderWidthStandards = ShoulderWidthStandards {
+    min: 2.0,
+    standard: 4.0,
+    max: 6.0,
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Superelevation Standards (Green Book Section 3.3.4)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Maximum superelevation rates by area type (Green Book 3.3.4)
+/// High-speed roads with no snow/ice: 12%
+pub const SUPERELEVATION_MAX_RURAL: f64 = 12.0;
+/// Roads with snow/ice considerations: 8%
+pub const SUPERELEVATION_MAX_SNOW: f64 = 8.0;
+/// Urban low-speed roads: 4-6%
+pub const SUPERELEVATION_MAX_URBAN: f64 = 6.0;
+/// Minimum rate for drainage: 2%
+pub const SUPERELEVATION_MIN: f64 = 2.0;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Horizontal Alignment Class (HCM Exhibit 15-22, derived from Green Book 3.3)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Horizontal alignment classification (HCM Exhibit 15-22)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HorizontalClass {
+    /// Class 0: Tangent or very gentle curve (R >= 2550 ft)
+    Tangent = 0,
+    /// Class 1: Gentle curve (1350 <= R < 2550 ft)
+    Gentle = 1,
+    /// Class 2: Moderate curve (750 <= R < 1350 ft)
+    Moderate = 2,
+    /// Class 3: Sharp curve (450 <= R < 750 ft)
+    Sharp = 3,
+    /// Class 4: Very sharp curve (300 <= R < 450 ft)
+    VerySharp = 4,
+    /// Class 5: Severe curve (R < 300 ft)
+    Severe = 5,
+}
+
+impl HorizontalClass {
+    /// Get class from design radius (ft)
+    pub fn from_radius(radius_ft: f64) -> Self {
+        if radius_ft == 0.0 || radius_ft >= 2550.0 {
+            HorizontalClass::Tangent
+        } else if radius_ft >= 1350.0 {
+            HorizontalClass::Gentle
+        } else if radius_ft >= 750.0 {
+            HorizontalClass::Moderate
+        } else if radius_ft >= 450.0 {
+            HorizontalClass::Sharp
+        } else if radius_ft >= 300.0 {
+            HorizontalClass::VerySharp
+        } else {
+            HorizontalClass::Severe
+        }
+    }
+
+    /// Get class from curvature (1/ft)
+    pub fn from_curvature(curvature_per_ft: f64) -> Self {
+        if curvature_per_ft == 0.0 {
+            return HorizontalClass::Tangent;
+        }
+        let radius_ft = 1.0 / curvature_per_ft.abs();
+        Self::from_radius(radius_ft)
+    }
+
+    /// Get class from curvature in metric units (1/m) - OpenDRIVE convention
+    pub fn from_curvature_metric(curvature_per_m: f64) -> Self {
+        if curvature_per_m == 0.0 {
+            return HorizontalClass::Tangent;
+        }
+        let radius_m = 1.0 / curvature_per_m.abs();
+        let radius_ft = radius_m * 3.28084;
+        Self::from_radius(radius_ft)
+    }
+
+    /// Get minimum radius threshold for this class (ft)
+    pub fn min_radius(&self) -> f64 {
+        match self {
+            HorizontalClass::Tangent => 2550.0,
+            HorizontalClass::Gentle => 1350.0,
+            HorizontalClass::Moderate => 750.0,
+            HorizontalClass::Sharp => 450.0,
+            HorizontalClass::VerySharp => 300.0,
+            HorizontalClass::Severe => 0.0,
+        }
+    }
+
+    /// Get description
+    pub fn description(&self) -> &'static str {
+        match self {
+            HorizontalClass::Tangent => "Tangent (straight)",
+            HorizontalClass::Gentle => "Gentle curve",
+            HorizontalClass::Moderate => "Moderate curve",
+            HorizontalClass::Sharp => "Sharp curve",
+            HorizontalClass::VerySharp => "Very sharp curve",
+            HorizontalClass::Severe => "Severe curve",
+        }
+    }
+
+    /// Convert to integer value (for compatibility with HCM tables)
+    pub fn as_i32(&self) -> i32 {
+        *self as i32
+    }
+}
+
+impl From<i32> for HorizontalClass {
+    fn from(value: i32) -> Self {
+        match value {
+            0 => HorizontalClass::Tangent,
+            1 => HorizontalClass::Gentle,
+            2 => HorizontalClass::Moderate,
+            3 => HorizontalClass::Sharp,
+            4 => HorizontalClass::VerySharp,
+            5 => HorizontalClass::Severe,
+            _ => HorizontalClass::Severe, // Default to worst case
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Horizontal Class Thresholds (HCM Exhibit 15-22, derived from Green Book 3.3)
 // ═══════════════════════════════════════════════════════════════════════════════
 

@@ -9,4 +9,4 @@ __pycache__/
 
 *.md
 docs/plans
-temp.py
+test_pdf.py
