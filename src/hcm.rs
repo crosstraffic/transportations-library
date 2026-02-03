@@ -5,4 +5,7 @@ pub mod managed_lanes;
 pub mod adjustment_factors;
 pub mod merge_diverge;
 pub mod weaving;
+pub mod topology;
+pub mod traffic_flow;
+pub mod geometric;
 mod utils;
