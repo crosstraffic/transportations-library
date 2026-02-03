@@ -17,6 +17,7 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
+    "pymupdf>=1.26.6",
     "pymupdf-layout>=1.26.6",
     "pymupdf4llm>=0.0.17",
 ]
