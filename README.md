@@ -13,7 +13,7 @@ Currently implements:
 ### Prerequisites
 
 - Rust: Install from [rustup.rs](https://rustup.rs/)
-- Python: 3.8 or higher
+- Python: 3.10 or higher
 - UV: Modern Python package manager (recommended)
 
 **Using UV (Recommended)**
