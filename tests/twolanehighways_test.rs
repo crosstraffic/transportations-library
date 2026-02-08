@@ -1,5 +1,5 @@
 use transportations_library::math;
-use transportations_library::twolanehighways::{Segment, SubSegment, TwoLaneHighways};
+use transportations_library::twolanehighways::{BicycleLOS, Segment, SubSegment, TwoLaneHighways};
 
 use std::fs::{self, File};
 use std::io::BufReader;
@@ -12,7 +12,11 @@ fn read_test_files() -> Vec<String> {
     let mut setting_files: Vec<String> = Vec::new();
 
     for path in paths {
-        setting_files.push(path.unwrap().path().display().to_string());
+        let path_str = path.unwrap().path().display().to_string();
+        // Only include case1.json through case4.json (exclude case_study files)
+        if path_str.contains("case") && !path_str.contains("case_study") {
+            setting_files.push(path_str);
+        }
     }
 
     setting_files.sort();
@@ -410,4 +414,72 @@ fn determine_facility_los_test() {
 
         assert_eq!(ans_los[index], fac_los);
     }
+}
+
+/// Test Bicycle LOS calculation based on HCM Chapter 15 Section 4
+/// Example based on typical two-lane highway conditions
+#[test]
+fn bicycle_los_test() {
+    // Test case 1: Good conditions (wide lane, wide shoulder, good pavement)
+    let bike_los1 = BicycleLOS::new(
+        12.0,  // lane width
+        6.0,   // shoulder width
+        50.0,  // speed limit
+        1,     // num lanes
+        4.0,   // pavement condition (good)
+        500.0, // hourly volume
+        0.88,  // PHF
+        0.06,  // heavy vehicle %
+        0.0,   // on-highway parking %
+    );
+
+    let result1 = bike_los1.analyze();
+    assert!(result1.blos_score > 0.0, "BLOS score should be positive");
+    assert!(result1.effective_width > 0.0, "Effective width should be positive");
+    assert!(['A', 'B', 'C', 'D', 'E', 'F'].contains(&result1.los), "LOS should be A-F");
+
+    // Test case 2: Poor conditions (narrow lane, no shoulder, poor pavement)
+    let bike_los2 = BicycleLOS::new(
+        10.0,   // lane width
+        0.0,    // shoulder width
+        55.0,   // speed limit
+        1,      // num lanes
+        2.0,    // pavement condition (poor)
+        800.0,  // hourly volume
+        0.88,   // PHF
+        0.10,   // heavy vehicle %
+        0.0,    // on-highway parking %
+    );
+
+    let result2 = bike_los2.analyze();
+    // Poor conditions should result in worse (higher) BLOS score
+    assert!(
+        result2.blos_score > result1.blos_score,
+        "Worse conditions should have higher BLOS score"
+    );
+
+    // Test case 3: Very low volume (should benefit from Equation 15-45)
+    let bike_los3 = BicycleLOS::new(
+        12.0,   // lane width
+        4.0,    // shoulder width
+        45.0,   // speed limit
+        1,      // num lanes
+        4.0,    // pavement condition (good)
+        100.0,  // hourly volume (< 160)
+        0.88,   // PHF
+        0.06,   // heavy vehicle %
+        0.0,    // on-highway parking %
+    );
+
+    let result3 = bike_los3.analyze();
+    // Low volume should have better (lower) BLOS score
+    assert!(
+        result3.blos_score < result1.blos_score,
+        "Lower volume should have lower BLOS score"
+    );
+
+    // Test default constructor
+    let bike_los_default = BicycleLOS::default();
+    let result_default = bike_los_default.analyze();
+    assert!(result_default.blos_score > 0.0, "Default BLOS should work");
 }

@@ -9,6 +9,16 @@ use serde::{Deserialize, Serialize};
 // Weather Conditions (Exhibit 11-20 and 11-21)
 // =============================================================================
 
+/// Method for looking up adjustment factors by FFS
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum FfsLookupMethod {
+    /// Use linear interpolation between FFS bins (55, 60, 65, 70, 75 mi/h)
+    #[default]
+    Interpolate,
+    /// Use exact bin values only (rounds to nearest bin)
+    ExactBin,
+}
+
 /// Weather event types as defined in HCM Chapter 11
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WeatherCondition {
@@ -40,7 +50,15 @@ impl WeatherCondition {
     /// Get the Capacity Adjustment Factor (CAF) for this weather condition
     /// based on facility free-flow speed.
     /// From Exhibit 11-20: Default CAFs by Weather Condition
+    ///
+    /// Uses interpolation by default. Use `get_caf_with_method` to specify lookup method.
     pub fn get_caf(&self, ffs: f64) -> f64 {
+        self.get_caf_with_method(ffs, FfsLookupMethod::default())
+    }
+
+    /// Get the Capacity Adjustment Factor (CAF) with specified lookup method.
+    /// From Exhibit 11-20: Default CAFs by Weather Condition
+    pub fn get_caf_with_method(&self, ffs: f64, method: FfsLookupMethod) -> f64 {
         // FFS bins: 55, 60, 65, 70, 75 mi/h
         let caf_values = match self {
             WeatherCondition::MediumRain => [0.94, 0.93, 0.92, 0.91, 0.90],
@@ -56,13 +74,21 @@ impl WeatherCondition {
             WeatherCondition::NonSevereWeather => [1.00, 1.00, 1.00, 1.00, 1.00],
         };
 
-        Self::interpolate_by_ffs(ffs, &caf_values)
+        Self::lookup_by_ffs(ffs, &caf_values, method)
     }
 
     /// Get the Speed Adjustment Factor (SAF) for this weather condition
     /// based on facility free-flow speed.
     /// From Exhibit 11-21: Default SAFs by Weather Condition
+    ///
+    /// Uses interpolation by default. Use `get_saf_with_method` to specify lookup method.
     pub fn get_saf(&self, ffs: f64) -> f64 {
+        self.get_saf_with_method(ffs, FfsLookupMethod::default())
+    }
+
+    /// Get the Speed Adjustment Factor (SAF) with specified lookup method.
+    /// From Exhibit 11-21: Default SAFs by Weather Condition
+    pub fn get_saf_with_method(&self, ffs: f64, method: FfsLookupMethod) -> f64 {
         // FFS bins: 55, 60, 65, 70, 75 mi/h
         let saf_values = match self {
             WeatherCondition::MediumRain => [0.96, 0.95, 0.94, 0.93, 0.93],
@@ -78,33 +104,47 @@ impl WeatherCondition {
             WeatherCondition::NonSevereWeather => [1.00, 1.00, 1.00, 1.00, 1.00],
         };
 
-        Self::interpolate_by_ffs(ffs, &saf_values)
+        Self::lookup_by_ffs(ffs, &saf_values, method)
     }
 
-    /// Interpolate adjustment factor based on FFS
-    ///
-    /// # Note
-    /// TODO: VERIFY - Using linear interpolation between FFS bins.
-    /// Check if HCM specifies a different interpolation method or requires exact bin values only.
-    /// See docs/verification_notes.md for details.
-    fn interpolate_by_ffs(ffs: f64, values: &[f64; 5]) -> f64 {
+    /// Lookup adjustment factor based on FFS using specified method
+    fn lookup_by_ffs(ffs: f64, values: &[f64; 5], method: FfsLookupMethod) -> f64 {
         let ffs_bins = [55.0, 60.0, 65.0, 70.0, 75.0];
 
-        if ffs <= ffs_bins[0] {
-            return values[0];
-        }
-        if ffs >= ffs_bins[4] {
-            return values[4];
-        }
+        match method {
+            FfsLookupMethod::Interpolate => {
+                if ffs <= ffs_bins[0] {
+                    return values[0];
+                }
+                if ffs >= ffs_bins[4] {
+                    return values[4];
+                }
 
-        for i in 0..4 {
-            if ffs >= ffs_bins[i] && ffs <= ffs_bins[i + 1] {
-                let ratio = (ffs - ffs_bins[i]) / (ffs_bins[i + 1] - ffs_bins[i]);
-                return values[i] + ratio * (values[i + 1] - values[i]);
+                for i in 0..4 {
+                    if ffs >= ffs_bins[i] && ffs <= ffs_bins[i + 1] {
+                        let ratio = (ffs - ffs_bins[i]) / (ffs_bins[i + 1] - ffs_bins[i]);
+                        return values[i] + ratio * (values[i + 1] - values[i]);
+                    }
+                }
+
+                values[2] // Default to 65 mi/h value
+            }
+            FfsLookupMethod::ExactBin => {
+                // Round to nearest bin
+                let bin_index = if ffs <= 57.5 {
+                    0 // 55 mi/h
+                } else if ffs <= 62.5 {
+                    1 // 60 mi/h
+                } else if ffs <= 67.5 {
+                    2 // 65 mi/h
+                } else if ffs <= 72.5 {
+                    3 // 70 mi/h
+                } else {
+                    4 // 75 mi/h
+                };
+                values[bin_index]
             }
         }
-
-        values[2] // Default to 65 mi/h value
     }
 }
 
@@ -247,7 +287,39 @@ impl IncidentSeverity {
 // Work Zone Types
 // =============================================================================
 
-/// Work zone types for capacity adjustment
+/// Work zone capacity adjustment factor calculation
+/// From Chapter 10: CAF_WZ = c_WZ / c
+///
+/// Work zone CAF is the ratio of work zone capacity to normal capacity.
+/// This depends on the specific work zone configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkZoneCAF {
+    /// Work zone capacity (pc/h/ln)
+    pub work_zone_capacity: f64,
+    /// Normal segment capacity (pc/h/ln)
+    pub normal_capacity: f64,
+}
+
+impl WorkZoneCAF {
+    /// Create a new work zone CAF calculation
+    pub fn new(work_zone_capacity: f64, normal_capacity: f64) -> Self {
+        Self {
+            work_zone_capacity,
+            normal_capacity,
+        }
+    }
+
+    /// Calculate the work zone CAF
+    /// CAF_WZ = c_WZ / c (from Chapter 10)
+    pub fn calculate_caf(&self) -> f64 {
+        if self.normal_capacity <= 0.0 {
+            return 1.0;
+        }
+        (self.work_zone_capacity / self.normal_capacity).min(1.0)
+    }
+}
+
+/// Work zone types for descriptive purposes
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WorkZoneType {
     /// Shoulder work only
@@ -270,28 +342,6 @@ pub enum WorkZoneBarrier {
 }
 
 impl WorkZoneType {
-    /// Get the default CAF range for this work zone type
-    /// Returns (min_caf, max_caf)
-    ///
-    /// # Note
-    /// TODO: VERIFY - These values need verification from HCM Chapter 10, Section 4.
-    /// The ThreePlusLaneClosure variant may not exist in the manual.
-    /// See docs/verification_notes.md for details.
-    pub fn get_caf_range(&self) -> (f64, f64) {
-        match self {
-            WorkZoneType::ShoulderWork => (0.90, 0.95),
-            WorkZoneType::OneLaneClosure => (0.70, 0.85),
-            WorkZoneType::TwoLaneClosure => (0.50, 0.65),
-            WorkZoneType::ThreePlusLaneClosure => (0.30, 0.50), // TODO: VERIFY - may not exist
-        }
-    }
-
-    /// Get a typical CAF value for this work zone type
-    pub fn get_typical_caf(&self) -> f64 {
-        let (min, max) = self.get_caf_range();
-        (min + max) / 2.0
-    }
-
     /// Get the number of lanes closed
     pub fn lanes_closed(&self) -> u32 {
         match self {
@@ -301,6 +351,22 @@ impl WorkZoneType {
             WorkZoneType::ThreePlusLaneClosure => 3,
         }
     }
+
+    /// Estimate work zone capacity based on remaining lanes
+    /// This is a simplified estimate; actual capacity depends on many factors
+    ///
+    /// # Arguments
+    /// * `normal_lanes` - Number of lanes in normal conditions
+    /// * `capacity_per_lane` - Normal capacity per lane (pc/h/ln)
+    pub fn estimate_work_zone_capacity(&self, normal_lanes: u32, capacity_per_lane: f64) -> f64 {
+        let remaining_lanes = normal_lanes.saturating_sub(self.lanes_closed());
+        if remaining_lanes == 0 {
+            return 0.0;
+        }
+        // Work zone lanes typically operate at reduced capacity (roughly 1600-1800 pc/h/ln)
+        let wz_capacity_per_lane = capacity_per_lane.min(1700.0);
+        remaining_lanes as f64 * wz_capacity_per_lane
+    }
 }
 
 // =============================================================================
@@ -308,48 +374,44 @@ impl WorkZoneType {
 // =============================================================================
 
 /// Driver population types affecting capacity and speed
+/// From Exhibit 26-9: Recommended CAF and SAF Adjustments for Driver Population Impacts
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DriverPopulation {
-    /// Commuter (familiar with roadway)
-    Commuter,
-    /// Recreational drivers
-    Recreational,
-    /// Heavy tourist traffic
-    TouristHeavy,
+    /// All familiar drivers, regular commuters
+    AllFamiliar,
+    /// Mostly familiar drivers
+    MostlyFamiliar,
+    /// Balanced mix of familiar and unfamiliar drivers
+    BalancedMix,
+    /// Mostly unfamiliar drivers
+    MostlyUnfamiliar,
+    /// All or overwhelmingly unfamiliar drivers
+    AllUnfamiliar,
 }
 
 impl DriverPopulation {
-    /// Get the CAF for this driver population type
-    /// Returns (min_caf, max_caf)
-    ///
-    /// # Note
-    /// TODO: VERIFY - These values need verification from HCM Chapter 26 or relevant section.
-    /// See docs/verification_notes.md for details.
-    pub fn get_caf_range(&self) -> (f64, f64) {
+    /// Get the CAF (CAFpop) for this driver population type
+    /// From Exhibit 26-9
+    pub fn get_caf(&self) -> f64 {
         match self {
-            DriverPopulation::Commuter => (1.00, 1.00),
-            DriverPopulation::Recreational => (0.85, 0.95),  // TODO: VERIFY
-            DriverPopulation::TouristHeavy => (0.75, 0.90),  // TODO: VERIFY
+            DriverPopulation::AllFamiliar => 1.000,
+            DriverPopulation::MostlyFamiliar => 0.968,
+            DriverPopulation::BalancedMix => 0.939,
+            DriverPopulation::MostlyUnfamiliar => 0.898,
+            DriverPopulation::AllUnfamiliar => 0.852,
         }
     }
 
-    /// Get the SAF for this driver population type
-    ///
-    /// # Note
-    /// TODO: VERIFY - These values need verification from HCM Chapter 26 or relevant section.
-    /// See docs/verification_notes.md for details.
+    /// Get the SAF (SAFpop) for this driver population type
+    /// From Exhibit 26-9
     pub fn get_saf(&self) -> f64 {
         match self {
-            DriverPopulation::Commuter => 1.00,
-            DriverPopulation::Recreational => 0.95,  // TODO: VERIFY
-            DriverPopulation::TouristHeavy => 0.90,  // TODO: VERIFY
+            DriverPopulation::AllFamiliar => 1.000,
+            DriverPopulation::MostlyFamiliar => 0.975,
+            DriverPopulation::BalancedMix => 0.950,
+            DriverPopulation::MostlyUnfamiliar => 0.913,
+            DriverPopulation::AllUnfamiliar => 0.863,
         }
-    }
-
-    /// Get typical CAF value
-    pub fn get_typical_caf(&self) -> f64 {
-        let (min, max) = self.get_caf_range();
-        (min + max) / 2.0
     }
 }
 
@@ -502,15 +564,21 @@ impl CapacityAdjustmentFactors {
         self
     }
 
-    /// Set work zone CAF
-    pub fn with_work_zone(mut self, work_zone: WorkZoneType) -> Self {
-        self.work_zone_caf = work_zone.get_typical_caf();
+    /// Set work zone CAF using WorkZoneCAF calculation
+    pub fn with_work_zone_caf(mut self, wz_caf: &WorkZoneCAF) -> Self {
+        self.work_zone_caf = wz_caf.calculate_caf();
+        self
+    }
+
+    /// Set work zone CAF directly
+    pub fn with_work_zone_caf_value(mut self, caf: f64) -> Self {
+        self.work_zone_caf = caf;
         self
     }
 
     /// Set driver population CAF
     pub fn with_driver_population(mut self, population: DriverPopulation) -> Self {
-        self.driver_population_caf = population.get_typical_caf();
+        self.driver_population_caf = population.get_caf();
         self
     }
 
@@ -630,8 +698,8 @@ pub struct ReliabilityScenario {
     pub weather: WeatherCondition,
     /// Incident severity (if any)
     pub incident: Option<IncidentSeverity>,
-    /// Work zone type (if any)
-    pub work_zone: Option<WorkZoneType>,
+    /// Work zone CAF (if any) - calculated as c_WZ / c per Chapter 10
+    pub work_zone_caf: Option<f64>,
     /// Driver population
     pub driver_population: DriverPopulation,
 }
@@ -644,8 +712,8 @@ impl ReliabilityScenario {
             month,
             weather: WeatherCondition::NonSevereWeather,
             incident: None,
-            work_zone: None,
-            driver_population: DriverPopulation::Commuter,
+            work_zone_caf: None,
+            driver_population: DriverPopulation::AllFamiliar,
         }
     }
 
@@ -661,9 +729,16 @@ impl ReliabilityScenario {
         self
     }
 
-    /// Set work zone
-    pub fn with_work_zone(mut self, work_zone: WorkZoneType) -> Self {
-        self.work_zone = Some(work_zone);
+    /// Set work zone CAF directly
+    /// Work zone CAF should be calculated as c_WZ / c (work zone capacity / normal capacity)
+    pub fn with_work_zone_caf(mut self, caf: f64) -> Self {
+        self.work_zone_caf = Some(caf);
+        self
+    }
+
+    /// Set work zone CAF from WorkZoneCAF calculation
+    pub fn with_work_zone(mut self, wz_caf: &WorkZoneCAF) -> Self {
+        self.work_zone_caf = Some(wz_caf.calculate_caf());
         self
     }
 
@@ -683,8 +758,8 @@ impl ReliabilityScenario {
             caf_builder = caf_builder.with_incident(incident, directional_lanes);
         }
 
-        if let Some(work_zone) = self.work_zone {
-            caf_builder = caf_builder.with_work_zone(work_zone);
+        if let Some(wz_caf) = self.work_zone_caf {
+            caf_builder = caf_builder.with_work_zone_caf_value(wz_caf);
         }
 
         // Note: is_urban is available for future extensions
@@ -797,6 +872,83 @@ pub fn calculate_pt_45(tti_mean: f64) -> f64 {
     pt.max(0.0).min(1.0)
 }
 
+// =============================================================================
+// Incident Frequency Calculations (Chapter 25 - Equations 25-77 to 25-79)
+// =============================================================================
+
+/// Default incident-to-crash ratio (national default from Chapter 25)
+pub const DEFAULT_INCIDENT_CRASH_RATIO: f64 = 4.9;
+
+/// Calculate expected incident frequency - Equation 25-77
+///
+/// # Arguments
+/// * `incident_rate` - Incident rate per 100 million VMT (IR_j)
+/// * `vmt` - Vehicle miles traveled for scenarios in month j
+///
+/// # Returns
+/// Expected frequency of all incidents in the study period (rounded to nearest integer)
+pub fn calculate_incident_frequency(incident_rate: f64, vmt: f64) -> f64 {
+    (incident_rate * vmt / 100_000_000.0).round()
+}
+
+/// Estimate incident rate from crash rate - Equation 25-78
+///
+/// # Arguments
+/// * `crash_rate` - Crash rate per 100 million VMT (CR_j)
+/// * `incident_crash_ratio` - Incident-to-crash ratio (default 4.9)
+///
+/// # Returns
+/// Incident rate per 100 million VMT
+pub fn estimate_incident_rate(crash_rate: f64, incident_crash_ratio: f64) -> f64 {
+    crash_rate * incident_crash_ratio
+}
+
+/// Estimate crash rate using HERS model - Equation 25-79
+///
+/// # Arguments
+/// * `aadt` - Annual average daily traffic (veh/day)
+/// * `two_way_hourly_capacity` - Two-way hourly capacity (veh/h)
+/// * `lane_width` - Lane width in feet
+///
+/// # Returns
+/// Crash rate per 100 million VMT
+pub fn estimate_crash_rate_hers(aadt: f64, two_way_hourly_capacity: f64, lane_width: f64) -> f64 {
+    if two_way_hourly_capacity <= 0.0 {
+        return 0.0;
+    }
+
+    let acr = aadt / two_way_hourly_capacity;
+
+    // CR = (154.0 - 1.203*ACR + 0.258*ACR^2 - 0.00000524*ACR^5) * e^(0.0082*(12-LW))
+    let base = 154.0 - 1.203 * acr + 0.258 * acr.powi(2) - 0.00000524 * acr.powi(5);
+    let lane_width_factor = (0.0082 * (12.0 - lane_width)).exp();
+
+    (base * lane_width_factor).max(0.0)
+}
+
+/// Default incident frequency by month (relative to January)
+/// From Exhibit 25-103 (example values - may vary by location)
+pub fn get_default_incident_frequency_factor(month: Month) -> f64 {
+    match month {
+        Month::January => 0.65,
+        Month::February => 0.67,
+        Month::March => 0.72,
+        Month::April => 0.77,
+        Month::May => 0.77,
+        Month::June => 0.80,
+        Month::July => 0.89,
+        Month::August => 0.82,
+        Month::September => 0.83,
+        Month::October => 0.83,
+        Month::November => 0.79,
+        Month::December => 0.77,
+    }
+}
+
+// =============================================================================
+// Planning-Level Reliability Results
+// =============================================================================
+
 /// Planning-level reliability analysis results
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlanningReliabilityResult {
@@ -864,6 +1016,27 @@ mod tests {
     }
 
     #[test]
+    fn test_ffs_lookup_method() {
+        // Test interpolation (default) - FFS 67.5 is between 65 and 70
+        // MediumRain CAF: 65->0.92, 70->0.91, so 67.5 should be ~0.915
+        let caf_interp = WeatherCondition::MediumRain.get_caf_with_method(67.5, FfsLookupMethod::Interpolate);
+        assert!((caf_interp - 0.915).abs() < 0.001);
+
+        // Test exact bin - FFS 67.5 rounds to 70 mi/h bin (since 67.5 <= 67.5)
+        // Actually 67.5 is the boundary, should go to 65 bin
+        let caf_exact = WeatherCondition::MediumRain.get_caf_with_method(67.5, FfsLookupMethod::ExactBin);
+        assert!((caf_exact - 0.92).abs() < 0.001); // 65 mi/h bin value
+
+        // Test exact bin at 68 mi/h - should round to 70 mi/h bin
+        let caf_exact_68 = WeatherCondition::MediumRain.get_caf_with_method(68.0, FfsLookupMethod::ExactBin);
+        assert!((caf_exact_68 - 0.91).abs() < 0.001); // 70 mi/h bin value
+
+        // Default method should be interpolation
+        let caf_default = WeatherCondition::MediumRain.get_caf(67.5);
+        assert!((caf_default - caf_interp).abs() < 0.0001);
+    }
+
+    #[test]
     fn test_incident_caf() {
         // From Exhibit 11-23
         assert_eq!(IncidentSeverity::ShoulderClosed.get_caf(2), Some(0.81));
@@ -903,6 +1076,36 @@ mod tests {
     }
 
     #[test]
+    fn test_driver_population() {
+        // From Exhibit 26-9
+        assert!((DriverPopulation::AllFamiliar.get_caf() - 1.000).abs() < 0.001);
+        assert!((DriverPopulation::AllFamiliar.get_saf() - 1.000).abs() < 0.001);
+
+        assert!((DriverPopulation::MostlyFamiliar.get_caf() - 0.968).abs() < 0.001);
+        assert!((DriverPopulation::MostlyFamiliar.get_saf() - 0.975).abs() < 0.001);
+
+        assert!((DriverPopulation::BalancedMix.get_caf() - 0.939).abs() < 0.001);
+        assert!((DriverPopulation::BalancedMix.get_saf() - 0.950).abs() < 0.001);
+
+        assert!((DriverPopulation::MostlyUnfamiliar.get_caf() - 0.898).abs() < 0.001);
+        assert!((DriverPopulation::MostlyUnfamiliar.get_saf() - 0.913).abs() < 0.001);
+
+        assert!((DriverPopulation::AllUnfamiliar.get_caf() - 0.852).abs() < 0.001);
+        assert!((DriverPopulation::AllUnfamiliar.get_saf() - 0.863).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_work_zone_caf() {
+        // CAF_WZ = c_WZ / c
+        let wz_caf = WorkZoneCAF::new(1700.0, 2400.0);
+        assert!((wz_caf.calculate_caf() - 0.708).abs() < 0.01);
+
+        // Full capacity should give 1.0
+        let wz_caf_full = WorkZoneCAF::new(2400.0, 2400.0);
+        assert!((wz_caf_full.calculate_caf() - 1.0).abs() < 0.001);
+    }
+
+    #[test]
     fn test_combined_caf() {
         let caf = CapacityAdjustmentFactors::new()
             .with_weather(WeatherCondition::MediumRain, 65.0)
@@ -938,5 +1141,29 @@ mod tests {
         assert!(caf > 0.0 && caf <= 1.0);
         assert!(saf > 0.0 && saf <= 1.0);
         assert!(daf > 0.0);
+    }
+
+    #[test]
+    fn test_incident_frequency_equations() {
+        // Equation 25-77: n_j = IR_j × VMT_j / 100,000,000
+        let n = calculate_incident_frequency(150.0, 50_000_000.0);
+        assert!((n - 75.0).abs() < 1.0); // 150 * 50M / 100M = 75
+
+        // Equation 25-78: IR_j = CR_j × ICR
+        let ir = estimate_incident_rate(30.0, DEFAULT_INCIDENT_CRASH_RATIO);
+        assert!((ir - 147.0).abs() < 1.0); // 30 * 4.9 = 147
+
+        // Equation 25-79: HERS crash rate model
+        // Test with typical values: AADT=50000, capacity=4000, lane width=12
+        let cr = estimate_crash_rate_hers(50000.0, 4000.0, 12.0);
+        assert!(cr > 0.0 && cr < 500.0); // Should be positive and reasonable
+    }
+
+    #[test]
+    fn test_incident_frequency_by_month() {
+        // From Exhibit 25-103
+        assert!((get_default_incident_frequency_factor(Month::January) - 0.65).abs() < 0.01);
+        assert!((get_default_incident_frequency_factor(Month::July) - 0.89).abs() < 0.01);
+        assert!((get_default_incident_frequency_factor(Month::December) - 0.77).abs() < 0.01);
     }
 }

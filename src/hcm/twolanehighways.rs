@@ -1,6 +1,110 @@
+//! # Two-Lane Highways Analysis (HCM Chapter 15)
+//!
+//! This module implements the Highway Capacity Manual (HCM) 7th Edition methodology
+//! for analyzing two-lane highways, covering both motorized vehicle and bicycle operations.
+//!
+//! ## Overview
+//!
+//! Two-lane highways have one lane for traffic in each direction. The principal characteristic
+//! that distinguishes two-lane highways from other uninterrupted-flow facilities is that
+//! passing maneuvers take place in the opposing lane of traffic. As demand flows and geometric
+//! restrictions increase, opportunities to pass decrease, creating platoons and degrading
+//! service quality at relatively low volume-to-capacity ratios.
+//!
+//! ## Segment Types
+//!
+//! The methodology classifies segments into three types:
+//!
+//! - **Passing Constrained (PC)**: Segments where passing in the oncoming lane is prohibited
+//!   or effectively negligible due to geometric or sight distance limitations.
+//!
+//! - **Passing Zone (PZ)**: Segments where passing in the oncoming lane is permitted and
+//!   sufficient sight distance exists for safe passing maneuvers.
+//!
+//! - **Passing Lane (PL)**: Segments with an additional lane in the same travel direction,
+//!   allowing faster vehicles to pass slower vehicles without using the opposing lane.
+//!
+//! ## Performance Measures
+//!
+//! ### Motorized Vehicle Methodology (Section 3)
+//!
+//! The methodology produces these performance measures:
+//! - **Free-Flow Speed (FFS)**: Speed under low-demand conditions (≤200 veh/h two-way)
+//! - **Average Speed**: Mean speed of vehicles at the segment endpoint
+//! - **Percent Followers**: Percentage of vehicles with headway ≤2.5 seconds
+//! - **Follower Density**: Followers per mile per lane (used for LOS determination)
+//!
+//! ### Bicycle Methodology (Section 4)
+//!
+//! The bicycle LOS methodology produces:
+//! - **BLOS Score**: Numeric score reflecting bicyclist perception of conditions
+//! - **Bicycle LOS**: Letter grade A-F based on BLOS score
+//!
+//! ## Capacity
+//!
+//! - Passing Constrained and Passing Zone segments: 1,700 veh/h/ln
+//! - Passing Lane segments: 1,100-1,500 veh/h depending on vertical class and heavy vehicle %
+//!
+//! ## Level of Service Criteria (Exhibit 15-6)
+//!
+//! | LOS | Higher-Speed (≥50 mi/h) | Lower-Speed (<50 mi/h) |
+//! |-----|-------------------------|------------------------|
+//! | A   | FD ≤ 2.0               | FD ≤ 2.5              |
+//! | B   | FD ≤ 4.0               | FD ≤ 5.0              |
+//! | C   | FD ≤ 8.0               | FD ≤ 10.0             |
+//! | D   | FD ≤ 12.0              | FD ≤ 15.0             |
+//! | E   | FD > 12.0              | FD > 15.0             |
+//! | F   | Demand > Capacity      | Demand > Capacity     |
+//!
+//! ## Key Equations
+//!
+//! ### Free-Flow Speed (Equations 15-2 to 15-6)
+//! ```text
+//! BFFS = 1.14 × Spl                           (Eq 15-2)
+//! FFS = BFFS - a × HV% - f_LS - f_A           (Eq 15-3)
+//! f_LS = 0.6 × (12 - LW) + 0.7 × (6 - SW)     (Eq 15-5)
+//! f_A = min(APD/4, 10)                        (Eq 15-6)
+//! ```
+//!
+//! ### Average Speed (Equation 15-7)
+//! ```text
+//! S = FFS - m × (v_d/1000 - 0.1)^p
+//! ```
+//! where m (slope) and p (power) coefficients depend on vertical class and segment type.
+//!
+//! ### Percent Followers (Equation 15-17)
+//! ```text
+//! PF = 100 × (1 - e^(m × (v_d/1000)^p))
+//! ```
+//!
+//! ### Follower Density (Equation 15-35)
+//! ```text
+//! FD = (PF × v_d) / (100 × S)
+//! ```
+//!
+//! ## References
+//!
+//! - HCM 7th Edition, Chapter 15: Two-Lane Highways
+//! - NCHRP Project 17-65: Improved Analysis of Two-Lane Highway Capacity and Operational Performance
+
 use crate::utils::math;
 use serde::{Deserialize, Serialize};
 
+/// Represents a horizontal curve subsegment within a two-lane highway segment.
+///
+/// Subsegments are used to model varying horizontal curvature within a single analysis segment.
+/// Each horizontal curve affects vehicle speeds and is classified according to Exhibit 15-22.
+///
+/// # Horizontal Classes (Exhibit 15-22)
+///
+/// | Class | Description | Typical Radius Range |
+/// |-------|-------------|---------------------|
+/// | 0     | Tangent (no curve) | ≥2550 ft or no restriction |
+/// | 1     | Mild curve | 1350-2549 ft |
+/// | 2     | Moderate curve | 750-1349 ft |
+/// | 3     | Sharp curve | 450-749 ft |
+/// | 4     | Very sharp curve | 300-449 ft |
+/// | 5     | Severe curve | <300 ft |
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubSegment {
     /// Length of subsegment, ft.
@@ -17,12 +121,43 @@ pub struct SubSegment {
     pub sup_ele: Option<f64>,
 }
 
+/// Represents a homogeneous segment of a two-lane highway for analysis.
+///
+/// Each segment should have consistent properties including traffic demand, grade,
+/// lane/shoulder widths, posted speed limit, and passing type. The methodology
+/// analyzes each segment in upstream-to-downstream order.
+///
+/// # Segment Types
+///
+/// - **Passing Constrained (0)**: No passing opportunities due to sight distance or markings
+/// - **Passing Zone (1)**: Passing in opposing lane is permitted with adequate sight distance
+/// - **Passing Lane (2)**: Added lane allows passing without using opposing lane
+///
+/// # Vertical Alignment Classes (Exhibit 15-11)
+///
+/// Vertical class is determined by segment length and grade percentage:
+///
+/// | Class | Description | Effect on Operations |
+/// |-------|-------------|---------------------|
+/// | 1     | Level/gentle | Minimal speed reduction |
+/// | 2     | Mild grade | Slight truck speed reduction |
+/// | 3     | Moderate grade | Noticeable truck slowdown |
+/// | 4     | Steep grade | Significant truck speed reduction |
+/// | 5     | Severe grade | Trucks at crawl speed |
+///
+/// # Minimum/Maximum Segment Lengths (Exhibit 15-10)
+///
+/// | Vertical Class | PC Min/Max | PZ Min/Max | PL Min/Max |
+/// |---------------|------------|------------|------------|
+/// | 1-2           | 0.25/3.0 mi | 0.25/2.0 mi | 0.5/3.0 mi |
+/// | 3             | 0.25/1.1 mi | 0.25/1.1 mi | 0.5/1.1 mi |
+/// | 4-5           | 0.5/3.0 mi | 0.5/2.0 mi | 0.5/3.0 mi |
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Segment {
-    /// Passing Type. TODO: Defined with enum?
-    /// 0 -> Passing Constrained
-    /// 1 -> Passing Zone
-    /// 2 -> Passing Lane
+    /// Passing type classification:
+    /// - 0: Passing Constrained (PC) - no passing opportunities
+    /// - 1: Passing Zone (PZ) - passing in opposing lane permitted
+    /// - 2: Passing Lane (PL) - added lane for passing
     pub passing_type: usize,
     /// Length of segment, mi.
     pub length: f64,
@@ -65,24 +200,76 @@ pub struct Segment {
     pub hor_class: Option<i32>,
 }
 
-/// Two Lane Highways on chapter 15 of HCM.
+/// Main analysis structure for Two-Lane Highways (HCM Chapter 15).
+///
+/// This struct represents a two-lane highway facility composed of one or more
+/// contiguous segments. It provides methods for computing all performance measures
+/// defined in the HCM methodology.
+///
+/// # Analysis Workflow
+///
+/// The recommended analysis sequence for each segment:
+///
+/// 1. **Step 1**: Identify vertical class with `identify_vertical_class()`
+/// 2. **Step 2**: Determine demand flow rates with `determine_demand_flow()`
+/// 3. **Step 3**: Determine vertical alignment with `determine_vertical_alignment()`
+/// 4. **Step 4**: Determine free-flow speed with `determine_free_flow_speed()`
+/// 5. **Step 5**: Estimate average speed with `estimate_average_speed()`
+/// 6. **Step 6**: Estimate percent followers with `estimate_percent_followers()`
+/// 7. **Step 7**: For passing lanes, calculate lane-specific measures
+/// 8. **Step 8**: Calculate follower density with `determine_follower_density_*()` methods
+/// 9. **Step 9**: Adjust for upstream passing lanes with `determine_adjustment_to_follower_density()`
+/// 10. **Step 10**: Determine segment LOS with `determine_segment_los()`
+/// 11. **Step 11**: Combine segments for facility analysis with `determine_facility_los()`
+///
+/// # Base Conditions (Exhibit 15-8)
+///
+/// Default values when site-specific data is unavailable:
+/// - Lane width: 12 ft
+/// - Shoulder width: 6 ft
+/// - Access point density: 0 points/mi
+/// - Peak hour factor: 0.94
+/// - Heavy vehicle percentage: 6%
+///
+/// # Example
+///
+/// ```ignore
+/// let mut highway = TwoLaneHighways::new(segments, Some(12.0), Some(6.0), Some(5.0), None, None);
+///
+/// for seg_num in 0..highway.segments.len() {
+///     highway.determine_demand_flow(seg_num);
+///     highway.determine_vertical_alignment(seg_num);
+///     highway.determine_free_flow_speed(seg_num);
+///     let (speed, _) = highway.estimate_average_speed(seg_num);
+///     highway.estimate_percent_followers(seg_num);
+///
+///     if highway.segments[seg_num].passing_type == 2 {
+///         highway.determine_follower_density_pl(seg_num);
+///     } else {
+///         highway.determine_follower_density_pc_pz(seg_num);
+///     }
+///
+///     let los = highway.determine_segment_los(seg_num, speed, capacity);
+/// }
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
-// #[serde(bound(deserialize = "T: SegmentOperations"))]
-// pub struct TwoLaneHighways<T: SegmentOperations> {
 pub struct TwoLaneHighways {
-    // pub segments: Vec<Box<dyn SegmentOperations>>,
+    /// Collection of contiguous highway segments for analysis
     pub segments: Vec<Segment>,
-    // pub segments: Vec<T>,
-    /// Lane width, ft.
+    /// Lane width in feet (default: 12 ft).
+    /// Base condition is ≥12 ft; narrower lanes reduce FFS.
     pub lane_width: Option<f64>,
-    /// Shoulder width, ft.
+    /// Paved shoulder width in feet (default: 6 ft).
+    /// Base condition is ≥6 ft; narrower shoulders reduce FFS.
     pub shoulder_width: Option<f64>,
-    /// Access point density (access points/mi).
-    /// https://highways.dot.gov/safety/other/access-management-driveways
+    /// Access point density in access points per mile (default: 0).
+    /// Includes major driveways and side roads with ADT ≥20 vehicles/day.
     pub apd: Option<f64>,
-    /// Percentage multiplier for heavy vehicles in the faster / passing lane
+    /// Proportion of heavy vehicles using the faster/passing lane (for PL segments).
+    /// Used in Equation 15-28 for passing lane analysis.
     pub pmhvfl: Option<f64>,
-    /// Effective distance to passing lane
+    /// Effective downstream distance from passing lane start (mi).
+    /// Distance where passing lane benefits persist.
     pub l_de: Option<f64>,
 }
 
@@ -342,16 +529,30 @@ impl Segment {
     }
 }
 
-// impl<T: SegmentOperations> TwoLaneHighways<T> {
 impl TwoLaneHighways {
-    /// Returns a segment LOS and LOS
+    /// Creates a new TwoLaneHighways facility for analysis.
     ///
     /// # Arguments
     ///
-    /// * `segment number` - the number of segments
+    /// * `segments` - Vector of highway segments (must be contiguous and in order)
+    /// * `lane_width` - Lane width in feet (default: 12 ft if None)
+    /// * `shoulder_width` - Paved shoulder width in feet (default: 6 ft if None)
+    /// * `apd` - Access point density in points/mile (default: 0 if None)
+    /// * `pmhvfl` - Proportion of heavy vehicles in faster lane for PL segments
+    /// * `l_de` - Effective distance from passing lane (computed if None)
     ///
-
-    // pub fn new(segments: Vec<T>, lane_width: f64, shoulder_width: f64, apd: f64, pmhvfl: f64, l_de: f64) -> TwoLaneHighways<T> {
+    /// # Example
+    ///
+    /// ```ignore
+    /// let highway = TwoLaneHighways::new(
+    ///     segments,
+    ///     Some(12.0),  // 12-ft lanes
+    ///     Some(6.0),   // 6-ft shoulders
+    ///     Some(5.0),   // 5 access points/mi
+    ///     None,
+    ///     None,
+    /// );
+    /// ```
     pub fn new(
         segments: Vec<Segment>,
         lane_width: Option<f64>,
@@ -375,8 +576,24 @@ impl TwoLaneHighways {
         return &self.segments;
     }
 
-    /// Step 1: Identify vertical class
-    /// TODO: This should be carefully reviewed if a passing lane exceeds 3 mi in length...
+    /// Step 1: Identify minimum and maximum segment lengths based on vertical class.
+    ///
+    /// Returns the allowable segment length range based on the vertical alignment class
+    /// and segment type, per Exhibit 15-10. Segments outside this range should use
+    /// the min/max values for Steps 2-9, with actual lengths used in Step 10.
+    ///
+    /// # Arguments
+    ///
+    /// * `seg_num` - Index of the segment to analyze
+    ///
+    /// # Returns
+    ///
+    /// Tuple of (minimum_length, maximum_length) in miles
+    ///
+    /// # Notes
+    ///
+    /// - Passing lanes exceeding 3 mi may be better analyzed as multilane highways
+    /// - Class 3 segments have shorter max length (1.1 mi) due to transitional nature
     pub fn identify_vertical_class(&mut self, seg_num: usize) -> (f64, f64) {
         let mut _min = 0.0;
         let mut _max = 0.0;
@@ -419,7 +636,27 @@ impl TwoLaneHighways {
         (_min, _max)
     }
 
-    /// Step 2: Determine demand flow rates and capacity
+    /// Step 2: Determine demand flow rates and segment capacity.
+    ///
+    /// Calculates demand flow rates using Equation 15-1: v_i = V_i / PHF
+    ///
+    /// Capacity values per Exhibit 15-5:
+    /// - PC and PZ segments: 1,700 veh/h
+    /// - PL segments: 1,100-1,500 veh/h depending on HV% and vertical class
+    ///
+    /// # Arguments
+    ///
+    /// * `seg_num` - Index of the segment to analyze
+    ///
+    /// # Returns
+    ///
+    /// Tuple of (analysis_direction_flow, opposing_direction_flow, capacity)
+    ///
+    /// # Opposing Flow Assumptions
+    ///
+    /// - PC segments: v_o = 1,500 veh/h (assumed high opposing flow)
+    /// - PZ segments: v_o from input or 0 if not provided
+    /// - PL segments: v_o = 0 (passing doesn't use opposing lane)
     pub fn determine_demand_flow(&mut self, seg_num: usize) -> (f64, f64, i32) {
         let v_i = self.segments[seg_num].get_volume();
         let v_o = self.segments[seg_num].get_volume_op();
@@ -481,7 +718,34 @@ impl TwoLaneHighways {
         (demand_flow_i, demand_flow_o, capacity)
     }
 
-    /// Step 3: Determine vertical alignment classification
+    /// Step 3: Determine vertical alignment classification (Exhibit 15-11).
+    ///
+    /// Classifies the segment's vertical alignment into one of 5 classes based on
+    /// segment length and grade percentage. The vertical class affects coefficient
+    /// values used in speed and percent follower calculations.
+    ///
+    /// # Vertical Classes
+    ///
+    /// | Class | Effect | Typical Conditions |
+    /// |-------|--------|-------------------|
+    /// | 1 | Minimal | Level terrain, short mild grades |
+    /// | 2 | Slight | Moderate grades, trucks slightly slower |
+    /// | 3 | Moderate | Trucks noticeably slower |
+    /// | 4 | Significant | Substantial truck speed reduction |
+    /// | 5 | Severe | Trucks at or near crawl speed |
+    ///
+    /// # Arguments
+    ///
+    /// * `seg_num` - Index of the segment to analyze
+    ///
+    /// # Returns
+    ///
+    /// Vertical alignment class (1-5)
+    ///
+    /// # Notes
+    ///
+    /// - Upgrades and downgrades have different classification thresholds
+    /// - If the computed class differs from stored value, it updates and re-runs Step 1
     pub fn determine_vertical_alignment(&mut self, seg_num: usize) -> i32 {
         let mut seg_length = self.segments[seg_num].get_length();
         let seg_grade = self.segments[seg_num].get_grade();
@@ -693,7 +957,34 @@ impl TwoLaneHighways {
         ver_align
     }
 
-    /// Step 4: Determine free-flow speed
+    /// Step 4: Determine free-flow speed (Equations 15-2 to 15-6).
+    ///
+    /// Estimates the free-flow speed based on posted speed limit, heavy vehicle percentage,
+    /// lane/shoulder width, and access point density.
+    ///
+    /// # Equations
+    ///
+    /// ```text
+    /// BFFS = 1.14 × Spl                                              (Eq 15-2)
+    /// FFS = BFFS - a × HV% - f_LS - f_A                              (Eq 15-3)
+    /// a = max(0.0333, a0 + a1×BFFS + a2×L + ...)                     (Eq 15-4)
+    /// f_LS = 0.6 × (12 - LW) + 0.7 × (6 - SW)                        (Eq 15-5)
+    /// f_A = min(APD/4, 10)                                           (Eq 15-6)
+    /// ```
+    ///
+    /// # Arguments
+    ///
+    /// * `seg_num` - Index of the segment to analyze
+    ///
+    /// # Returns
+    ///
+    /// Free-flow speed in mi/h
+    ///
+    /// # Coefficient Table (Exhibit 15-12)
+    ///
+    /// Coefficients a0-a5 vary by vertical class:
+    /// - Class 1: All zeros (no HV effect on level terrain)
+    /// - Classes 2-5: Increasing HV speed reduction with steeper grades
     pub fn determine_free_flow_speed(&mut self, seg_num: usize) -> f64 {
         let spl = self.segments[seg_num].get_spl();
         let vc = self.segments[seg_num].get_vertical_class();
@@ -769,7 +1060,38 @@ impl TwoLaneHighways {
         ffs
     }
 
-    /// Step 5: Estimate average speed
+    /// Step 5: Estimate average speed (Equations 15-7 to 15-16).
+    ///
+    /// Calculates the average speed at the segment endpoint, accounting for
+    /// traffic flow effects and horizontal curvature adjustments.
+    ///
+    /// # Core Equation (Eq 15-7)
+    ///
+    /// ```text
+    /// S = FFS                           if v_d ≤ 100 veh/h
+    /// S = FFS - m × (v_d/1000 - 0.1)^p  if v_d > 100 veh/h
+    /// ```
+    ///
+    /// where:
+    /// - m = slope coefficient (from Eq 15-8, Exhibits 15-13/15-14)
+    /// - p = power coefficient (from Eq 15-11, Exhibits 15-19/15-20)
+    ///
+    /// # Horizontal Curvature Adjustment (Step 5d)
+    ///
+    /// If the segment contains horizontal curves:
+    /// 1. Each curve is classified (Exhibit 15-22) based on radius and superelevation
+    /// 2. Speeds on curves are reduced using Equations 15-12 to 15-15
+    /// 3. Segment speed is length-weighted average (Equation 15-16)
+    ///
+    /// # Arguments
+    ///
+    /// * `seg_num` - Index of the segment to analyze
+    ///
+    /// # Returns
+    ///
+    /// Tuple of (average_speed, horizontal_class)
+    /// - average_speed in mi/h
+    /// - horizontal_class (0-5, or 0 if no curves)
     pub fn estimate_average_speed(&mut self, seg_num: usize) -> (f64, i32) {
         let spl = self.segments[seg_num].get_spl();
         let bffs = math::round_to_significant_digits(1.14 * spl, 3);
@@ -1448,7 +1770,35 @@ impl TwoLaneHighways {
         pf
     }
 
-    /// Step 6: Estimate percent followers
+    /// Step 6: Estimate percent followers (Equations 15-17 to 15-23).
+    ///
+    /// Calculates the percentage of vehicles in a "follower" state (headway ≤2.5 seconds).
+    /// Percent followers represents freedom to maneuver and serves as a proxy for
+    /// the need to provide passing opportunities.
+    ///
+    /// # Core Equation (Eq 15-17)
+    ///
+    /// ```text
+    /// PF = 100 × (1 - e^(m × (v_d/1000)^p))
+    /// ```
+    ///
+    /// The exponential curve is fitted through two points:
+    /// - PF at 25% of capacity (Eq 15-20/15-21)
+    /// - PF at capacity (Eq 15-18/15-19)
+    ///
+    /// # Arguments
+    ///
+    /// * `seg_num` - Index of the segment to analyze
+    ///
+    /// # Returns
+    ///
+    /// Percent followers (0-100%)
+    ///
+    /// # Notes
+    ///
+    /// - Even at capacity, PF won't reach 100% due to gaps between platoons
+    /// - PF is not adjusted for horizontal curvature (minimal impact compared to speed)
+    /// - Different coefficient tables for PC/PZ vs PL segments (Exhibits 15-24 to 15-29)
     pub fn estimate_percent_followers(&mut self, seg_num: usize) -> f64 {
         let seg_length = self.segments[seg_num].get_length();
         let ffs = self.segments[seg_num].get_ffs();
@@ -1508,9 +1858,41 @@ impl TwoLaneHighways {
         pf
     }
 
-    // Step 7: Calculate passing lane parameters
-
-    // Step 8: Determine follower density
+    /// Steps 7-8: Calculate passing lane performance and follower density (Equations 15-24 to 15-35).
+    ///
+    /// For Passing Lane segments, this method:
+    /// 1. Distributes flow between faster lane (FL) and slower lane (SL)
+    /// 2. Calculates separate speeds and percent followers for each lane
+    /// 3. Computes follower density at the passing lane midpoint (for LOS)
+    /// 4. Also computes follower density at segment endpoint
+    ///
+    /// # Flow Distribution (Equations 15-24 to 15-27)
+    ///
+    /// ```text
+    /// NumHV = v_d × HV%                                              (Eq 15-24)
+    /// PropFlowFL = 0.92183 - 0.05022×ln(v_d) - 0.00030×NumHV        (Eq 15-25)
+    /// FlowFL = v_d × PropFlowFL                                      (Eq 15-26)
+    /// FlowSL = v_d - FlowFL                                          (Eq 15-27)
+    /// ```
+    ///
+    /// # Midpoint Follower Density (Equation 15-34)
+    ///
+    /// ```text
+    /// FD_PLmid = (PF_FL×v_FL/S_FL + PF_SL×v_SL/S_SL) / 200
+    /// ```
+    ///
+    /// # Arguments
+    ///
+    /// * `seg_num` - Index of the Passing Lane segment to analyze
+    ///
+    /// # Returns
+    ///
+    /// Tuple of (endpoint_follower_density, midpoint_follower_density)
+    ///
+    /// # Notes
+    ///
+    /// - FD_PLmid is used for LOS determination on passing lane segments
+    /// - Speed differential adjustment accounts for faster vehicles passing slower ones
     pub fn determine_follower_density_pl(&mut self, seg_num: usize) -> (f64, f64) {
         let mut s_init_fl: f64;
         let mut s_init_sl: f64;
@@ -1593,6 +1975,30 @@ impl TwoLaneHighways {
         (fd, fd_mid)
     }
 
+    /// Calculate follower density for Passing Constrained and Passing Zone segments (Equation 15-35).
+    ///
+    /// Follower density is the service measure used to determine LOS on two-lane highways.
+    /// It combines the effects of both platooning (percent followers) and traffic density.
+    ///
+    /// # Equation 15-35
+    ///
+    /// ```text
+    /// FD = (PF × v_d) / (100 × S)
+    /// ```
+    ///
+    /// where:
+    /// - FD = follower density (followers/mi/ln)
+    /// - PF = percent followers (%)
+    /// - v_d = demand flow rate (veh/h)
+    /// - S = average speed (mi/h)
+    ///
+    /// # Arguments
+    ///
+    /// * `seg_num` - Index of the segment to analyze
+    ///
+    /// # Returns
+    ///
+    /// Follower density in followers/mi/ln
     pub fn determine_follower_density_pc_pz(&mut self, seg_num: usize) -> f64 {
         let s = self.segments[seg_num].get_avg_speed();
         let pf = self.segments[seg_num].get_percent_followers();
@@ -1698,6 +2104,38 @@ impl TwoLaneHighways {
         fd_adj
     }
 
+    /// Step 10: Determine segment Level of Service (Exhibit 15-6).
+    ///
+    /// Determines LOS based on follower density and posted speed limit category.
+    /// Two sets of thresholds account for different driver expectations on
+    /// higher-speed vs lower-speed highways.
+    ///
+    /// # LOS Criteria (Exhibit 15-6)
+    ///
+    /// | LOS | Higher-Speed (≥50 mi/h) | Lower-Speed (<50 mi/h) |
+    /// |-----|-------------------------|------------------------|
+    /// | A   | FD ≤ 2.0               | FD ≤ 2.5              |
+    /// | B   | FD ≤ 4.0               | FD ≤ 5.0              |
+    /// | C   | FD ≤ 8.0               | FD ≤ 10.0             |
+    /// | D   | FD ≤ 12.0              | FD ≤ 15.0             |
+    /// | E   | FD > 12.0              | FD > 15.0             |
+    /// | F   | Demand > Capacity      | Demand > Capacity     |
+    ///
+    /// # Arguments
+    ///
+    /// * `seg_num` - Index of the segment
+    /// * `s_pl` - Posted speed limit (mi/h) - determines threshold set
+    /// * `cap` - Segment capacity (veh/h)
+    ///
+    /// # Returns
+    ///
+    /// LOS letter ('A' through 'F')
+    ///
+    /// # Notes
+    ///
+    /// - For PL segments, uses midpoint follower density (FD_PLmid)
+    /// - For PC/PZ segments, uses endpoint follower density
+    /// - LOS F occurs when demand exceeds capacity, regardless of FD
     pub fn determine_segment_los(&self, seg_num: usize, s_pl: f64, cap: i32) -> char {
         let mut los: char = 'F';
 
@@ -1745,6 +2183,37 @@ impl TwoLaneHighways {
         los
     }
 
+    /// Step 11: Determine facility-level Level of Service (Equation 15-39).
+    ///
+    /// For multi-segment facility analysis, computes the length-weighted average
+    /// follower density and determines overall facility LOS.
+    ///
+    /// # Facility Follower Density (Equation 15-39)
+    ///
+    /// ```text
+    /// FD_F = Σ(FD_i × L_i) / Σ(L_i)
+    /// ```
+    ///
+    /// where actual segment lengths are used (not min/max constrained values).
+    /// For passing lane segments, FD_PLmid is used as the segment FD value.
+    ///
+    /// # Arguments
+    ///
+    /// * `fd` - Facility average follower density (followers/mi/ln)
+    /// * `s_pl` - Posted speed limit (mi/h) - determines threshold set
+    ///
+    /// # Returns
+    ///
+    /// Facility LOS letter ('A' through 'F')
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // After analyzing all segments, compute facility LOS:
+    /// let facility_fd = total_fd_times_length / total_length;
+    /// let avg_speed = total_speed_times_length / total_length;
+    /// let facility_los = highway.determine_facility_los(facility_fd, avg_speed);
+    /// ```
     pub fn determine_facility_los(&self, fd: f64, s_pl: f64) -> char {
         let mut los: char = 'F';
 
@@ -1776,4 +2245,251 @@ impl TwoLaneHighways {
 
         los
     }
+}
+
+/// Bicycle Level of Service analysis for Two-Lane and Multilane Highways (Section 4, Chapter 15).
+///
+/// This methodology evaluates bicyclist perception of operating conditions using a
+/// traveler perception model. The same model applies to both two-lane and multilane
+/// highways since bicyclists operate similarly on both facility types - traveling
+/// slowly, staying far right, and using shoulders when available.
+///
+/// # Performance Measures
+///
+/// - **BLOS Score**: Numeric score (typically 0.5 to 6.5) reflecting bicyclist perception
+/// - **Bicycle LOS**: Letter grade A-F based on BLOS score thresholds
+///
+/// # Key Factors (in order of importance)
+///
+/// 1. Average effective width of outside through lane
+/// 2. Motorized vehicle volumes
+/// 3. Motorized vehicle speeds
+/// 4. Heavy vehicle (truck) volumes
+/// 5. Pavement condition
+///
+/// # LOS Criteria (Exhibit 15-7)
+///
+/// | LOS | BLOS Score |
+/// |-----|------------|
+/// | A   | ≤ 1.5     |
+/// | B   | > 1.5 - 2.5 |
+/// | C   | > 2.5 - 3.5 |
+/// | D   | > 3.5 - 4.5 |
+/// | E   | > 4.5 - 5.5 |
+/// | F   | > 5.5     |
+///
+/// # Example
+///
+/// ```ignore
+/// let bike_analysis = BicycleLOS::new(
+///     12.0,   // lane width
+///     6.0,    // shoulder width
+///     50.0,   // speed limit
+///     1,      // number of lanes
+///     4.0,    // pavement condition (good)
+///     500.0,  // hourly volume
+///     0.88,   // PHF
+///     0.06,   // heavy vehicle %
+///     0.0,    // on-highway parking %
+/// );
+///
+/// let result = bike_analysis.analyze();
+/// println!("BLOS Score: {:.2}, LOS: {}", result.blos_score, result.los);
+/// ```
+///
+/// # Limitations
+///
+/// - Model developed from urban/suburban data; rural conditions may differ
+/// - Does not account for regional driver behavior variations
+/// - Input ranges used in model development:
+///   - Lane width: 10-16 ft
+///   - Shoulder width: 0-6 ft
+///   - AADT: up to 36,000
+///   - Speed limit: 25-50 mi/h
+///   - Heavy vehicles: 0-2%
+///   - Pavement condition: 2-5 (FHWA scale)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BicycleLOS {
+    /// Outside lane width in feet (default: 12 ft).
+    /// Model calibrated for 10-16 ft range.
+    pub lane_width: f64,
+    /// Paved shoulder width in feet (default: 6 ft).
+    /// Wider shoulders (≥4 ft) provide dedicated bicycle space.
+    pub shoulder_width: f64,
+    /// Posted speed limit in mi/h.
+    /// Higher speeds increase speed differential with bicyclists.
+    pub speed_limit: f64,
+    /// Number of directional through lanes (1 for two-lane highways, 2+ for multilane).
+    pub num_lanes: i32,
+    /// Pavement condition using FHWA 5-point scale:
+    /// 1=very poor, 2=poor, 3=fair, 4=good, 5=very good.
+    /// Very poor pavement (1) typically results in LOS F.
+    pub pavement_condition: f64,
+    /// Hourly directional volume, veh/hr
+    pub hourly_volume: f64,
+    /// Peak hour factor (default: 0.88)
+    pub phf: f64,
+    /// Heavy vehicle percentage (decimal, e.g., 0.06 for 6%)
+    pub heavy_vehicle_pct: f64,
+    /// Percent of segment with occupied on-highway parking (decimal)
+    pub pct_on_highway_parking: f64,
+}
+
+impl Default for BicycleLOS {
+    fn default() -> Self {
+        BicycleLOS {
+            lane_width: 12.0,
+            shoulder_width: 6.0,
+            speed_limit: 50.0,
+            num_lanes: 1,
+            pavement_condition: 4.0,
+            hourly_volume: 500.0,
+            phf: 0.88,
+            heavy_vehicle_pct: 0.06,
+            pct_on_highway_parking: 0.0,
+        }
+    }
+}
+
+impl BicycleLOS {
+    /// Create a new BicycleLOS instance
+    pub fn new(
+        lane_width: f64,
+        shoulder_width: f64,
+        speed_limit: f64,
+        num_lanes: i32,
+        pavement_condition: f64,
+        hourly_volume: f64,
+        phf: f64,
+        heavy_vehicle_pct: f64,
+        pct_on_highway_parking: f64,
+    ) -> Self {
+        BicycleLOS {
+            lane_width,
+            shoulder_width,
+            speed_limit,
+            num_lanes,
+            pavement_condition,
+            hourly_volume,
+            phf,
+            heavy_vehicle_pct,
+            pct_on_highway_parking,
+        }
+    }
+
+    /// Step 2: Calculate the directional flow rate in the outside lane (Equation 15-40)
+    /// v_OL = V / (PHF * N)
+    pub fn calculate_flow_rate_outside_lane(&self) -> f64 {
+        self.hourly_volume / (self.phf * self.num_lanes as f64)
+    }
+
+    /// Calculate effective width as a function of traffic volume (Equations 15-44, 15-45)
+    fn calculate_wv(&self) -> f64 {
+        if self.hourly_volume > 160.0 {
+            // Equation 15-44
+            self.lane_width
+        } else {
+            // Equation 15-45
+            self.lane_width + self.shoulder_width
+        }
+    }
+
+    /// Step 3: Calculate the effective width (Equations 15-41 to 15-45)
+    pub fn calculate_effective_width(&self) -> f64 {
+        let ws = self.shoulder_width;
+        let wol = self.lane_width;
+        let wv = self.calculate_wv();
+        let pct_ohp = self.pct_on_highway_parking;
+
+        let we = if ws >= 8.0 {
+            // Equation 15-41: Ws >= 8 ft
+            wol + ws - 20.0 * pct_ohp
+        } else if ws >= 4.0 {
+            // Equation 15-42: 4 ft <= Ws < 8 ft
+            wol + ws - 20.0 * pct_ohp
+        } else {
+            // Equation 15-43: Ws < 4 ft
+            wv + ws * (1.0 - 2.0 * pct_ohp)
+        };
+
+        // Ensure effective width is positive
+        we.max(1.0)
+    }
+
+    /// Step 4: Calculate the effective speed factor (Equation 15-46)
+    /// St = 1.1199 * ln(Spl - 20) + 0.8103
+    pub fn calculate_effective_speed_factor(&self) -> f64 {
+        1.1199 * f64::ln(self.speed_limit - 20.0) + 0.8103
+    }
+
+    /// Step 5: Calculate the BLOS score (Equation 15-47)
+    /// BLOS = 0.507 * ln(v_OL) + 0.199 * St * (1 + 10.38 * HV)^2 + 7.066 * (1/P)^2 - 0.005 * We^2 + 0.760
+    pub fn calculate_blos_score(&self) -> f64 {
+        let v_ol = self.calculate_flow_rate_outside_lane();
+        let st = self.calculate_effective_speed_factor();
+        let we = self.calculate_effective_width();
+        let p = self.pavement_condition;
+
+        // For low volumes (V < 200 veh/h), HV should be limited to max 0.5
+        let hv = if self.hourly_volume < 200.0 {
+            self.heavy_vehicle_pct.min(0.5)
+        } else {
+            self.heavy_vehicle_pct
+        };
+
+        // Handle edge case where v_OL is very small or zero
+        let ln_v_ol = if v_ol > 0.0 { f64::ln(v_ol) } else { 0.0 };
+
+        // Equation 15-47
+        0.507 * ln_v_ol
+            + 0.199 * st * (1.0 + 10.38 * hv).powi(2)
+            + 7.066 * (1.0 / p).powi(2)
+            - 0.005 * we.powi(2)
+            + 0.760
+    }
+
+    /// Determine Bicycle LOS based on BLOS score (Exhibit 15-7)
+    pub fn determine_bicycle_los(&self) -> char {
+        let blos = self.calculate_blos_score();
+
+        if blos <= 1.5 {
+            'A'
+        } else if blos <= 2.5 {
+            'B'
+        } else if blos <= 3.5 {
+            'C'
+        } else if blos <= 4.5 {
+            'D'
+        } else if blos <= 5.5 {
+            'E'
+        } else {
+            'F'
+        }
+    }
+
+    /// Get all bicycle performance measures
+    pub fn analyze(&self) -> BicycleLOSResult {
+        BicycleLOSResult {
+            flow_rate_outside_lane: self.calculate_flow_rate_outside_lane(),
+            effective_width: self.calculate_effective_width(),
+            effective_speed_factor: self.calculate_effective_speed_factor(),
+            blos_score: self.calculate_blos_score(),
+            los: self.determine_bicycle_los(),
+        }
+    }
+}
+
+/// Results from bicycle LOS analysis
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BicycleLOSResult {
+    /// Directional demand flow rate in outside lane (veh/h)
+    pub flow_rate_outside_lane: f64,
+    /// Effective width of the outside through lane (ft)
+    pub effective_width: f64,
+    /// Effective speed factor
+    pub effective_speed_factor: f64,
+    /// Bicycle LOS score
+    pub blos_score: f64,
+    /// Bicycle Level of Service (A-F)
+    pub los: char,
 }

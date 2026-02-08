@@ -7,5 +7,5 @@
 /target
 __pycache__/
 
-*.md
 docs/plans
+test_pdf.py

@@ -1,5 +1,535 @@
 use serde::{Deserialize, Serialize};
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Lane Marking Types and Colors (MUTCD Chapter 3)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Lane marking line types per MUTCD Section 3A.04
+/// Used for pavement marking classification and OpenDRIVE mapping
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LaneMarkingType {
+    /// Solid line - discourages or prohibits crossing
+    Solid,
+    /// Broken line - permissive condition (10ft segments, 30ft gaps standard)
+    Broken,
+    /// Dotted line - warning of downstream lane change (3ft segments, 9ft gaps)
+    Dotted,
+    /// Double solid - maximum restriction, no crossing either direction
+    DoubleSolid,
+    /// Solid + Broken - no crossing from solid side, permitted from broken side
+    SolidBroken,
+    /// Broken + Solid - permitted from broken side, no crossing from solid side
+    BrokenSolid,
+    /// No marking present
+    None,
+}
+
+/// Lane marking colors per MUTCD Section 3A.03
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MarkingColor {
+    /// White - same direction separation, right edge
+    White,
+    /// Yellow - opposite direction separation, left edge of divided highway
+    Yellow,
+    /// Blue - handicapped parking supplement
+    Blue,
+    /// Red - wrong way / do not enter (raised markers only)
+    Red,
+    /// Purple - toll plaza electronic lanes
+    Purple,
+}
+
+impl LaneMarkingType {
+    /// Convert to OpenDRIVE road_mark_type value
+    pub fn to_opendrive(&self) -> &'static str {
+        match self {
+            LaneMarkingType::Solid => "solid",
+            LaneMarkingType::Broken => "broken",
+            LaneMarkingType::Dotted => "broken", // OpenDRIVE uses broken for both
+            LaneMarkingType::DoubleSolid => "solid solid",
+            LaneMarkingType::SolidBroken => "solid broken",
+            LaneMarkingType::BrokenSolid => "broken solid",
+            LaneMarkingType::None => "none",
+        }
+    }
+}
+
+impl MarkingColor {
+    /// Convert to OpenDRIVE road_mark_color value
+    pub fn to_opendrive(&self) -> &'static str {
+        match self {
+            MarkingColor::White => "white",
+            MarkingColor::Yellow => "yellow",
+            MarkingColor::Blue => "blue",
+            MarkingColor::Red => "red",
+            MarkingColor::Purple => "standard", // OpenDRIVE doesn't have purple
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MUTCD Marking Standards (Section 3A.04)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Normal line width range: 4-6 inches (MUTCD 3A.04)
+pub const MARKING_WIDTH_NORMAL_MIN_IN: f64 = 4.0;
+pub const MARKING_WIDTH_NORMAL_MAX_IN: f64 = 6.0;
+
+/// Wide line width: at least 2x normal (MUTCD 3A.04)
+pub const MARKING_WIDTH_WIDE_MIN_IN: f64 = 8.0;
+
+/// Broken line segment length (ft) - MUTCD 3A.04
+pub const BROKEN_LINE_SEGMENT_FT: f64 = 10.0;
+/// Broken line gap length (ft) - MUTCD 3A.04
+pub const BROKEN_LINE_GAP_FT: f64 = 30.0;
+
+/// Dotted line segment length (ft) - MUTCD 3A.04
+pub const DOTTED_LINE_SEGMENT_FT: f64 = 3.0;
+/// Dotted line gap length (ft) - MUTCD 3A.04
+pub const DOTTED_LINE_GAP_FT: f64 = 9.0;
+
+/// Minimum retroreflectivity for speed >= 35 mph (mcd/m²/lx) - MUTCD 3A.05
+pub const MIN_RETROREFLECTIVITY_35MPH: f64 = 50.0;
+/// Minimum retroreflectivity for speed >= 70 mph (mcd/m²/lx) - MUTCD 3A.05
+pub const MIN_RETROREFLECTIVITY_70MPH: f64 = 100.0;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Lane Width Standards (Green Book Section 4.3)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Lane width by facility type (Green Book Table 4-2)
+#[derive(Debug, Clone, Copy)]
+pub struct LaneWidthStandards {
+    pub min: f64,
+    pub standard: f64,
+    pub max: f64,
+}
+
+/// Freeway lane width: 12 ft standard (Green Book 4.3)
+pub const LANE_WIDTH_FREEWAY: LaneWidthStandards = LaneWidthStandards {
+    min: 11.0,
+    standard: 12.0,
+    max: 12.0,
+};
+
+/// Arterial lane width: 10-12 ft (Green Book 4.3)
+pub const LANE_WIDTH_ARTERIAL: LaneWidthStandards = LaneWidthStandards {
+    min: 10.0,
+    standard: 12.0,
+    max: 12.0,
+};
+
+/// Collector lane width: 10-12 ft (Green Book 4.3)
+pub const LANE_WIDTH_COLLECTOR: LaneWidthStandards = LaneWidthStandards {
+    min: 10.0,
+    standard: 11.0,
+    max: 12.0,
+};
+
+/// Local road lane width: 9-12 ft (Green Book 4.3)
+pub const LANE_WIDTH_LOCAL: LaneWidthStandards = LaneWidthStandards {
+    min: 9.0,
+    standard: 10.0,
+    max: 12.0,
+};
+
+/// Multilane highway lane width: 10-12 ft (Green Book 4.3)
+pub const LANE_WIDTH_MULTILANE: LaneWidthStandards = LaneWidthStandards {
+    min: 10.0,
+    standard: 12.0,
+    max: 12.0,
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Shoulder Width Standards (Green Book Section 4.4.2)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Shoulder width by facility type (Green Book Table 4-3)
+#[derive(Debug, Clone, Copy)]
+pub struct ShoulderWidthStandards {
+    pub min: f64,
+    pub standard: f64,
+    pub max: f64,
+}
+
+/// Freeway shoulder width: 10-12 ft (Green Book 4.4.2)
+pub const SHOULDER_WIDTH_FREEWAY: ShoulderWidthStandards = ShoulderWidthStandards {
+    min: 10.0,
+    standard: 10.0,
+    max: 12.0,
+};
+
+/// Arterial shoulder width: 4-10 ft (Green Book 4.4.2)
+pub const SHOULDER_WIDTH_ARTERIAL: ShoulderWidthStandards = ShoulderWidthStandards {
+    min: 4.0,
+    standard: 8.0,
+    max: 10.0,
+};
+
+/// Collector shoulder width: 2-8 ft (Green Book 4.4.2)
+pub const SHOULDER_WIDTH_COLLECTOR: ShoulderWidthStandards = ShoulderWidthStandards {
+    min: 2.0,
+    standard: 6.0,
+    max: 8.0,
+};
+
+/// Local road shoulder width: 2-6 ft (Green Book 4.4.2)
+pub const SHOULDER_WIDTH_LOCAL: ShoulderWidthStandards = ShoulderWidthStandards {
+    min: 2.0,
+    standard: 4.0,
+    max: 6.0,
+};
+
+/// Multilane highway shoulder width: 4-10 ft (Green Book 4.4.2)
+pub const SHOULDER_WIDTH_MULTILANE: ShoulderWidthStandards = ShoulderWidthStandards {
+    min: 4.0,
+    standard: 8.0,
+    max: 10.0,
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Median Standards (Green Book Section 4.5)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Median type classification (Green Book 4.5)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MedianType {
+    /// Undivided - no physical separation (painted only)
+    Undivided,
+    /// Two-Way Left Turn Lane (TWLTL) - flush median with turn lane
+    TWLTL,
+    /// Raised median - curbed separation
+    Raised,
+    /// Depressed median - graded separation below roadway
+    Depressed,
+    /// Barrier median - concrete or cable barrier
+    Barrier,
+}
+
+impl MedianType {
+    /// Convert to OpenDRIVE lane type for median representation
+    pub fn to_opendrive(&self) -> &'static str {
+        match self {
+            MedianType::Undivided => "none",
+            MedianType::TWLTL => "bidirectional", // OpenDRIVE bidirectional lane
+            MedianType::Raised => "median",
+            MedianType::Depressed => "median",
+            MedianType::Barrier => "median",
+        }
+    }
+
+    /// Whether the median provides physical separation
+    pub fn is_divided(&self) -> bool {
+        !matches!(self, MedianType::Undivided)
+    }
+
+    /// Whether the median has a barrier
+    pub fn has_barrier(&self) -> bool {
+        matches!(self, MedianType::Barrier)
+    }
+}
+
+/// Minimum median width for TWLTL (Green Book 4.5.2)
+pub const MEDIAN_WIDTH_TWLTL_MIN: f64 = 10.0;
+/// Desirable median width for TWLTL
+pub const MEDIAN_WIDTH_TWLTL_DESIRABLE: f64 = 14.0;
+
+/// Minimum raised median width (Green Book 4.5.3)
+pub const MEDIAN_WIDTH_RAISED_MIN: f64 = 4.0;
+/// Desirable raised median width for left turn storage
+pub const MEDIAN_WIDTH_RAISED_DESIRABLE: f64 = 16.0;
+
+/// Minimum depressed median width (Green Book 4.5.4)
+pub const MEDIAN_WIDTH_DEPRESSED_MIN: f64 = 30.0;
+/// Desirable depressed median width for recovery area
+pub const MEDIAN_WIDTH_DEPRESSED_DESIRABLE: f64 = 60.0;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Superelevation Standards (Green Book Section 3.3.4)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Maximum superelevation rates by area type (Green Book 3.3.4)
+/// High-speed roads with no snow/ice: 12%
+pub const SUPERELEVATION_MAX_RURAL: f64 = 12.0;
+/// Roads with snow/ice considerations: 8%
+pub const SUPERELEVATION_MAX_SNOW: f64 = 8.0;
+/// Urban low-speed roads: 4-6%
+pub const SUPERELEVATION_MAX_URBAN: f64 = 6.0;
+/// Minimum rate for drainage: 2%
+pub const SUPERELEVATION_MIN: f64 = 2.0;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Minimum Radius for Design Speed (Green Book Table 3-7)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Minimum radius (ft) for design speed with emax=8% (Green Book Table 3-7)
+/// Index by speed: [15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80] mph
+pub const MIN_RADIUS_FOR_SPEED: [(i32, f64); 14] = [
+    (15, 50.0),
+    (20, 90.0),
+    (25, 170.0),
+    (30, 230.0),
+    (35, 340.0),
+    (40, 430.0),
+    (45, 560.0),
+    (50, 710.0),
+    (55, 835.0),
+    (60, 1000.0),
+    (65, 1150.0),
+    (70, 1310.0),
+    (75, 1560.0),
+    (80, 1810.0),
+];
+
+/// Get minimum curve radius for a given design speed (mph)
+/// Returns minimum radius in feet, or None if speed not in table
+pub fn min_radius_for_speed(speed_mph: i32) -> Option<f64> {
+    MIN_RADIUS_FOR_SPEED
+        .iter()
+        .find(|(s, _)| *s == speed_mph)
+        .map(|(_, r)| *r)
+}
+
+/// Get maximum curvature (1/ft) for a given design speed (mph)
+/// Returns maximum curvature, or None if speed not in table
+pub fn max_curvature_for_speed(speed_mph: i32) -> Option<f64> {
+    min_radius_for_speed(speed_mph).map(|r| 1.0 / r)
+}
+
+/// Check if curvature is safe for given speed
+/// Returns true if curvature is within acceptable range for speed
+pub fn is_curvature_safe_for_speed(curvature_per_ft: f64, speed_mph: i32) -> bool {
+    match max_curvature_for_speed(speed_mph) {
+        Some(max_curv) => curvature_per_ft <= max_curv,
+        None => {
+            // Interpolate for speeds not in table
+            let lower = MIN_RADIUS_FOR_SPEED
+                .iter()
+                .filter(|(s, _)| *s <= speed_mph)
+                .last();
+            let upper = MIN_RADIUS_FOR_SPEED
+                .iter()
+                .find(|(s, _)| *s > speed_mph);
+
+            match (lower, upper) {
+                (Some((s1, r1)), Some((s2, r2))) => {
+                    // Linear interpolation
+                    let ratio = (speed_mph - s1) as f64 / (s2 - s1) as f64;
+                    let min_radius = r1 + ratio * (r2 - r1);
+                    curvature_per_ft <= 1.0 / min_radius
+                }
+                _ => true // Can't determine, assume safe
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Detection Confidence Thresholds
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Minimum confidence thresholds for lane detection parameters
+#[derive(Debug, Clone, Copy)]
+pub struct DetectionConfidenceThresholds {
+    pub lane_width: f64,
+    pub curvature: f64,
+    pub marking_type: f64,
+    pub marking_color: f64,
+    pub lane_count: f64,
+    pub centerline: f64,
+    pub boundary: f64,
+}
+
+/// Default detection confidence thresholds
+pub const DETECTION_CONFIDENCE_THRESHOLDS: DetectionConfidenceThresholds = DetectionConfidenceThresholds {
+    lane_width: 0.85,      // High confidence needed for geometry
+    curvature: 0.80,       // Slightly lower tolerance
+    marking_type: 0.90,    // Safety-critical classification
+    marking_color: 0.90,   // Safety-critical classification
+    lane_count: 0.85,      // Important for capacity
+    centerline: 0.80,      // Position detection
+    boundary: 0.80,        // Position detection
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Horizontal Alignment Class (HCM Exhibit 15-22, derived from Green Book 3.3)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Horizontal alignment classification (HCM Exhibit 15-22)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HorizontalClass {
+    /// Class 0: Tangent or very gentle curve (R >= 2550 ft)
+    Tangent = 0,
+    /// Class 1: Gentle curve (1350 <= R < 2550 ft)
+    Gentle = 1,
+    /// Class 2: Moderate curve (750 <= R < 1350 ft)
+    Moderate = 2,
+    /// Class 3: Sharp curve (450 <= R < 750 ft)
+    Sharp = 3,
+    /// Class 4: Very sharp curve (300 <= R < 450 ft)
+    VerySharp = 4,
+    /// Class 5: Severe curve (R < 300 ft)
+    Severe = 5,
+}
+
+impl HorizontalClass {
+    /// Get class from design radius (ft)
+    pub fn from_radius(radius_ft: f64) -> Self {
+        if radius_ft == 0.0 || radius_ft >= 2550.0 {
+            HorizontalClass::Tangent
+        } else if radius_ft >= 1350.0 {
+            HorizontalClass::Gentle
+        } else if radius_ft >= 750.0 {
+            HorizontalClass::Moderate
+        } else if radius_ft >= 450.0 {
+            HorizontalClass::Sharp
+        } else if radius_ft >= 300.0 {
+            HorizontalClass::VerySharp
+        } else {
+            HorizontalClass::Severe
+        }
+    }
+
+    /// Get class from curvature (1/ft)
+    pub fn from_curvature(curvature_per_ft: f64) -> Self {
+        if curvature_per_ft == 0.0 {
+            return HorizontalClass::Tangent;
+        }
+        let radius_ft = 1.0 / curvature_per_ft.abs();
+        Self::from_radius(radius_ft)
+    }
+
+    /// Get class from curvature in metric units (1/m) - OpenDRIVE convention
+    pub fn from_curvature_metric(curvature_per_m: f64) -> Self {
+        if curvature_per_m == 0.0 {
+            return HorizontalClass::Tangent;
+        }
+        let radius_m = 1.0 / curvature_per_m.abs();
+        let radius_ft = radius_m * 3.28084;
+        Self::from_radius(radius_ft)
+    }
+
+    /// Get minimum radius threshold for this class (ft)
+    pub fn min_radius(&self) -> f64 {
+        match self {
+            HorizontalClass::Tangent => 2550.0,
+            HorizontalClass::Gentle => 1350.0,
+            HorizontalClass::Moderate => 750.0,
+            HorizontalClass::Sharp => 450.0,
+            HorizontalClass::VerySharp => 300.0,
+            HorizontalClass::Severe => 0.0,
+        }
+    }
+
+    /// Get description
+    pub fn description(&self) -> &'static str {
+        match self {
+            HorizontalClass::Tangent => "Tangent (straight)",
+            HorizontalClass::Gentle => "Gentle curve",
+            HorizontalClass::Moderate => "Moderate curve",
+            HorizontalClass::Sharp => "Sharp curve",
+            HorizontalClass::VerySharp => "Very sharp curve",
+            HorizontalClass::Severe => "Severe curve",
+        }
+    }
+
+    /// Convert to integer value (for compatibility with HCM tables)
+    pub fn as_i32(&self) -> i32 {
+        *self as i32
+    }
+}
+
+impl From<i32> for HorizontalClass {
+    fn from(value: i32) -> Self {
+        match value {
+            0 => HorizontalClass::Tangent,
+            1 => HorizontalClass::Gentle,
+            2 => HorizontalClass::Moderate,
+            3 => HorizontalClass::Sharp,
+            4 => HorizontalClass::VerySharp,
+            5 => HorizontalClass::Severe,
+            _ => HorizontalClass::Severe, // Default to worst case
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Horizontal Class Thresholds (HCM Exhibit 15-22, derived from Green Book 3.3)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Horizontal class thresholds based on design radius (ft)
+/// These are simplified thresholds; full classification also considers superelevation
+/// Source: HCM 7th Edition, Exhibit 15-22
+pub const HORIZONTAL_CLASS_THRESHOLDS: [(i32, f64, &str); 6] = [
+    (0, 2550.0, "Tangent"),      // Class 0: R >= 2550 ft (straight)
+    (1, 1350.0, "Gentle"),       // Class 1: 1350 <= R < 2550 ft
+    (2, 750.0, "Moderate"),      // Class 2: 750 <= R < 1350 ft
+    (3, 450.0, "Sharp"),         // Class 3: 450 <= R < 750 ft
+    (4, 300.0, "Very Sharp"),    // Class 4: 300 <= R < 450 ft
+    (5, 0.0, "Severe"),          // Class 5: R < 300 ft
+];
+
+/// Convert design radius (ft) to horizontal class (0-5)
+/// Simplified version without superelevation consideration
+pub fn radius_to_horizontal_class(radius_ft: f64) -> i32 {
+    if radius_ft == 0.0 || radius_ft >= 2550.0 {
+        0 // Tangent
+    } else if radius_ft >= 1350.0 {
+        1 // Gentle
+    } else if radius_ft >= 750.0 {
+        2 // Moderate
+    } else if radius_ft >= 450.0 {
+        3 // Sharp
+    } else if radius_ft >= 300.0 {
+        4 // Very Sharp
+    } else {
+        5 // Severe
+    }
+}
+
+/// Convert curvature (1/m) to horizontal class
+/// curvature = 1/radius, uses OpenDRIVE convention (1/m)
+pub fn curvature_to_horizontal_class(curvature_per_m: f64) -> i32 {
+    if curvature_per_m == 0.0 {
+        return 0; // Tangent (straight)
+    }
+    let radius_m = 1.0 / curvature_per_m.abs();
+    let radius_ft = radius_m * 3.28084; // Convert m to ft
+    radius_to_horizontal_class(radius_ft)
+}
+
+/// Get horizontal class description
+pub fn horizontal_class_description(class: i32) -> &'static str {
+    match class {
+        0 => "Tangent (straight)",
+        1 => "Gentle curve",
+        2 => "Moderate curve",
+        3 => "Sharp curve",
+        4 => "Very sharp curve",
+        5 => "Severe curve",
+        _ => "Unknown",
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Cross Slope Standards (Green Book Section 4.2.2)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Normal paved surface cross slope range (%) - Green Book 4.2.2
+pub const CROSS_SLOPE_PAVED_MIN: f64 = 1.5;
+pub const CROSS_SLOPE_PAVED_MAX: f64 = 2.0;
+
+/// Unpaved surface cross slope range (%) - Green Book Table 4-1
+pub const CROSS_SLOPE_UNPAVED_MIN: f64 = 2.0;
+pub const CROSS_SLOPE_UNPAVED_MAX: f64 = 6.0;
+
+/// Maximum algebraic difference at superelevation edge (%) - Green Book 4.4.3
+pub const MAX_CROSS_SLOPE_BREAK: f64 = 8.0;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Level of Service
+// ═══════════════════════════════════════════════════════════════════════════════
+
 /// Level of Service enumeration used throughout HCM
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LevelOfService {
@@ -123,22 +653,32 @@ impl TrafficFlow {
     }
 }
 
-/// Common geometric parameters
+/// Common geometric parameters (Green Book Chapter 4)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeometricParams {
-    pub lane_width: Option<f64>,      // ft
-    pub shoulder_width: Option<f64>,  // ft
-    pub median_width: Option<f64>,    // ft
-    pub lateral_clearance: Option<f64>, // ft
+    /// Lane width in ft (Green Book 4.3: 9-12 ft, 12 ft preferred)
+    pub lane_width: Option<f64>,
+    /// Shoulder width in ft (Green Book 4.4.2: 2-12 ft)
+    pub shoulder_width: Option<f64>,
+    /// Median width in ft
+    pub median_width: Option<f64>,
+    /// Lateral clearance in ft (HCM adjustment factor input)
+    pub lateral_clearance: Option<f64>,
+    /// Cross slope in % (Green Book 4.2.2: 1.5-2% paved)
+    pub cross_slope: Option<f64>,
+    /// Superelevation in % (Green Book 3.3: max 8-12%)
+    pub superelevation: Option<f64>,
 }
 
 impl Default for GeometricParams {
     fn default() -> Self {
         Self {
-            lane_width: Some(12.0),
-            shoulder_width: Some(6.0),
+            lane_width: Some(12.0),        // Green Book preferred
+            shoulder_width: Some(6.0),     // Green Book typical
             median_width: None,
-            lateral_clearance: Some(6.0),
+            lateral_clearance: Some(6.0),  // HCM base condition
+            cross_slope: Some(2.0),        // Green Book typical paved
+            superelevation: None,          // Only on curves
         }
     }
 }
@@ -279,5 +819,229 @@ impl LaneCapacity for BaseLaneCapacity {
             45 => Some(1900),
             _ => None
         }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Semantic Firewall - Input Validation (Layer 1 Pre-Check)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Validation error for semantic firewall constraints
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidationError {
+    pub constraint_id: String,
+    pub parameter: String,
+    pub value: String,
+    pub message: String,
+    pub source: String,
+}
+
+/// Result of semantic firewall validation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidationResult {
+    pub is_valid: bool,
+    pub errors: Vec<ValidationError>,
+}
+
+impl ValidationResult {
+    pub fn ok() -> Self {
+        Self { is_valid: true, errors: vec![] }
+    }
+
+    pub fn error(err: ValidationError) -> Self {
+        Self { is_valid: false, errors: vec![err] }
+    }
+
+    pub fn merge(&mut self, other: ValidationResult) {
+        if !other.is_valid {
+            self.is_valid = false;
+            self.errors.extend(other.errors);
+        }
+    }
+}
+
+/// Two-Lane Highway input parameters for validation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TwoLaneHighwayInput {
+    pub lane_width: Option<f64>,
+    pub shoulder_width: Option<f64>,
+    pub hor_class: Option<i32>,
+    pub passing_type: Option<i32>,
+    pub design_rad: Option<f64>,
+    pub speed_limit: Option<f64>,
+}
+
+impl TwoLaneHighwayInput {
+    /// Validate all inputs against semantic firewall constraints
+    /// Returns ValidationResult with all errors found
+    pub fn validate(&self) -> ValidationResult {
+        let mut result = ValidationResult::ok();
+
+        // SF-001: Lane Width (9-12 ft)
+        if let Some(lw) = self.lane_width {
+            if lw < 9.0 || lw > 12.0 {
+                result.merge(ValidationResult::error(ValidationError {
+                    constraint_id: "SF-001".to_string(),
+                    parameter: "lane_width".to_string(),
+                    value: format!("{:.1}", lw),
+                    message: format!(
+                        "Lane width {} ft violates constraint. Must be 9-12 ft per HCM Exhibit 15-8.",
+                        lw
+                    ),
+                    source: "HCM 7th Edition, Exhibit 15-8".to_string(),
+                }));
+            }
+        }
+
+        // SF-002: Shoulder Width (0-8 ft)
+        if let Some(sw) = self.shoulder_width {
+            if sw < 0.0 || sw > 8.0 {
+                result.merge(ValidationResult::error(ValidationError {
+                    constraint_id: "SF-002".to_string(),
+                    parameter: "shoulder_width".to_string(),
+                    value: format!("{:.1}", sw),
+                    message: format!(
+                        "Shoulder width {} ft violates constraint. Must be 0-8 ft per HCM/Green Book.",
+                        sw
+                    ),
+                    source: "HCM 7th Edition, Exhibit 15-8".to_string(),
+                }));
+            }
+        }
+
+        // SF-003: Horizontal Class (0-5)
+        if let Some(hc) = self.hor_class {
+            if hc < 0 || hc > 5 {
+                result.merge(ValidationResult::error(ValidationError {
+                    constraint_id: "SF-003".to_string(),
+                    parameter: "hor_class".to_string(),
+                    value: format!("{}", hc),
+                    message: format!(
+                        "Horizontal class {} is invalid. Must be 0-5 per HCM Exhibit 15-22.",
+                        hc
+                    ),
+                    source: "HCM 7th Edition, Exhibit 15-22".to_string(),
+                }));
+            }
+        }
+
+        // SF-004: Passing Type (0, 1, 2)
+        if let Some(pt) = self.passing_type {
+            if pt < 0 || pt > 2 {
+                result.merge(ValidationResult::error(ValidationError {
+                    constraint_id: "SF-004".to_string(),
+                    parameter: "passing_type".to_string(),
+                    value: format!("{}", pt),
+                    message: format!(
+                        "Passing type {} is invalid. Must be 0 (Constrained), 1 (Zone), or 2 (Lane).",
+                        pt
+                    ),
+                    source: "HCM 7th Edition, Chapter 15.3".to_string(),
+                }));
+            }
+        }
+
+        // SF-005: Speed-Curvature Compatibility
+        if let (Some(rad), Some(spl)) = (self.design_rad, self.speed_limit) {
+            if let Some(min_rad) = min_radius_for_speed(spl as i32) {
+                if rad < min_rad {
+                    result.merge(ValidationResult::error(ValidationError {
+                        constraint_id: "SF-005".to_string(),
+                        parameter: "design_rad".to_string(),
+                        value: format!("{:.0}", rad),
+                        message: format!(
+                            "Design radius {} ft is too small for speed limit {} mph. Minimum: {} ft per Green Book Table 3-7.",
+                            rad, spl, min_rad
+                        ),
+                        source: "AASHTO Green Book, Table 3-7".to_string(),
+                    }));
+                }
+            }
+        }
+
+        result
+    }
+}
+
+/// Validate a single lane width value
+pub fn validate_lane_width(lane_width: f64) -> ValidationResult {
+    if lane_width >= 9.0 && lane_width <= 12.0 {
+        ValidationResult::ok()
+    } else {
+        ValidationResult::error(ValidationError {
+            constraint_id: "SF-001".to_string(),
+            parameter: "lane_width".to_string(),
+            value: format!("{:.1}", lane_width),
+            message: format!("Lane width {} ft must be 9-12 ft", lane_width),
+            source: "HCM Exhibit 15-8".to_string(),
+        })
+    }
+}
+
+/// Validate a single shoulder width value
+pub fn validate_shoulder_width(shoulder_width: f64) -> ValidationResult {
+    if shoulder_width >= 0.0 && shoulder_width <= 8.0 {
+        ValidationResult::ok()
+    } else {
+        ValidationResult::error(ValidationError {
+            constraint_id: "SF-002".to_string(),
+            parameter: "shoulder_width".to_string(),
+            value: format!("{:.1}", shoulder_width),
+            message: format!("Shoulder width {} ft must be 0-8 ft", shoulder_width),
+            source: "HCM Exhibit 15-8".to_string(),
+        })
+    }
+}
+
+/// Validate horizontal class value
+pub fn validate_horizontal_class(hor_class: i32) -> ValidationResult {
+    if hor_class >= 0 && hor_class <= 5 {
+        ValidationResult::ok()
+    } else {
+        ValidationResult::error(ValidationError {
+            constraint_id: "SF-003".to_string(),
+            parameter: "hor_class".to_string(),
+            value: format!("{}", hor_class),
+            message: format!("Horizontal class {} must be 0-5", hor_class),
+            source: "HCM Exhibit 15-22".to_string(),
+        })
+    }
+}
+
+/// Validate passing type value
+pub fn validate_passing_type(passing_type: i32) -> ValidationResult {
+    if passing_type >= 0 && passing_type <= 2 {
+        ValidationResult::ok()
+    } else {
+        ValidationResult::error(ValidationError {
+            constraint_id: "SF-004".to_string(),
+            parameter: "passing_type".to_string(),
+            value: format!("{}", passing_type),
+            message: format!("Passing type {} must be 0, 1, or 2", passing_type),
+            source: "HCM Chapter 15.3".to_string(),
+        })
+    }
+}
+
+/// Validate speed-curvature compatibility
+pub fn validate_speed_curvature(design_rad: f64, speed_limit: i32) -> ValidationResult {
+    if let Some(min_rad) = min_radius_for_speed(speed_limit) {
+        if design_rad >= min_rad {
+            ValidationResult::ok()
+        } else {
+            ValidationResult::error(ValidationError {
+                constraint_id: "SF-005".to_string(),
+                parameter: "design_rad".to_string(),
+                value: format!("{:.0}", design_rad),
+                message: format!(
+                    "Radius {} ft < {} ft minimum for {} mph",
+                    design_rad, min_rad, speed_limit
+                ),
+                source: "Green Book Table 3-7".to_string(),
+            })
+        }
+    } else {
+        // Speed not in table, interpolate or accept
+        ValidationResult::ok()
     }
 }

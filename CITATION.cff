@@ -12,7 +12,7 @@ authors:
 repository-code: "https://github.com/crosstraffic/transportations-library"
 url: "https://hcm-calculator.com/"
 license: MIT
-version: 0.1.7
+version: 0.1.10
 date-released: 2025-10-08
 keywords:
   - Transportation
@@ -30,6 +30,6 @@ preferred-citation:
       family-names: Tamaru
       email: tamaru@wisc.edu
       affiliation: University of Wisconsin-Madison
-  version: 0.1.7
+  version: 0.1.10
   url: "https://github.com/crosstraffic/transportations-library"
   year: 2025
