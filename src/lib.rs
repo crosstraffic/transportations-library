@@ -12,6 +12,7 @@ use serde_json;
 // Re-export main types for easier access
 pub use crate::hcm::*;
 pub use crate::hcm::basicfreeways::*;
+pub use crate::hcm::constraints::*;
 pub use crate::hcm::twolanehighways::*;
 pub use copython::py_transportationslibrary::*;
 

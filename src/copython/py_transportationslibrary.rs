@@ -1,3 +1,4 @@
+use crate::hcm::constraints;
 use crate::hcm::twolanehighways::{
     Segment as LibSegment,
     SubSegment as LibSubSegment,
@@ -555,6 +556,70 @@ impl TwoLaneHighways {
     }
 }
 
+/// Get all parameter constraints as a JSON string.
+///
+/// This function returns the library's parameter constraints, which define
+/// valid ranges for all input parameters based on HCM and AASHTO standards.
+///
+/// Returns:
+///     str: JSON string containing all constraints
+///
+/// Example:
+///     >>> import transportations_library as tl
+///     >>> import json
+///     >>> constraints = json.loads(tl.get_constraints())
+///     >>> print(constraints['two_lane_highways']['lane_width'])
+#[cfg(feature = "pybindings")]
+#[pyfunction]
+fn get_constraints() -> String {
+    constraints::get_constraints_json()
+}
+
+/// Validate Two-Lane Highway input parameters.
+///
+/// Args:
+///     lane_width: Lane width in feet (optional)
+///     shoulder_width: Shoulder width in feet (optional)
+///     passing_type: Passing type 0, 1, or 2 (optional)
+///     hor_class: Horizontal class 0-5 (optional)
+///     grade: Grade percentage (optional)
+///     phf: Peak hour factor (optional)
+///     phv: Percent heavy vehicles (optional)
+///     spl: Speed limit in mph (optional)
+///
+/// Returns:
+///     list[str]: List of validation error messages, empty if valid
+///
+/// Example:
+///     >>> import transportations_library as tl
+///     >>> errors = tl.validate_input(lane_width=8.0)
+///     >>> print(errors)
+///     ['lane_width = 8 ft is outside valid range [9, 12]. Source: HCM 7th Edition, Exhibit 15-8']
+#[cfg(feature = "pybindings")]
+#[pyfunction]
+#[pyo3(signature = (lane_width=None, shoulder_width=None, passing_type=None, hor_class=None, grade=None, phf=None, phv=None, spl=None))]
+fn validate_input(
+    lane_width: Option<f64>,
+    shoulder_width: Option<f64>,
+    passing_type: Option<i32>,
+    hor_class: Option<i32>,
+    grade: Option<f64>,
+    phf: Option<f64>,
+    phv: Option<f64>,
+    spl: Option<f64>,
+) -> Vec<String> {
+    constraints::validate_two_lane_highway(
+        lane_width,
+        shoulder_width,
+        passing_type,
+        hor_class,
+        grade,
+        phf,
+        phv,
+        spl,
+    )
+}
+
 #[cfg(feature = "pybindings")]
 #[pymodule]
 fn transportations_library(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -562,21 +627,28 @@ fn transportations_library(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()>
     m.add_class::<Segment>()?;
     m.add_class::<TwoLaneHighways>()?;
 
+    // Add constraint functions
+    m.add_function(wrap_pyfunction!(get_constraints, m)?)?;
+    m.add_function(wrap_pyfunction!(validate_input, m)?)?;
+
     // Add module-level documentation
-    m.add("__doc__", 
+    m.add("__doc__",
         "Transportation analysis library for two-lane highways using HCM methodology.\n\n\
         This library provides tools for analyzing two-lane highway capacity and level of service\n\
         according to the Highway Capacity Manual (HCM) procedures.\n\n\
         Main Classes:\n\
         - SubSegment: Represents a sub-section of highway with uniform characteristics\n\
         - Segment: Represents a highway segment for analysis\n\
-        - TwoLaneHighways: Main analysis class for highway facilities\n\
+        - TwoLaneHighways: Main analysis class for highway facilities\n\n\
+        Constraint Functions:\n\
+        - get_constraints(): Get all parameter constraints as JSON\n\
+        - validate_input(): Validate input parameters against HCM/AASHTO constraints\n\n\
         Example Usage:\n\
         >>> from transportations_library import Segment, TwoLaneHighways\n\
         >>> segment = Segment(passing_type=1, length=2.5, grade=3.0, spl=55.0)\n\
         >>> highway = TwoLaneHighways([segment])\n"
     )?;
-    m.add("__version__", "0.1.3")?;
+    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
 
     Ok(())
 }

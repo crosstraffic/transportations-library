@@ -100,6 +100,37 @@ highway = tl.TwoLaneHighways([segment_with_curves])
 # ... perform analysis
 ```
 
+### Parameter Constraints
+
+The library exports all HCM/AASHTO parameter constraints as JSON, which can be used by validators and knowledge graphs:
+
+```python
+import transportations_library as tl
+import json
+
+# Get all constraints
+constraints = json.loads(tl.get_constraints())
+print(f"Version: {constraints['version']}")
+
+# Access specific constraint
+lane_width = constraints['two_lane_highways']['lane_width']
+print(f"Lane width: {lane_width['min']}-{lane_width['max']} {lane_width['unit']}")
+print(f"Source: {lane_width['source']}")
+# Output: Lane width: 9.0-12.0 ft
+# Output: Source: HCM 7th Edition, Exhibit 15-8
+
+# Validate inputs directly
+errors = tl.validate_input(lane_width=8.0)  # Invalid - below 9 ft
+print(errors)
+# Output: ['lane_width = 8 ft is outside valid range [9, 12]. Source: HCM 7th Edition, Exhibit 15-8']
+```
+
+Available constraints include:
+- `lane_width`, `shoulder_width` (range)
+- `passing_type`, `horizontal_class`, `vertical_class` (enum)
+- `grade`, `phf`, `phv`, `speed_limit` (range)
+- `speed_radius` (table lookup - AASHTO Table 3-7)
+
 ## Testing
 
 ### Run Tests
