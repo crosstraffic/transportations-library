@@ -1,6 +1,6 @@
 {
     "name": "crosstraffic-docs",
-    "version": "0.1.10",
+    "version": "0.1.11",
     "scripts": {
         "fmt": "prettier --write --prose-wrap=always"
     },
