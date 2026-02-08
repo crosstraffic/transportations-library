@@ -7,6 +7,5 @@
 /target
 __pycache__/
 
-README.md
 docs/plans
 test_pdf.py
