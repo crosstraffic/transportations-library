@@ -689,7 +689,6 @@ impl BasicFreeways {
         let f_lw = self.adjustment_average_lane_width().unwrap_or(0.0);
         let f_rlc = self.adjustment_right_side_lateral_clearance().unwrap_or(0.0);
 
-        println!("f_lw: {}, f_rlc: {}", f_lw, f_rlc);
         self.ffs = self.bffs - f_lw - f_rlc - 3.22 * f64::powf(self.trd as f64, 0.84);
 
         Ok(())
@@ -913,7 +912,6 @@ impl BasicFreeways {
     // Adjusted demand volume
     pub fn estimate_demand_volume(&mut self) -> f64 {
         self.adjustment_heavy_vehicle_factor();
-        println!("demand_flow_i: {} phf: {}, lane_count {}, self.phv {}", self.demand_flow_i, self.phf, self.lane_count, self.phv);
         let _lane_count = self.get_lane_count();
         self.v_p = self.demand_flow_i / (self.phf * self.lane_count as f64 * math::round_up_to_n_decimal(self.phv, 3));
 

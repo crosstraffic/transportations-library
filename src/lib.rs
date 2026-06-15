@@ -14,6 +14,9 @@ pub use crate::hcm::*;
 pub use crate::hcm::basicfreeways::*;
 pub use crate::hcm::constraints::*;
 pub use crate::hcm::twolanehighways::*;
+pub use crate::hcm::topology::*;
+pub use crate::hcm::traffic_flow::*;
+pub use crate::hcm::geometric::*;
 pub use copython::py_transportationslibrary::*;
 
 pub use utils::math;
