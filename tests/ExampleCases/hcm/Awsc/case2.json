@@ -1,0 +1,35 @@
+{
+  "_source": "HCM 7th Edition, Chapter 32, AWSC Example Problem 2: multilane four-leg AWSC intersection; two-lane approaches (L | TR) on the east and west legs, three-lane approaches (L | T | R) on the north and south legs. Demand values are hourly flow rates (15-min volumes x 4, Exhibit 32-23), 2% heavy vehicles.",
+  "eb": {
+    "lanes": [
+      { "volume_left": 56.0, "volume_through": 0.0, "volume_right": 0.0 },
+      { "volume_left": 0.0, "volume_through": 152.0, "volume_right": 64.0 }
+    ],
+    "heavy_vehicle_pct": 2.0
+  },
+  "wb": {
+    "lanes": [
+      { "volume_left": 156.0, "volume_through": 0.0, "volume_right": 0.0 },
+      { "volume_left": 0.0, "volume_through": 92.0, "volume_right": 72.0 }
+    ],
+    "heavy_vehicle_pct": 2.0
+  },
+  "nb": {
+    "lanes": [
+      { "volume_left": 76.0, "volume_through": 0.0, "volume_right": 0.0 },
+      { "volume_left": 0.0, "volume_through": 164.0, "volume_right": 0.0 },
+      { "volume_left": 0.0, "volume_through": 0.0, "volume_right": 116.0 }
+    ],
+    "heavy_vehicle_pct": 2.0
+  },
+  "sb": {
+    "lanes": [
+      { "volume_left": 48.0, "volume_through": 0.0, "volume_right": 0.0 },
+      { "volume_left": 0.0, "volume_through": 124.0, "volume_right": 0.0 },
+      { "volume_left": 0.0, "volume_through": 0.0, "volume_right": 88.0 }
+    ],
+    "heavy_vehicle_pct": 2.0
+  },
+  "phf": null,
+  "analysis_period_h": 0.25
+}

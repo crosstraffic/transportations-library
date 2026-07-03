@@ -1,0 +1,38 @@
+{
+  "_source": "HCM 7th Edition, Chapter 32, TWSC Example Problem 3: four-leg TWSC intersection with two-stage gap acceptance (median storage n_m = 2) and flared minor approaches (n_R = 1). Demand values are the published flow rates (hourly volumes already divided by PHF = 0.92), veh/h. The conflicting-flow overrides reproduce the published Stage I/II conflicting flows, which follow the HCM 6th Edition equation forms rather than the 7th Edition Exhibit 20-14/20-16 factors (see VERIFY-HCM note in src/hcm/chapter20/twsc.rs).",
+  "demand": {
+    "v1": 33.0,
+    "v2": 250.0,
+    "v3": 50.0,
+    "v4": 66.0,
+    "v5": 300.0,
+    "v6": 100.0,
+    "v7": 44.0,
+    "v8": 132.0,
+    "v9": 55.0,
+    "v10": 11.0,
+    "v11": 110.0,
+    "v12": 28.0
+  },
+  "geometry": {
+    "is_three_leg": false,
+    "major_lanes_per_direction": 2,
+    "major_right_turn_eb": "Shared",
+    "major_right_turn_wb": "Shared",
+    "minor_lanes_nb": "SingleShared",
+    "minor_lanes_sb": "SingleShared",
+    "median_storage_nb": 2,
+    "median_storage_sb": 2,
+    "flare_storage_nb": 1,
+    "flare_storage_sb": 1
+  },
+  "phf": null,
+  "analysis_period_h": 0.25,
+  "heavy_vehicle_pct": 10.0,
+  "conflicting_flow_overrides": [
+    { "movement": "8", "stage": "stage2", "value": 532.0 },
+    { "movement": "11", "stage": "stage1", "value": 482.0 },
+    { "movement": "7", "stage": "stage2", "value": 337.0 },
+    { "movement": "10", "stage": "stage2", "value": 257.0 }
+  ]
+}
