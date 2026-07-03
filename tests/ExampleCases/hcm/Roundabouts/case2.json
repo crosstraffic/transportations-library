@@ -1,0 +1,48 @@
+{
+  "_source": "HCM 7th Edition, Chapter 33, Roundabout Example Problem 2: multilane roundabout (Exhibit 33-9). NB single-lane entry against two circulating lanes; SB two-lane entry (LT | R) against two circulating lanes; EB and WB two-lane entries (LT | TR) against one circulating lane. PHF = 0.95; 5% heavy vehicles EB/WB, 2% NB/SB.",
+  "nb": {
+    "v_l": 50.0,
+    "v_t": 60.0,
+    "v_r": 120.0,
+    "heavy_vehicle_pct": 2.0,
+    "entry_lanes": 1,
+    "circulating_lanes": 2,
+    "exiting_lanes": 1,
+    "bypass": "None"
+  },
+  "sb": {
+    "v_l": 240.0,
+    "v_t": 60.0,
+    "v_r": 400.0,
+    "heavy_vehicle_pct": 2.0,
+    "entry_lanes": 2,
+    "circulating_lanes": 2,
+    "exiting_lanes": 1,
+    "bypass": "None",
+    "lane_assignment": "LeftThroughAndRight"
+  },
+  "eb": {
+    "v_l": 230.0,
+    "v_t": 420.0,
+    "v_r": 80.0,
+    "heavy_vehicle_pct": 5.0,
+    "entry_lanes": 2,
+    "circulating_lanes": 1,
+    "exiting_lanes": 1,
+    "bypass": "None",
+    "lane_assignment": "LeftThroughAndThroughRight"
+  },
+  "wb": {
+    "v_l": 400.0,
+    "v_t": 250.0,
+    "v_r": 90.0,
+    "heavy_vehicle_pct": 5.0,
+    "entry_lanes": 2,
+    "circulating_lanes": 1,
+    "exiting_lanes": 1,
+    "bypass": "None",
+    "lane_assignment": "LeftThroughAndThroughRight"
+  },
+  "phf": 0.95,
+  "analysis_period_h": 0.25
+}

@@ -6,12 +6,18 @@ use pyo3::prelude::*;
 pub use super::chapter12::*;
 pub use super::chapter15::*;
 pub use super::chapter19::*;
+pub use super::chapter20::*;
+pub use super::chapter21::*;
+pub use super::chapter22::*;
 
 #[pymodule]
 fn transportations_library(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     super::chapter12::register(m)?;
     super::chapter15::register(m)?;
     super::chapter19::register(m)?;
+    super::chapter20::register(m)?;
+    super::chapter21::register(m)?;
+    super::chapter22::register(m)?;
     super::support::register(m)?;
 
     m.add(
@@ -22,7 +28,10 @@ fn transportations_library(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()>
         Main Classes:\n\
         - SubSegment, Segment, TwoLaneHighways: HCM Chapter 15 (two-lane highways)\n\
         - BasicFreeways: HCM Chapter 12 (basic freeway and multilane highway segments)\n\
-        - SignalizedIntersection: HCM Chapter 19 (signalized intersections)\n\n\
+        - SignalizedIntersection: HCM Chapter 19 (signalized intersections)\n\
+        - Twsc: HCM Chapter 20 (two-way STOP-controlled intersections)\n\
+        - Awsc: HCM Chapter 21 (all-way STOP-controlled intersections)\n\
+        - Roundabouts: HCM Chapter 22 (roundabouts)\n\n\
         Constraint Functions:\n\
         - get_constraints(): Get all parameter constraints as JSON\n\
         - validate_input(): Validate input parameters against HCM/AASHTO constraints\n\n\

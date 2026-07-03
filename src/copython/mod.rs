@@ -8,6 +8,12 @@ pub mod chapter15;
 #[cfg(feature = "with-python")]
 pub mod chapter19;
 #[cfg(feature = "with-python")]
+pub mod chapter20;
+#[cfg(feature = "with-python")]
+pub mod chapter21;
+#[cfg(feature = "with-python")]
+pub mod chapter22;
+#[cfg(feature = "with-python")]
 pub mod support;
 #[cfg(feature = "with-python")]
 pub mod py_transportationslibrary;
