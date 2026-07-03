@@ -6,6 +6,8 @@ pub mod chapter12;
 #[cfg(feature = "with-python")]
 pub mod chapter15;
 #[cfg(feature = "with-python")]
+pub mod chapter18;
+#[cfg(feature = "with-python")]
 pub mod chapter19;
 #[cfg(feature = "with-python")]
 pub mod chapter20;
