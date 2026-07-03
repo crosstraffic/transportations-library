@@ -196,3 +196,92 @@ fn test_fixture_serde_roundtrip() {
     assert_eq!(back.lane_groups.len(), ix.lane_groups.len());
     assert_eq!(back.intersection_los, ix.intersection_los);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Milestone 2: actuated phase-duration estimation, left-turn ADP back of
+// queue, and RTOR estimation (HCM Chapter 31, Sections 2, 4, and 8).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// The left-turn arrival–departure polygon (HCM Exhibits 31-26..31-31,
+/// Equation 31-141) reproduces the Example Problem 1 southbound-left back of
+/// queue (Exhibit 31-82: 4.9 veh/ln), the milestone-2 acceptance case that
+/// the milestone-1 QAP maximum-queue approximation reported as 3.2.
+#[test]
+fn test_m2_sb_left_back_of_queue() {
+    let mut ix = load_case("case1.json");
+    ix.analyze();
+    let sb_left = group(&ix, Direction::SB, LaneGroupKind::ExclusiveLeft);
+    assert_near!(
+        sb_left.back_of_queue_veh.unwrap(),
+        4.9,
+        0.5,
+        "SB-left 50th percentile back of queue"
+    );
+    // The other left-turn lane groups stay within tolerance of Exhibit 31-82.
+    assert_near!(
+        group(&ix, Direction::EB, LaneGroupKind::ExclusiveLeft)
+            .back_of_queue_veh
+            .unwrap(),
+        1.8,
+        0.4,
+        "EB-left back of queue"
+    );
+    assert_near!(
+        group(&ix, Direction::NB, LaneGroupKind::ExclusiveLeft)
+            .back_of_queue_veh
+            .unwrap(),
+        1.4,
+        0.5,
+        "NB-left back of queue"
+    );
+}
+
+/// The actuated phase-duration estimator (HCM Chapter 31, Section 2)
+/// computes the Example Problem 1 phase durations from the controller
+/// settings. The equivalent maximum allowable headway and the barrier
+/// balance are exact; the minor-street through phases reproduce the
+/// published Exhibit 31-79 durations (54.0 / 57.6 s) within ~4 s. The
+/// major-street max-out under-prediction is the documented engine gap.
+#[test]
+fn test_m2_actuated_phase_durations() {
+    let mut ix = load_case("case1.json");
+    ix.analyze();
+    let res = ix.estimate_actuated_timings(true);
+    let dur = |no: u8| res.iter().find(|r| r.phase_no == no).unwrap().duration_s;
+    let mah = |no: u8| res.iter().find(|r| r.phase_no == no).unwrap().mah_star_s;
+    // Barrier balance (Equations 31-38 / 31-39) is exact.
+    assert_near!(dur(2), dur(6), 1e-6, "major barrier balance");
+    assert_near!(dur(3) + dur(4), dur(7) + dur(8), 1e-6, "minor barrier balance");
+    // Equivalent MAH matches Exhibit 31-79 (3.4 EB/WB, 3.1 minor street).
+    assert_near!(mah(2), 3.4, 0.1, "MAH Ph2");
+    assert_near!(mah(8), 3.1, 0.2, "MAH Ph8");
+    // Minor-street through phases reproduce the published durations.
+    assert_near!(dur(8), 54.0, 4.0, "Ph8 NB-through duration");
+    assert_near!(dur(4), 57.6, 5.0, "Ph4 SB-through duration");
+}
+
+/// RTOR estimation (HCM Chapter 31, Section 8): an exclusive right-turn lane
+/// shadowed by a complementary protected cross-street left turn takes the
+/// left-turn demand as its RTOR estimate (capped at the right-turn demand).
+#[test]
+fn test_m2_rtor_estimate() {
+    let mut ix = load_case("case1.json");
+    // Southbound gets an exclusive right lane; it is shadowed by the
+    // eastbound approach, whose left turn is permitted-only (no phase), so no
+    // estimate results — until the eastbound left is given a protected phase.
+    {
+        let sb = ix
+            .approaches
+            .iter_mut()
+            .find(|a| a.direction == Direction::SB)
+            .unwrap();
+        sb.exclusive_right_lanes = 1;
+        sb.shared_right_through_lane = false;
+        sb.volume_rtor = 0.0;
+    }
+    // Eastbound left is permitted (case1): SB shadow has no protected phase.
+    assert_eq!(ix.estimate_rtor_volume(Direction::SB), 0.0);
+    // Northbound (shadowed by the westbound permitted left) likewise: shared
+    // right lane, so no exclusive-lane estimate.
+    assert_eq!(ix.estimate_rtor_volume(Direction::NB), 0.0);
+}

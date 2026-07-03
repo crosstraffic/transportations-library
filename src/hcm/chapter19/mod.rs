@@ -5,19 +5,24 @@
 //! Chapter 31, Signalized Intersections: Supplemental).
 //!
 //! Milestone 1 covers pretimed and coordinated operation (fixed, known
-//! signal timing). The actuated phase-duration estimation loop (Chapter 31,
-//! Section 2), the full left-turn arrival–departure polygon family for
-//! percentile back-of-queue, and the pedestrian/bicycle LOS methodologies
-//! are deferred to a later milestone; the data structures already carry the
-//! fields (e.g., `max_green_s`, `passage_time_s`) needed to add them without
-//! breaking changes.
+//! signal timing). Milestone 2 adds the actuated phase-duration estimation
+//! procedure (Chapter 31, Section 2, Equations 31-1 through 31-45; see
+//! [`actuated`]), the left-turn arrival–departure polygon first-term back of
+//! queue (Chapter 31, Section 4, Exhibits 31-26 through 31-31), and the
+//! right-turn-on-red volume estimate (Chapter 31, Section 8). Fixed timing
+//! remains the default analysis path; the actuated estimator is a separate
+//! entry point ([`signalized::SignalizedIntersection::estimate_actuated_timings`]).
+//! The pedestrian/bicycle LOS methodologies and multi-period analysis are
+//! deferred to a later milestone.
 
+pub mod actuated;
 pub mod exhibits;
 pub mod signalized;
 
 #[cfg(test)]
 mod tests;
 
+pub use actuated::*;
 pub use exhibits::*;
 pub use signalized::*;
 

@@ -25,6 +25,10 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::actuated::{
+    estimate_fully_actuated, ActuatedLaneGroupInput, ActuatedPhaseInput, ActuatedPhaseResult,
+    MahLaneGroup,
+};
 use super::exhibits::*;
 use crate::hcm::common::delay::{
     aggregate_control_delay, control_delay_signalized, incremental_delay_factor_actuated,
@@ -93,6 +97,19 @@ pub struct PhaseTiming {
     pub walk_s: Option<f64>,
     /// Pedestrian clear interval, s.
     pub ped_clear_s: Option<f64>,
+    /// Minimum green setting G_min, s (actuated control; HCM Equation 31-35).
+    /// Defaults to 5.0 s when absent.
+    #[serde(default)]
+    pub min_green_s: Option<f64>,
+    /// Stop-line detection zone length L_ds, ft (actuated control;
+    /// HCM Equation 31-10). Defaults to 40.0 ft when absent.
+    #[serde(default)]
+    pub detector_length_ft: Option<f64>,
+    /// Phase set on recall to maximum (actuated control; forces the green to
+    /// its maximum every cycle, HCM Equation 31-34 discussion). Defaults to
+    /// false.
+    #[serde(default)]
+    pub recall_max: bool,
 }
 
 impl PhaseTiming {
@@ -997,6 +1014,106 @@ pub fn first_term_back_of_queue(
     }
 }
 
+/// HCM Exhibits 31-26 through 31-31 with Equations 31-133 through 31-141
+/// (Section 4, Steps 2 through 6): first-term back of queue (number of full
+/// stops N_f) for a permitted or protected-permitted left-turn lane group,
+/// evaluated from its queue accumulation polygon.
+///
+/// The polygon `intervals` (the same arrival–departure construction used by
+/// the Section 3 delay procedure) is iterated to its steady state, then the
+/// first-term back of queue is taken as the largest per-busy-period arrival
+/// count between queue-dissipation points. This follows the Chapter 31,
+/// Section 4, Step 6 rule for the more complex left-turn polygons: "For some
+/// of the more complex ADPs that include left-turn movements operating with
+/// the permitted mode, the queue may dissipate at two or more points during
+/// the cycle. If this occurs, then N_f,i is computed for each of the i
+/// periods between queue dissipation points. The first-term back-of-queue
+/// estimate is then equal to the largest of the N_f,i values."
+///
+/// A busy period runs from the moment the queue begins to form until the
+/// solid queue clears. The fully-stopped queue (the dashed departure line of
+/// Step 3) clears `d_a/2` seconds earlier than the solid queue, so the
+/// interval over which arriving vehicles complete a full stop ends `d_a/2`
+/// before the solid clearance and the count is reduced by `q d_a/2`
+/// (Equations 31-139 and 31-141).
+///
+/// * `intervals` — left-turn queue accumulation polygon (one cycle); the
+///   arrival rate `q` is read from the first interval (constant across the
+///   cycle) and is already capped at capacity per the general procedure.
+/// * `cycle_s` — cycle length C, s (the polygon spans one cycle)
+/// * `d_a` — acceleration–deceleration delay (Equation 31-131), s
+pub fn adp_first_term_left(intervals: &[QapInterval], cycle_s: f64, d_a: f64) -> f64 {
+    if intervals.is_empty() || cycle_s <= 0.0 {
+        return 0.0;
+    }
+    let q = intervals[0].arrival_veh_s; // veh/s/ln, constant across the cycle
+    if q <= 0.0 {
+        return 0.0;
+    }
+    let eps = 1e-4;
+    // Steady-state starting queue: the fixed point of the polygon iteration
+    // (HCM Chapter 31, Section 3, General QAP Construction, Step 9).
+    let mut q_start = 0.0_f64;
+    for _ in 0..80 {
+        let mut queue = q_start;
+        for iv in intervals {
+            if iv.duration_s > 0.0 {
+                let w = iv.arrival_veh_s - iv.discharge_veh_h / 3_600.0;
+                queue = (queue + w * iv.duration_s).max(0.0);
+            }
+            if iv.sneakers_veh > 0.0 {
+                queue = (queue - iv.sneakers_veh).max(0.0);
+            }
+        }
+        if (queue - q_start).abs() < 1e-7 || queue > 1e6 {
+            q_start = queue;
+            break;
+        }
+        q_start = queue;
+    }
+    // Final pass over two concatenated cycles (steady state) so a busy
+    // period that spans the cycle boundary is captured in full. The maximum
+    // contiguous duration for which the queue exceeds zero bounds the
+    // largest per-busy-period arrival count.
+    let dt = 0.02_f64;
+    let mut queue = q_start;
+    let mut busy = 0.0_f64;
+    let mut max_busy = 0.0_f64;
+    for _cycle in 0..2 {
+        for iv in intervals {
+            let s = iv.discharge_veh_h / 3_600.0;
+            let w = iv.arrival_veh_s - s;
+            let steps = (iv.duration_s / dt).ceil().max(0.0) as usize;
+            let step = if steps > 0 {
+                iv.duration_s / steps as f64
+            } else {
+                0.0
+            };
+            for _ in 0..steps {
+                queue = (queue + w * step).max(0.0);
+                if queue > eps {
+                    busy += step;
+                    max_busy = max_busy.max(busy);
+                } else {
+                    busy = 0.0;
+                }
+            }
+            if iv.sneakers_veh > 0.0 {
+                queue = (queue - iv.sneakers_veh).max(0.0);
+                if queue <= eps {
+                    busy = 0.0;
+                }
+            }
+        }
+    }
+    // Q1 = N_f = arrivals over the longest busy period, less the partial-stop
+    // window q d_a/2 (Equations 31-139 and 31-141).
+    // VERIFY-HCM: the exact engine accounts for full stops per dissipation
+    // interval (Eqs 31-137..31-140); this busy-period form reproduces the
+    // published EP1 left-turn queues within tolerance. See docs/hcm/VERIFICATION.md.
+    (q * max_busy - q * d_a / 2.0).max(0.0)
+}
+
 /// HCM Equation 31-142: second-term back of queue
 /// `Q2 = c_A / (3,600 N) d2`.
 pub fn second_term_back_of_queue(c_a: f64, n_lanes: u32, d2: f64) -> f64 {
@@ -1186,6 +1303,218 @@ impl SignalizedIntersection {
             Direction::WB => Direction::EB,
         };
         self.approaches.iter().position(|a| a.direction == opp)
+    }
+
+    /// The intersecting approach 90° counterclockwise of `dir` (i.e., the
+    /// cross-street approach to the left of the subject driver). Its
+    /// left-turn movement is the complementary movement that "shadows" the
+    /// subject approach's right turn during its protected phase.
+    fn cross_street_left_shadow(dir: Direction) -> Direction {
+        // VERIFY-HCM: HCM Ch 31 §8 says "complementary cross street left-turn
+        // movement" without a formal movement map; the 90°-CCW approach is
+        // the receiving-lane match. See docs/hcm/VERIFICATION.md.
+        match dir {
+            Direction::EB => Direction::NB,
+            Direction::NB => Direction::WB,
+            Direction::WB => Direction::SB,
+            Direction::SB => Direction::EB,
+        }
+    }
+
+    /// Estimate the right-turn-on-red flow rate for one approach from the
+    /// published Chapter 19 / Chapter 31 rule.
+    ///
+    /// The HCM motorized vehicle methodology treats RTOR only by removing
+    /// RTOR vehicles from the right-turn demand (HCM Chapter 19, Step 2). It
+    /// suggests one estimate when the right turn is served by an exclusive
+    /// lane (HCM Chapter 31, Section 8, "Effect of Right-Turn-on-Red
+    /// Operation"): "If the right-turn movement is served by an exclusive
+    /// lane, the methodology suggests RTOR volume can be estimated as equal
+    /// to the left-turn demand of the complementary cross street left-turn
+    /// movement, whenever this movement is provided a left-turn phase." The
+    /// complementary cross-street left turn is the one whose protected phase
+    /// stops the through movement that would otherwise conflict with the
+    /// subject right turn; it discharges into the same receiving lanes (see
+    /// the right-turn-overlap discussion in HCM Chapter 31, Section 2). This
+    /// is the approach 90° counterclockwise of the subject.
+    ///
+    /// Returns 0.0 when the subject approach has no exclusive right-turn lane,
+    /// when the complementary approach is absent, or when that approach's
+    /// left turn is not provided a protected (or protected-permitted) phase.
+    /// The estimate is capped at the right-turn demand. Shared-lane RTOR is
+    /// left at 0.0 (the HCM offers no estimate and recommends field data or
+    /// an alternative tool). The exact identification of the complementary
+    /// movement is a documented VERIFY-HCM item (the published text says
+    /// "cross street" without a formal movement map).
+    pub fn estimate_rtor_volume(&self, direction: Direction) -> f64 {
+        let ap = match self.approaches.iter().find(|a| a.direction == direction) {
+            Some(a) => a,
+            None => return 0.0,
+        };
+        if ap.exclusive_right_lanes == 0 {
+            return 0.0;
+        }
+        let shadow_dir = Self::cross_street_left_shadow(direction);
+        let shadow = match self.approaches.iter().find(|a| a.direction == shadow_dir) {
+            Some(a) => a,
+            None => return 0.0,
+        };
+        let has_left_phase = matches!(
+            shadow.left_turn_mode,
+            LeftTurnMode::Protected | LeftTurnMode::ProtectedPermitted
+        );
+        if !has_left_phase {
+            return 0.0;
+        }
+        let (_, _, v_r) = ap.flow_rates();
+        let shadow_left = shadow.flow_rates().0;
+        // RTOR estimate = complementary cross-street left-turn demand, capped
+        // at the subject right-turn demand.
+        shadow_left.min(v_r).max(0.0)
+    }
+
+    /// Populate each approach's `volume_rtor` with the Chapter 31 exclusive
+    /// right-turn-lane estimate ([`estimate_rtor_volume`]) where no RTOR flow
+    /// has been supplied. Call before [`analyze`]; approaches that already
+    /// carry a nonzero `volume_rtor` (e.g., a field measurement) are left
+    /// unchanged.
+    pub fn apply_rtor_estimates(&mut self) {
+        let estimates: Vec<(Direction, f64)> = self
+            .approaches
+            .iter()
+            .filter(|a| a.volume_rtor <= 0.0)
+            .map(|a| (a.direction, self.estimate_rtor_volume(a.direction)))
+            .collect();
+        for (dir, est) in estimates {
+            if let Some(a) = self.approaches.iter_mut().find(|a| a.direction == dir) {
+                a.volume_rtor = est;
+            }
+        }
+    }
+
+    /// Estimate the average actuated phase durations from the controller
+    /// settings (HCM Chapter 31, Section 2, Actuated Phase Duration,
+    /// Equations 31-1 through 31-45), using the analyzed lane-group demand
+    /// and saturation flows as the operating point.
+    ///
+    /// Requires [`analyze`] to have been run first (the estimate consumes the
+    /// Step 3/4 lane-group flow rates and adjusted saturation flows and the
+    /// Step 6 permitted unblocked green g_u). The demand and permitted green
+    /// are held fixed at that operating point; recomputing them inside the
+    /// actuated iteration is the deferred computational-engine coupling
+    /// documented in [`crate::hcm::chapter19::actuated`].
+    ///
+    /// * `simultaneous_gap_out` — whether the through phases that terminate
+    ///   at each barrier are set for simultaneous gap-out (Equation 31-26)
+    ///
+    /// Returns the per-phase results (duration, queue service, green
+    /// extension, MAH, and max-out / call probabilities). Does not mutate
+    /// `self`; the fixed-timing analysis pipeline is unchanged (the supplied
+    /// phase durations remain the default path).
+    pub fn estimate_actuated_timings(
+        &self,
+        simultaneous_gap_out: bool,
+    ) -> Vec<ActuatedPhaseResult> {
+        // Group analyzed lane groups by controlling phase number, attaching
+        // the owning approach for detection, pedestrian, and speed inputs.
+        let mut phase_nos: Vec<u8> = self.lane_groups.iter().map(|lg| lg.phase_no).collect();
+        phase_nos.sort_unstable();
+        phase_nos.dedup();
+
+        let mut phases: Vec<ActuatedPhaseInput> = Vec::new();
+        for &no in &phase_nos {
+            // The PhaseTiming and approach that own this phase number.
+            let owner = self.approaches.iter().find_map(|ap| {
+                if ap.through_phase.phase_no == no {
+                    Some((&ap.through_phase, ap, false))
+                } else if ap.left_phase.as_ref().map(|p| p.phase_no) == Some(no) {
+                    Some((ap.left_phase.as_ref().unwrap(), ap, true))
+                } else {
+                    None
+                }
+            });
+            let (pt, ap, is_left_phase) = match owner {
+                Some(v) => v,
+                None => continue,
+            };
+            let lane_groups: Vec<ActuatedLaneGroupInput> = self
+                .lane_groups
+                .iter()
+                .filter(|lg| lg.phase_no == no)
+                .map(|lg| {
+                    let owner_ap = self
+                        .approaches
+                        .iter()
+                        .find(|a| a.direction == lg.direction)
+                        .unwrap_or(ap);
+                    let (mah_kind, sl_perm, g_u) = match lg.kind {
+                        LaneGroupKind::ExclusiveLeft => match owner_ap.left_turn_mode {
+                            LeftTurnMode::Permitted => (
+                                MahLaneGroup::LeftPermittedExclusive,
+                                lg.sat_flow_permitted.unwrap_or(0.0),
+                                lg.g_u.unwrap_or(0.0),
+                            ),
+                            _ => (MahLaneGroup::LeftProtectedExclusive, 0.0, 0.0),
+                        },
+                        LaneGroupKind::SharedLeftThrough => (
+                            MahLaneGroup::LeftPermittedShared,
+                            lg.sat_flow_permitted.unwrap_or(0.0),
+                            lg.g_u.unwrap_or(0.0),
+                        ),
+                        LaneGroupKind::ExclusiveThrough => (MahLaneGroup::Through, 0.0, 0.0),
+                        LaneGroupKind::SharedRightThrough => {
+                            (MahLaneGroup::RightPermittedShared, 0.0, 0.0)
+                        }
+                        LaneGroupKind::ExclusiveRight => {
+                            (MahLaneGroup::RightProtectedExclusive, 0.0, 0.0)
+                        }
+                    };
+                    let pct_hv = match lg.kind {
+                        LaneGroupKind::ExclusiveLeft | LaneGroupKind::SharedLeftThrough => {
+                            owner_ap.pct_heavy_vehicles_left
+                        }
+                        _ => owner_ap.pct_heavy_vehicles_through,
+                    };
+                    ActuatedLaneGroupInput {
+                        v: lg.flow_rate,
+                        s: lg.sat_flow.unwrap_or(0.0),
+                        lanes: lg.lanes,
+                        pct_heavy_vehicles: pct_hv,
+                        detector_len_ft: pt.detector_length_ft.unwrap_or(40.0),
+                        mah_kind,
+                        sl_permitted: sl_perm,
+                        g_u,
+                        f_rpb: 1.0,
+                    }
+                })
+                .collect();
+            if lane_groups.is_empty() {
+                continue;
+            }
+            let walk_plus_pc = match (pt.walk_s, pt.ped_clear_s) {
+                (Some(w), Some(pc)) => Some(w + pc),
+                _ => None,
+            };
+            phases.push(ActuatedPhaseInput {
+                phase_no: no,
+                max_green_s: pt
+                    .max_green_s
+                    .unwrap_or_else(|| pt.duration_s - pt.change_period_s()),
+                min_green_s: pt.min_green_s.unwrap_or(5.0),
+                passage_time_s: pt.passage_time_s.unwrap_or(2.0),
+                yellow_s: pt.yellow_s,
+                red_clearance_s: pt.red_clearance_s,
+                walk_plus_pc_s: walk_plus_pc,
+                ped_flow_ph: ap.ped_flow_ph,
+                recall_max: pt.recall_max,
+                protected_left: is_left_phase,
+                speed_limit_mph: ap.speed_limit_mph,
+                lane_groups,
+            });
+        }
+        let (results, _cycle) =
+            estimate_fully_actuated(&phases, self.base_saturation_flow, simultaneous_gap_out, 1.0);
+        results
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -2023,9 +2352,15 @@ impl SignalizedIntersection {
                     q_avg /= x;
                 }
                 let res = qap_evaluate(&intervals, c_len, q_avg);
-                // Provisional Q1 for Step 10 (milestone-1 approximation:
-                // maximum QAP queue in place of the left-turn ADP family).
-                lg.q1_veh = Some(res.max_queue_veh);
+                // First-term back of queue for Step 10 from the left-turn
+                // arrival–departure polygon family (HCM Exhibits 31-26
+                // through 31-31, Equation 31-141): the number of full stops
+                // N_f, not the instantaneous maximum queue. For lane groups
+                // served in two batches per cycle (e.g., a protected phase
+                // plus permitted/sneaker service) N_f exceeds the peak queue
+                // because it counts every vehicle that stops.
+                let d_a = accel_decel_delay(ap.speed_limit_mph);
+                lg.q1_veh = Some(adp_first_term_left(&intervals, c_len, d_a));
                 res.uniform_delay_s
             } else {
                 // Eq. 19-19 with the Eq. 19-20 progression factor.

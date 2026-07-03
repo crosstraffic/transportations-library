@@ -101,9 +101,41 @@ for p*_0,j — an HCM6 number; HCM7 equivalents are Eqs 20-29..20-34.
 6. Ch 29 EP4 reliability: TTI-80 within 0.03 of published; PTI tail lighter (1.73 vs ~2.6-3.0)
    because residual-queue carryover between periods (d3) is deferred — the main known gap.
 
+## Chapter 19 milestone 2 (feat/hcm-ch19-actuated)
+1. **Actuated phase-duration convergence vs published EP1 durations (Exhibit 31-79).** The Section 2
+   procedure (`actuated.rs`, Eqs 31-1..31-45) is driven from the EP1 controller settings holding the
+   Steps 1–5 lane-flow / permitted-green operating point fixed at the published values. It reproduces
+   the equivalent maximum allowable headway (3.4 EB/WB, 3.1 minor street) and the barrier balance
+   exactly, and the minor-street through phases within ~4 s (Ph8 NB-T ≈ 51–54 vs 54.0; Ph4 SB-T ≈ 54
+   vs 57.6; SB-T g_e ≈ 9.5 vs 7.8). Two residuals remain, both documented in the module and test:
+   (a) the major-street phases 2/6 under-extend (~23 vs 34 s) because the HCM computational engine's
+   combined-flow max-out model holds them at max green while the transcribed green-extension model
+   (Eqs 31-29/31-30) gaps them out; (b) the leading protected left phases 3/7 are charged the full
+   left-turn demand for queue service rather than only the demand not served in the following
+   permitted period. The estimated cycle is ~13 s short of 101.8 s. Closing these requires embedding
+   the full Steps 1–5 recomputation and the engine's combined-flow extension calibration inside every
+   actuated iteration (Section 7 computational-engine detail). **VERIFY-HCM.**
+2. **Left-turn ADP first-term partial-stop offset.** The first-term back of queue for permitted /
+   protected-permitted left-turn lane groups (Eq 31-141) is computed as the largest per-busy-period
+   arrival count less `q·d_a/2` (the fully-stopped departure dashed line of Section 4, Step 3 leads
+   the solid departure by d_a/2). This reproduces EP1 EB-left 1.8 (exact), SB-left 4.9 → 5.0 (was 3.2
+   under the QAP peak), and keeps NB-left within the published queue-storage tolerance. The engine's
+   exact multi-segment N_f accounting (Eqs 31-137..31-140 per dissipation interval) would remove the
+   ~0.1–0.3 residual on the more complex polygons. **VERIFY-HCM.**
+3. **RTOR complementary-movement identification.** HCM Ch 31 §8 estimates exclusive-right-lane RTOR as
+   "the left-turn demand of the complementary cross street left-turn movement" but gives no formal
+   movement map. Implemented as the approach 90° counterclockwise (the cross-street left that
+   discharges into the subject right turn's receiving lanes and whose protected phase clears the
+   conflicting through movement). Shared-lane RTOR is left at 0.0 (HCM offers no estimate).
+   **VERIFY-HCM.**
+4. **Deferred controller-emulation details (HCM defers these to the Section 7 engine):** permissive-
+   period modeling; the coordinated-actuated force-off / yield-point emulation beyond the
+   equivalent-maximum-green abstraction (Eqs 31-27, 31-40); Dallas left-turn phasing; dual-entry
+   activation edge cases; and pulse-mode detection.
+
 ## Deferred scopes (tracked, by design — not errors)
-- Ch 19 milestone 2: actuated phase-duration loop, left-turn ADP percentile queues, RTOR, Dallas
-  phasing, ped/bike LOS, multi-period.
+- Ch 19 later: full computational-engine actuated convergence to 0.1 s (combined-flow max-out and
+  in-loop Steps 1–5 recomputation), Dallas phasing, ped/bike LOS, multi-period.
 - Ch 10/25: managed-lane facilities, planning method, special work-zone config tables, per-segment
   work-zone alpha.
 - Ch 18: Ch 30 platoon dispersion + O-D/spillback + access-point delay procedure (input hooks provided).

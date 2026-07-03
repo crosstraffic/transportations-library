@@ -406,11 +406,14 @@ fn test_step_9_aggregated_delay_and_los() {
 
 /// HCM Exhibit 31-82: 50th percentile back of queue for the through and
 /// shared lane groups (basic arrival–departure polygon, ±0.5 veh/ln except
-/// the oversaturated NB groups at ±0.8) and the EB/NB left-turn lane
-/// groups (QAP maximum-queue approximation, ±0.4 veh/ln). The SB left
-/// (g_u = 0, sneaker-only permitted service) is excluded: its published
-/// value (4.9) counts stopped vehicles across sneaker departures, which
-/// requires the Exhibit 31-26 left-turn ADP (milestone 2).
+/// the oversaturated NB groups at ±0.8) and the left-turn lane groups
+/// (left-turn arrival–departure polygon of Exhibits 31-26 through 31-31,
+/// Equation 31-141, ±0.5 veh/ln). The southbound left is the milestone-2
+/// acceptance case: with g_u = 0 it is served only during its protected
+/// phase and by sneakers, so its full-stop count (published 4.9 veh/ln) far
+/// exceeds the instantaneous peak queue; the ADP first-term procedure
+/// reproduces it (milestone 1 reported 3.2 from the QAP maximum-queue
+/// approximation).
 #[test]
 fn test_step_10_back_of_queue() {
     let ix = example_problem_1();
@@ -420,9 +423,10 @@ fn test_step_10_back_of_queue() {
         (Direction::EB, LaneGroupKind::SharedRightThrough, 3.8, 0.5),
         (Direction::WB, LaneGroupKind::ExclusiveThrough, 7.6, 0.5),
         (Direction::WB, LaneGroupKind::SharedRightThrough, 6.6, 0.5),
-        (Direction::NB, LaneGroupKind::ExclusiveLeft, 1.4, 0.4),
+        (Direction::NB, LaneGroupKind::ExclusiveLeft, 1.4, 0.5),
         (Direction::NB, LaneGroupKind::ExclusiveThrough, 28.9, 0.8),
         (Direction::NB, LaneGroupKind::SharedRightThrough, 29.4, 0.8),
+        (Direction::SB, LaneGroupKind::ExclusiveLeft, 4.9, 0.5),
         (Direction::SB, LaneGroupKind::ExclusiveThrough, 7.7, 0.5),
         (Direction::SB, LaneGroupKind::SharedRightThrough, 7.5, 0.5),
     ];
@@ -456,6 +460,72 @@ fn test_step_10_back_of_queue() {
     for lg in &ix.lane_groups {
         assert!(lg.back_of_queue_95_veh.unwrap() >= lg.back_of_queue_veh.unwrap());
     }
+}
+
+/// HCM Exhibits 31-26 through 31-31 with Equation 31-141: the left-turn ADP
+/// first-term back of queue counts full stops (N_f), which for a lane group
+/// served in two batches per cycle exceeds the instantaneous peak queue. A
+/// single protected batch (all vehicles arrive on red, one discharge)
+/// reduces to the peak; a permitted lane group whose queue is held over most
+/// of the cycle and released by sneakers counts nearly every arrival.
+#[test]
+fn test_adp_first_term_left_full_stops() {
+    let c = 101.8_f64;
+    let d_a = accel_decel_delay(35.0);
+    let q = 194.0 / 3_600.0; // SB-left lane arrival rate, veh/s/ln
+                             // Protected-permitted leading polygon with g_u = 0: a short protected
+                             // green (9.8 s at s = 1,603) and a 2-vehicle sneaker release, with the
+                             // queue otherwise accumulating over the whole cycle.
+    let intervals = [
+        QapInterval {
+            duration_s: 9.8,
+            discharge_veh_h: 1_603.0,
+            arrival_veh_s: q,
+            sneakers_veh: 0.0,
+        },
+        QapInterval {
+            duration_s: 4.0,
+            discharge_veh_h: 0.0,
+            arrival_veh_s: q,
+            sneakers_veh: 0.0,
+        },
+        QapInterval {
+            duration_s: 53.6,
+            discharge_veh_h: 0.0,
+            arrival_veh_s: q,
+            sneakers_veh: 2.0,
+        },
+        QapInterval {
+            duration_s: 34.4,
+            discharge_veh_h: 0.0,
+            arrival_veh_s: q,
+            sneakers_veh: 0.0,
+        },
+    ];
+    let nf = adp_first_term_left(&intervals, c, d_a);
+    // Full stops far exceed the instantaneous peak queue (~3 veh/ln); the
+    // published SB-left first term is about 4.7 veh/ln (Q = 4.9 with Q2).
+    let peak = qap_evaluate(&intervals, c, q).max_queue_veh;
+    assert!(nf > peak + 1.0, "N_f {nf} should exceed peak {peak}");
+    assert_near!(nf, 4.7, 0.6, "SB-left ADP first term");
+    // A purely protected movement (single discharge) reduces to ~the peak.
+    let prot = [
+        QapInterval {
+            duration_s: c - 20.0,
+            discharge_veh_h: 0.0,
+            arrival_veh_s: q,
+            sneakers_veh: 0.0,
+        },
+        QapInterval {
+            duration_s: 20.0,
+            discharge_veh_h: 1_603.0,
+            arrival_veh_s: q,
+            sneakers_veh: 0.0,
+        },
+    ];
+    let nf_prot = adp_first_term_left(&prot, c, d_a);
+    let peak_prot = qap_evaluate(&prot, c, q).max_queue_veh;
+    assert!((nf_prot - peak_prot).abs() < 0.6, "protected N_f ~ peak");
 }
 
 /// HCM Equations 31-131 / 31-132: acceleration–deceleration delay is in
@@ -528,6 +598,9 @@ fn test_phase_timing_effective_green() {
         passage_time_s: Some(2.0),
         walk_s: None,
         ped_clear_s: None,
+        min_green_s: None,
+        detector_length_ft: None,
+        recall_max: false,
     };
     // g = D_p - l1 - l2 = 34 - 2 - (4 - 2) = 30 s.
     assert_near!(p.effective_green_s(), 30.0, 1e-9, "effective green");
@@ -542,6 +615,9 @@ fn test_phase_timing_effective_green() {
         passage_time_s: Some(2.0),
         walk_s: None,
         ped_clear_s: None,
+        min_green_s: None,
+        detector_length_ft: None,
+        recall_max: false,
     };
     // g_a = G_max + Y + Rc - l1 - l2 = 25 + 4 - 2 - 2 = 25 s.
     assert_near!(left.available_effective_green_s(), 25.0, 1e-9, "g_a");
@@ -676,4 +752,104 @@ fn test_serde_roundtrip() {
         "roundtrip delay"
     );
     assert_eq!(back.intersection_los, ix.intersection_los);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RTOR estimation (HCM Ch. 19 Step 2 / Ch. 31 §8) and actuated timing wiring
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// HCM Chapter 31, Section 8: the exclusive right-turn-lane RTOR estimate
+/// equals the complementary cross-street protected left-turn demand, capped
+/// at the right-turn demand. Example Problem 1 modified so the eastbound
+/// approach has an exclusive right-turn lane shadowed by the northbound
+/// protected-permitted left.
+#[test]
+fn test_rtor_estimate_exclusive_right_lane() {
+    let json = include_str!("../../../tests/ExampleCases/hcm/Signalized/case1.json");
+    let mut ix: SignalizedIntersection = serde_json::from_str(json).unwrap();
+    // Give the eastbound approach an exclusive right-turn lane.
+    {
+        let eb = ix
+            .approaches
+            .iter_mut()
+            .find(|a| a.direction == Direction::EB)
+            .unwrap();
+        eb.exclusive_right_lanes = 1;
+        eb.shared_right_through_lane = false;
+        eb.volume_rtor = 0.0;
+    }
+    // Northbound left is protected-permitted (has a left phase), demand 133;
+    // eastbound right demand is 106, so the estimate is capped at 106.
+    let est = ix.estimate_rtor_volume(Direction::EB);
+    assert_near!(est, 106.0, 1e-9, "EB RTOR estimate (capped at v_r)");
+
+    // Westbound is shadowed by the southbound protected-permitted left
+    // (demand 194); westbound right demand 24 caps the estimate at 24.
+    {
+        let wb = ix
+            .approaches
+            .iter_mut()
+            .find(|a| a.direction == Direction::WB)
+            .unwrap();
+        wb.exclusive_right_lanes = 1;
+        wb.shared_right_through_lane = false;
+        wb.volume_rtor = 0.0;
+    }
+    assert_near!(ix.estimate_rtor_volume(Direction::WB), 24.0, 1e-9, "WB RTOR");
+
+    // A shared right-turn lane yields no estimate (HCM offers none).
+    assert_eq!(ix.estimate_rtor_volume(Direction::NB), 0.0);
+
+    // apply_rtor_estimates populates volume_rtor only where unset.
+    ix.apply_rtor_estimates();
+    let eb = ix
+        .approaches
+        .iter()
+        .find(|a| a.direction == Direction::EB)
+        .unwrap();
+    assert_near!(eb.volume_rtor, 106.0, 1e-9, "EB volume_rtor applied");
+}
+
+/// The complementary-left shadow map (approach 90° counterclockwise) is a
+/// consistent rotation with no fixed points.
+#[test]
+fn test_rtor_no_left_phase_no_estimate() {
+    let json = include_str!("../../../tests/ExampleCases/hcm/Signalized/case1.json");
+    let mut ix: SignalizedIntersection = serde_json::from_str(json).unwrap();
+    // Eastbound exclusive right, but make the northbound left permitted-only
+    // (no protected phase): no shadow, no estimate.
+    {
+        let eb = ix
+            .approaches
+            .iter_mut()
+            .find(|a| a.direction == Direction::EB)
+            .unwrap();
+        eb.exclusive_right_lanes = 1;
+        eb.shared_right_through_lane = false;
+    }
+    {
+        let nb = ix
+            .approaches
+            .iter_mut()
+            .find(|a| a.direction == Direction::NB)
+            .unwrap();
+        nb.left_turn_mode = LeftTurnMode::Permitted;
+    }
+    assert_eq!(ix.estimate_rtor_volume(Direction::EB), 0.0);
+}
+
+/// The actuated phase-duration estimator is reachable from the analyzed
+/// facility and reproduces the Example Problem 1 minor-street through phases
+/// (HCM Exhibit 31-79) within the documented tolerance.
+#[test]
+fn test_estimate_actuated_timings_from_facility() {
+    let ix = example_problem_1();
+    let res = ix.estimate_actuated_timings(true);
+    assert_eq!(res.len(), 6, "six phases");
+    let dur = |no: u8| res.iter().find(|r| r.phase_no == no).unwrap().duration_s;
+    // Barrier balance is exact; minor-street through phases are within ~4 s
+    // of the published 54.0 / 57.6 s.
+    assert_near!(dur(3) + dur(4), dur(7) + dur(8), 1e-6, "minor barrier balance");
+    assert_near!(dur(8), 54.0, 4.0, "Ph8 NB through");
+    assert_near!(dur(4), 57.6, 5.0, "Ph4 SB through");
 }

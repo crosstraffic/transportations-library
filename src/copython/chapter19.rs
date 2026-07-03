@@ -6,8 +6,20 @@
 //! `tests/ExampleCases/hcm/Signalized/case1.json` for a complete example).
 
 use crate::hcm::chapter19::signalized::SignalizedIntersection as LibSignalizedIntersection;
+use crate::hcm::common::intersection::Direction;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+
+/// Parse a compass direction string ("NB", "SB", "EB", "WB").
+fn parse_direction(direction: &str) -> PyResult<Direction> {
+    match direction.to_uppercase().as_str() {
+        "NB" => Ok(Direction::NB),
+        "SB" => Ok(Direction::SB),
+        "EB" => Ok(Direction::EB),
+        "WB" => Ok(Direction::WB),
+        other => Err(PyValueError::new_err(format!("unknown direction {other}"))),
+    }
+}
 
 #[pyclass]
 #[derive(Debug, Clone)]
@@ -49,6 +61,38 @@ impl SignalizedIntersection {
     /// Serialize the facility (inputs and computed results) to JSON.
     pub fn to_json(&self) -> PyResult<String> {
         serde_json::to_string(&self.inner).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Estimate the right-turn-on-red flow rate for an approach ("NB", "SB",
+    /// "EB", "WB") from the HCM Chapter 31, Section 8 exclusive right-turn
+    /// lane rule (the complementary cross-street protected left-turn demand,
+    /// capped at the right-turn demand). Returns 0.0 for shared right-turn
+    /// lanes or when no complementary protected left phase exists.
+    pub fn estimate_rtor_volume(&self, direction: &str) -> PyResult<f64> {
+        let dir = parse_direction(direction)?;
+        Ok(self.inner.estimate_rtor_volume(dir))
+    }
+
+    /// Populate each approach's RTOR flow rate with the Chapter 31 exclusive
+    /// right-turn-lane estimate where none was supplied. Call before
+    /// `analyze()`.
+    pub fn apply_rtor_estimates(&mut self) {
+        self.inner.apply_rtor_estimates();
+    }
+
+    /// Estimate the average actuated phase durations from the controller
+    /// settings (HCM Chapter 31, Section 2, Equations 31-1 through 31-45) and
+    /// return them as a JSON array of per-phase results (phase number,
+    /// duration, green interval, queue service time, green extension time,
+    /// equivalent maximum allowable headway, and max-out / call
+    /// probabilities). Requires `analyze()` to have been called first.
+    ///
+    /// Args:
+    ///     simultaneous_gap_out: whether the through phases terminating at
+    ///         each barrier are set for simultaneous gap-out.
+    pub fn actuated_timings_json(&self, simultaneous_gap_out: bool) -> PyResult<String> {
+        let results = self.inner.estimate_actuated_timings(simultaneous_gap_out);
+        serde_json::to_string(&results).map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     /// Cycle length C, s.
