@@ -178,9 +178,11 @@ impl ManagedLaneSegment {
     }
 
     /// Calculate breakpoint in speed-flow curve
-    /// Equation 12-13: BP = (BP_75 + λ_BP × (75 - FFS_adj)) × CAF
+    /// Equation 12-13: BP = [BP_75 + λ_BP × (75 - FFS_adj)] × CAF²
+    /// (HCM Eq. 12-13 squares the CAF, matching the basic-segment breakpoint form.)
     pub fn calculate_breakpoint(&mut self) -> f64 {
-        self.breakpoint = (self.params.bp_75 + self.params.lambda_bp * (75.0 - self.ffs_adj)) * self.caf;
+        self.breakpoint =
+            (self.params.bp_75 + self.params.lambda_bp * (75.0 - self.ffs_adj)) * self.caf.powi(2);
         self.breakpoint
     }
 
@@ -198,9 +200,10 @@ impl ManagedLaneSegment {
     }
 
     /// Calculate speed in linear portion of curve (S1)
-    /// Equation 12-15: S1 = FFS_adj - A1 × v_p
+    /// Equation 12-15: S1 = FFS_adj - A1 × min(v_p, BP)
+    /// (The linear speed drop stops accruing past the breakpoint.)
     fn calculate_s1(&self, v_p: f64) -> f64 {
-        self.ffs_adj - self.params.a1 * v_p
+        self.ffs_adj - self.params.a1 * v_p.min(self.breakpoint)
     }
 
     /// Calculate speed at breakpoint
@@ -242,7 +245,9 @@ impl ManagedLaneSegment {
     }
 
     /// Calculate additional speed drop due to GP lane friction (S3)
-    /// Equation 12-19: S3 = (S1,BP - c_adj/K_cf) × ((v_p - BP)/(c_adj - BP))^A2 - S2
+    /// Equation 12-19: S3 = (c_adj/K_cnf - c_adj/K_cf) × ((v_p - BP)/(c_adj - BP))²
+    /// (Fixed exponent of 2 per HCM Eq. 12-19; the leading term is the difference
+    /// between the speeds at capacity without and with the friction effect.)
     fn calculate_s3(&self) -> f64 {
         if self.v_p <= self.breakpoint {
             return 0.0;
@@ -255,17 +260,15 @@ impl ManagedLaneSegment {
 
         // Only calculate if there's a friction effect (K_cf is defined)
         if let Some(k_cf) = self.params.k_cf {
-            let s1_bp = self.calculate_s1_bp();
+            let speed_at_capacity = self.capacity_adj / self.params.k_cnf;
             let speed_at_capacity_friction = self.capacity_adj / k_cf;
-            let a2 = self.calculate_a2();
 
             let numerator = self.v_p - self.breakpoint;
             let denominator = self.capacity_adj - self.breakpoint;
 
             if denominator > 0.0 {
-                let s3_full = (s1_bp - speed_at_capacity_friction) * (numerator / denominator).powf(a2);
-                let s2 = self.calculate_s2();
-                (s3_full - s2).max(0.0)  // S3 should be positive
+                (speed_at_capacity - speed_at_capacity_friction)
+                    * (numerator / denominator).powi(2)
             } else {
                 0.0
             }

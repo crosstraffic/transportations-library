@@ -3,7 +3,11 @@
 
 use pyo3::prelude::*;
 
+pub use super::chapter10::*;
+pub use super::chapter11::*;
 pub use super::chapter12::*;
+pub use super::chapter13::*;
+pub use super::chapter14::*;
 pub use super::chapter15::*;
 pub use super::chapter18::*;
 pub use super::chapter19::*;
@@ -13,7 +17,11 @@ pub use super::chapter22::*;
 
 #[pymodule]
 fn transportations_library(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    super::chapter10::register(m)?;
+    super::chapter11::register(m)?;
     super::chapter12::register(m)?;
+    super::chapter13::register(m)?;
+    super::chapter14::register(m)?;
     super::chapter15::register(m)?;
     super::chapter18::register(m)?;
     super::chapter19::register(m)?;
@@ -29,7 +37,12 @@ fn transportations_library(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()>
         procedures, one set of classes per HCM chapter.\n\n\
         Main Classes:\n\
         - SubSegment, Segment, TwoLaneHighways: HCM Chapter 15 (two-lane highways)\n\
-        - BasicFreeways: HCM Chapter 12 (basic freeway and multilane highway segments)\n\
+        - BasicFreeways, ManagedLanes: HCM Chapter 12 (basic freeway, multilane\n\
+          highway, and basic managed lane segments)\n\
+        - WeavingSegment: HCM Chapter 13 (freeway weaving segments)\n\
+        - RampSegment: HCM Chapter 14 (freeway merge and diverge segments)\n\
+        - FreewayFacility: HCM Chapter 10 (freeway facilities core methodology)\n\
+        - FreewayReliability: HCM Chapter 11 (freeway reliability analysis)\n\
         - UrbanSegment: HCM Chapter 18 (urban street segments)\n\
         - SignalizedIntersection: HCM Chapter 19 (signalized intersections)\n\
         - Twsc: HCM Chapter 20 (two-way STOP-controlled intersections)\n\

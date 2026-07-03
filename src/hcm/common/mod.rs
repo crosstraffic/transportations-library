@@ -7,6 +7,7 @@ pub mod gap_acceptance;
 pub mod intersection;
 pub mod los_tables;
 pub mod pce_table;
+pub mod reliability;
 pub mod time_period;
 
 use serde::{Deserialize, Serialize};
