@@ -57,13 +57,10 @@ fn transportations_library(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()>
         - SignalizedIntersection: HCM Chapter 19 (signalized intersections)\n\
         - Twsc: HCM Chapter 20 (two-way STOP-controlled intersections)\n\
         - Awsc: HCM Chapter 21 (all-way STOP-controlled intersections)\n\
-        - Roundabouts: HCM Chapter 22 (roundabouts)\n\n\
-        - BasicFreeways: HCM Chapter 12 (basic freeway and multilane highway segments)\n\
-        - SignalizedIntersection: HCM Chapter 19 (signalized intersections)\n\
-        - Twsc: HCM Chapter 20 (two-way STOP-controlled intersections)\n\
-        - Awsc: HCM Chapter 21 (all-way STOP-controlled intersections)\n\
         - Roundabouts: HCM Chapter 22 (roundabouts)\n\
-        - Interchange: HCM Chapter 23 (interchange ramp terminals)\n\n\
+        - Interchange: HCM Chapter 23 (interchange ramp terminals)\n\
+        - ExclusivePedestrianFacility, SharedUsePathPedestrian, OffStreetBicycleFacility:\n\
+          HCM Chapter 24 (off-street pedestrian and bicycle facilities)\n\n\
         Constraint Functions:\n\
         - get_constraints(): Get all parameter constraints as JSON\n\
         - validate_input(): Validate input parameters against HCM/AASHTO constraints\n\n\
