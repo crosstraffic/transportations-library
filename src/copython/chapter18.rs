@@ -98,10 +98,42 @@ impl UrbanSegment {
         self.inner.running_speed_mph
     }
 
-    /// Proportion of vehicles arriving during green P (Step 3).
+    /// Proportion of vehicles arriving during green P (Step 3). Computed
+    /// from the Chapter 30, Section 3 platoon-dispersion model when upstream
+    /// discharge-flow profiles are supplied, otherwise the uniform /
+    /// platoon-ratio assumption.
     #[getter]
     pub fn get_proportion_arriving_green(&self) -> Option<f64> {
         self.inner.proportion_arriving_green
+    }
+
+    /// Total delay to through vehicles due to turns at access points
+    /// Σ d_ap,i, s/veh (Equation 18-7 term). When access-point approaches are
+    /// supplied it is the Chapter 30, Section 4 computed value; otherwise the
+    /// analyst-supplied per-access-point hook or the Exhibit 18-13 estimate.
+    #[getter]
+    pub fn get_access_point_delay_total_s(&self) -> Option<f64> {
+        self.inner.access_point_delay_total_s
+    }
+
+    /// Per-access-point Chapter 30, Section 4 through delay `(d_ap,l,
+    /// d_ap,r, d_ap, p_ov)` tuples (s/veh; the last is the inside-lane
+    /// blockage probability), one per active access-point approach; `None`
+    /// unless `access_point_approaches` was supplied.
+    #[getter]
+    pub fn get_access_point_delays_computed(&self) -> Option<Vec<(f64, f64, f64, f64)>> {
+        self.inner.access_point_delays_computed.as_ref().map(|v| {
+            v.iter()
+                .map(|d| {
+                    (
+                        d.delay_left_s,
+                        d.delay_right_s,
+                        d.delay_total_s,
+                        d.prob_inside_lane_blocked,
+                    )
+                })
+                .collect()
+        })
     }
 
     /// Through delay d_t at the downstream boundary intersection, s/veh
