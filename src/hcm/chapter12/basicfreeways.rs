@@ -747,7 +747,9 @@ impl BasicFreeways {
             Some("rolling") => {
                 self.e_t = Some(3.0);
             }
-            // Chapter 25 and 26 for mixed-flow model
+            // VERIFY-HCM: Exhibit 12-25 provides no PCE for mountainous terrain;
+            // HCM directs analysts to the Chapter 25/26 mixed-flow model instead.
+            // The 2.5 here is a non-HCM approximation retained for API stability.
             Some("mountainous") => {
                 self.e_t = Some(2.5);
             }
@@ -971,7 +973,8 @@ impl BasicFreeways {
             (55, Some(LevelOfService::D)) => 1910.0,
             (55, Some(LevelOfService::E)) => 2250.0,
 
-            (60, Some(LevelOfService::A)) => 600.0,
+            // HCM Exhibit 12-37 (FFS = 60 mi/h row): A=660, B=1,080, C=1,560, D=2,000, E=2,300
+            (60, Some(LevelOfService::A)) => 660.0,
             (60, Some(LevelOfService::B)) => 1080.0,
             (60, Some(LevelOfService::C)) => 1560.0,
             (60, Some(LevelOfService::D)) => 2000.0,
