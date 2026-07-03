@@ -637,3 +637,149 @@ fn test_step_4_demand_starvation_engaged() {
     let g_eff = int_th.effective_green_s.unwrap();
     assert!(near(g_eff, 45.3, 2.0), "got {g_eff}");
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Part C: Alternative intersections (RCUT / MUT / DLT)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+use super::alternative_intersections as pc;
+
+#[test]
+fn test_pc_edtt_equation_23_58_merge() {
+    // Example Problem 12: D_t = D_f = 2,000 ft, S_f = 60 mi/h.
+    let left = pc::edtt_merge(2000.0, 2000.0, 60.0, pc::EDTT_MERGE_ACCEL_DECEL_MINOR_LEFT_S);
+    let thru = pc::edtt_merge(2000.0, 2000.0, 60.0, pc::EDTT_MERGE_ACCEL_DECEL_MINOR_THROUGH_S);
+    assert!(near(left, 55.4, 0.1), "left EDTT {left}");
+    assert!(near(thru, 60.4, 0.1), "through EDTT {thru}");
+}
+
+#[test]
+fn test_pc_edtt_equation_23_59_stop_signal() {
+    // Example Problem 13 (700 ft / 60 mi/h) and Example 15 (600 ft / 40 mi/h).
+    assert!(near(pc::edtt_stop_or_signal(700.0, 700.0, 60.0), 15.9, 0.1));
+    assert!(near(pc::edtt_stop_or_signal(600.0, 600.0, 40.0), 20.4, 0.1));
+}
+
+#[test]
+fn test_pc_exhibit_23_52_uturn_saturation() {
+    assert_eq!(pc::uturn_saturation_adjustment(30.0), 0.80);
+    assert_eq!(pc::uturn_saturation_adjustment(35.0), 0.85);
+    assert_eq!(pc::uturn_saturation_adjustment(80.0), 0.85);
+    assert_eq!(pc::uturn_saturation_adjustment(81.0), 0.95);
+}
+
+#[test]
+fn test_pc_stop_junction_delay_equation_20_18_and_20_61() {
+    // Exhibit 34-128 (Example 13) main-junction and U-turn crossover.
+    let ebr = pc::stop_junction_delay(344.0, 444.0, 7.22, 3.36, 0.25);
+    assert!(near(ebr.capacity_veh_h, 537.0, 1.0), "c_p {}", ebr.capacity_veh_h);
+    assert!(near(ebr.control_delay_s, 22.9, 0.1), "d {}", ebr.control_delay_s);
+    assert!(near(ebr.queue_95_veh, 4.5, 0.1), "Q95 {}", ebr.queue_95_veh);
+    let uturn = pc::stop_junction_delay(
+        167.0,
+        1189.0,
+        pc::UTURN_CROSSOVER_DEFAULT_CRITICAL_HEADWAY_S,
+        pc::UTURN_CROSSOVER_DEFAULT_FOLLOWUP_HEADWAY_S,
+        0.25,
+    );
+    assert!(near(uturn.capacity_veh_h, 483.0, 1.0), "c_p {}", uturn.capacity_veh_h);
+    assert!(near(uturn.control_delay_s, 16.3, 0.1), "d {}", uturn.control_delay_s);
+}
+
+#[test]
+fn test_pc_movement_ett_and_los_equation_23_60() {
+    use pc::{AltMovement, Approach, JunctionStep};
+    // Example 15 WB left: 20.2 + 34.6 + 12.3 signalized/stop delays + EDTT 20.4.
+    let m = AltMovement {
+        label: "WB L".into(),
+        approach: Approach::Wb,
+        demand_veh_h: 150.0,
+        edtt_s: 20.4,
+        analysis_period_h: 0.25,
+        junctions: vec![
+            JunctionStep::Provided { control_delay_s: 20.2, vc_gt_1: false, rq_gt_1: false },
+            JunctionStep::Provided { control_delay_s: 34.6, vc_gt_1: false, rq_gt_1: false },
+            JunctionStep::Provided { control_delay_s: 12.3, vc_gt_1: false, rq_gt_1: false },
+        ],
+    };
+    let r = m.evaluate();
+    assert!(near(r.total_control_delay_s, 67.1, 0.01));
+    assert!(near(r.ett_s, 87.5, 0.1), "ETT {}", r.ett_s);
+    assert_eq!(r.los, LevelOfService::F);
+}
+
+#[test]
+fn test_pc_vc_over_one_forces_los_f() {
+    use pc::{AltMovement, Approach, JunctionStep};
+    // A STOP movement whose demand exceeds capacity -> LOS F regardless of ETT.
+    let m = AltMovement {
+        label: "test".into(),
+        approach: Approach::Eb,
+        demand_veh_h: 900.0,
+        edtt_s: 0.0,
+        analysis_period_h: 0.25,
+        junctions: vec![JunctionStep::Stop {
+            flow_veh_h: 900.0,
+            conflicting_flow_veh_h: 1400.0,
+            critical_headway_s: 4.4,
+            followup_headway_s: 2.6,
+            storage_ft: None,
+            queue_spacing_ft: 25.0,
+        }],
+    };
+    let r = m.evaluate();
+    assert!(r.vc_gt_1, "expected v/c > 1");
+    assert_eq!(r.los, LevelOfService::F);
+}
+
+#[test]
+fn test_pc_approach_and_intersection_ett_equations_23_61_62() {
+    use pc::{AltIntersectionForm, AltMovement, AlternativeIntersection, Approach, JunctionStep};
+    let mk = |label: &str, approach, v, edtt, d: f64| AltMovement {
+        label: label.into(),
+        approach,
+        demand_veh_h: v,
+        edtt_s: edtt,
+        analysis_period_h: 0.25,
+        junctions: vec![JunctionStep::Provided {
+            control_delay_s: d,
+            vc_gt_1: false,
+            rq_gt_1: false,
+        }],
+    };
+    let ix = AlternativeIntersection::new(
+        AltIntersectionForm::RcutFourLeg,
+        vec![
+            mk("EB L", Approach::Eb, 100.0, 0.0, 20.0), // ETT 20
+            mk("EB T", Approach::Eb, 300.0, 0.0, 10.0), // ETT 10
+            mk("NB L", Approach::Nb, 200.0, 40.0, 5.0), // ETT 45
+        ],
+    );
+    // Eq 23-61 (EB approach): (20*100 + 10*300) / (100 + 300) = 12.5.
+    assert!(near(ix.approach_ett(Approach::Eb).unwrap(), 12.5, 0.001));
+    // Eq 23-62 (intersection): (20*100 + 10*300 + 45*200) / 600 = 23.33.
+    assert!(near(ix.intersection_ett().unwrap(), 14000.0 / 600.0, 0.001));
+    assert!(ix.approach_ett(Approach::Sb).is_none());
+}
+
+#[test]
+fn test_pc_dlt_offset_equations_23_63_to_68() {
+    // Example Problem 16.
+    let r = pc::dlt_offset(350.0, 35.0, 0.0, 52.0, 0.0, 0.0, 65.0);
+    assert!(near(r.tt_dlt_s, 6.8, 0.05), "TT_DLT {}", r.tt_dlt_s);
+    assert!(near(r.offset_supp_s, 45.2, 0.1), "O_SUPP {}", r.offset_supp_s);
+    // Wrap-around: an offset that exceeds C is decremented by C.
+    let w = pc::dlt_offset(350.0, 35.0, 0.0, 120.0, 0.0, 0.0, 65.0);
+    assert!(w.offset_supp_s >= 0.0 && w.offset_supp_s < 65.0, "wrapped {}", w.offset_supp_s);
+}
+
+#[test]
+fn test_pc_dlt_weighted_average_equation_23_69() {
+    use pc::DltDelayCell;
+    let cells = [
+        DltDelayCell { flow_veh_h: 100.0, control_delay_s: 30.0 },
+        DltDelayCell { flow_veh_h: 200.0, control_delay_s: 15.0 },
+    ];
+    // (30*100 + 15*200) / 250 = 24.0.
+    assert!(near(pc::dlt_weighted_average_delay(&cells, 250.0), 24.0, 0.001));
+}

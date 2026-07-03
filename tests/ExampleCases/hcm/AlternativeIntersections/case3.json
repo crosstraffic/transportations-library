@@ -1,0 +1,32 @@
+{
+  "_source": "HCM 7th Edition, Chapter 34, Example Problem 15: Four-Legged Median U-Turn Intersection with STOP signs at the U-turn crossovers (Exhibits 34-134 through 34-138, 269_Ch34_02c.xhtml). Suburban MUT, main street N-S, signalized main junction (Chapter 19) with STOP-controlled U-turn crossovers (Chapter 20). Distance main-junction-to-U-turn-crossover = 600 ft, storage bays 500 ft, PHF = 0.95, FFS = 40 mi/h. EDTT computed with Equation 23-59: (600+600)/(1.47*40) = 20.4 s. NOTE: the HCM inline equation on p.34-... prints EDTT = (800+800)/(1.47*50) = 21.8 s, a copy-paste error from Example 14; the Exhibit 34-138 ETT column correctly uses 20.4 s, which this fixture reproduces. Junction control delays are the Exhibit 34-137 values (Chapter 19 signalized main-junction lane groups + Chapter 20 STOP U-turn crossovers), supplied as provided junction steps; the Part C Steps 7/9/10 assembly (EDTT + Equation 23-60 ETT + Exhibit 23-13 LOS) is computed and asserted. Published ETT/LOS from Exhibit 34-138.",
+  "form": "MutFourLeg",
+  "movements": [
+    { "label": "NB L", "approach": "Nb", "demand_veh_h": 200.0, "edtt_s": 20.4, "junctions": [ { "type": "provided", "control_delay_s": 9.3 }, { "type": "provided", "control_delay_s": 34.6 }, { "type": "provided", "control_delay_s": 13.7 } ] },
+    { "label": "SB L", "approach": "Sb", "demand_veh_h": 200.0, "edtt_s": 20.4, "junctions": [ { "type": "provided", "control_delay_s": 12.3 }, { "type": "provided", "control_delay_s": 14.0 }, { "type": "provided", "control_delay_s": 9.4 } ] },
+    { "label": "NB T", "approach": "Nb", "demand_veh_h": 800.0, "edtt_s": 0.0, "junctions": [ { "type": "provided", "control_delay_s": 9.3 } ] },
+    { "label": "SB T", "approach": "Sb", "demand_veh_h": 800.0, "edtt_s": 0.0, "junctions": [ { "type": "provided", "control_delay_s": 12.3 } ] },
+    { "label": "NB R", "approach": "Nb", "demand_veh_h": 150.0, "edtt_s": 0.0, "junctions": [ { "type": "provided", "control_delay_s": 9.4 } ] },
+    { "label": "SB R", "approach": "Sb", "demand_veh_h": 150.0, "edtt_s": 0.0, "junctions": [ { "type": "provided", "control_delay_s": 13.7 } ] },
+    { "label": "EB L", "approach": "Eb", "demand_veh_h": 150.0, "edtt_s": 20.4, "junctions": [ { "type": "provided", "control_delay_s": 23.7 }, { "type": "provided", "control_delay_s": 14.0 }, { "type": "provided", "control_delay_s": 9.3 } ] },
+    { "label": "WB L", "approach": "Wb", "demand_veh_h": 150.0, "edtt_s": 20.4, "junctions": [ { "type": "provided", "control_delay_s": 20.2 }, { "type": "provided", "control_delay_s": 34.6 }, { "type": "provided", "control_delay_s": 12.3 } ] },
+    { "label": "EB T", "approach": "Eb", "demand_veh_h": 400.0, "edtt_s": 0.0, "junctions": [ { "type": "provided", "control_delay_s": 25.1 } ] },
+    { "label": "WB T", "approach": "Wb", "demand_veh_h": 400.0, "edtt_s": 0.0, "junctions": [ { "type": "provided", "control_delay_s": 22.2 } ] },
+    { "label": "EB R", "approach": "Eb", "demand_veh_h": 200.0, "edtt_s": 0.0, "junctions": [ { "type": "provided", "control_delay_s": 23.7 } ] },
+    { "label": "WB R", "approach": "Wb", "demand_veh_h": 200.0, "edtt_s": 0.0, "junctions": [ { "type": "provided", "control_delay_s": 20.2 } ] }
+  ],
+  "_expected": {
+    "NB L": { "ett_s": 78.0, "los": "E" },
+    "SB L": { "ett_s": 56.1, "los": "E" },
+    "NB T": { "ett_s": 9.3, "los": "A" },
+    "SB T": { "ett_s": 12.3, "los": "B" },
+    "NB R": { "ett_s": 9.4, "los": "A" },
+    "SB R": { "ett_s": 13.7, "los": "B" },
+    "EB L": { "ett_s": 67.4, "los": "E" },
+    "WB L": { "ett_s": 87.5, "los": "F" },
+    "EB T": { "ett_s": 25.1, "los": "C" },
+    "WB T": { "ett_s": 22.2, "los": "C" },
+    "EB R": { "ett_s": 23.7, "los": "C" },
+    "WB R": { "ett_s": 20.2, "los": "C" }
+  }
+}
