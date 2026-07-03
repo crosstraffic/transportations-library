@@ -2,6 +2,7 @@
 //! types, common segment/flow models, plus adjustment-factor and PCE tables.
 
 pub mod adjustment_factors;
+pub mod atdm;
 pub mod delay;
 pub mod gap_acceptance;
 pub mod intersection;

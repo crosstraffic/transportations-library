@@ -2,6 +2,7 @@
 
 use crate::hcm::chapter17::exhibits::URBAN_RELIABILITY_RATING_TTI_THRESHOLD;
 use crate::hcm::chapter17::urban_reliability::UrbanReliability as LibUrbanReliability;
+use crate::hcm::common::atdm;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -136,7 +137,30 @@ impl UrbanReliability {
     }
 }
 
+/// HCM Chapter 37, Section 5 adaptive signal control strategy: an
+/// approximate boundary-intersection saturation flow adjustment
+/// equivalent to a target delay reduction, for use in an `AtdmStrategy`'s
+/// `sat_flow_adjustment` field (or an `atdm_strategies[].sat_flow_adjustment`
+/// entry in the JSON config). VERIFY-HCM: this is a documented modeling
+/// simplification, not an HCM-derived equation — Chapter 37 publishes
+/// only an illustrative simulation-study range (Exhibit 37-9: delay
+/// reductions of 3%-24%), not a closed-form method.
+///
+/// Args:
+///     target_delay_reduction_pct: desired delay reduction, percent (None
+///         defaults to the published range's midpoint, 13.5%; clamped to
+///         [3, 24] regardless).
+///
+/// Returns:
+///     float: saturation flow adjustment factor (>= 1.0).
+#[pyfunction]
+#[pyo3(signature = (target_delay_reduction_pct=None))]
+pub fn adaptive_signal_sat_flow_adjustment(target_delay_reduction_pct: Option<f64>) -> f64 {
+    atdm::adaptive_signal_sat_flow_adjustment(target_delay_reduction_pct)
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<UrbanReliability>()?;
+    m.add_function(wrap_pyfunction!(adaptive_signal_sat_flow_adjustment, m)?)?;
     Ok(())
 }

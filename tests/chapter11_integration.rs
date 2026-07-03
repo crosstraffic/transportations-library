@@ -356,3 +356,109 @@ fn ep7_scenario_results_consistency() {
         .any(|s| rel.scenario_results[s.id].oversaturated);
     assert!(jul_oversat, "July scenarios should include oversaturation");
 }
+
+/// HCM Chapter 37 (ATDM: Supplemental), Section 3 shoulder-lane strategy:
+/// opening a shoulder as an auxiliary lane on the first (basic) segment
+/// must not degrade facility reliability, since it can only add capacity
+/// (direction-of-effect assertion — Chapter 37 does not publish an
+/// example problem to reproduce exactly here).
+#[test]
+fn ep7_atdm_shoulder_lane_strategy_improves_or_holds_reliability() {
+    use transportations_library::hcm::chapter11::scenario_generation::{WorkZoneEvent, WEEKDAYS};
+    use transportations_library::hcm::common::atdm::ShoulderLaneUse;
+
+    let mut base = load_case("case1.json");
+    base.run().unwrap();
+    let base_metrics = base.metrics.clone().unwrap();
+
+    // Applied to every segment so total corridor capacity increases
+    // uniformly: a partial (single-segment) capacity boost can shift a
+    // facility's binding bottleneck downstream and *worsen* aggregate
+    // measures even though the boosted segment itself always improves —
+    // a legitimate multi-segment interaction, not something a
+    // direction-of-effect test can assume away.
+    let mut with_strategy = load_case("case1.json");
+    let n_seg = with_strategy.facility.segments.len();
+    with_strategy.scenario_generation.work_zones.push(WorkZoneEvent::shoulder_lane_strategy(
+        ShoulderLaneUse::AllTraffic { capacity_override_veh_h_ln: None },
+        2_400.0,
+        3,
+        (0..n_seg).collect(),
+        None,
+        (1..=12).collect(),
+        WEEKDAYS.to_vec(),
+    ));
+    with_strategy.run().unwrap();
+    let strat_metrics = with_strategy.metrics.clone().unwrap();
+
+    assert!(
+        strat_metrics.tti_mean <= base_metrics.tti_mean + 1e-9,
+        "opening a shoulder lane must not raise mean TTI ({} vs {})",
+        strat_metrics.tti_mean,
+        base_metrics.tti_mean
+    );
+    assert!(
+        strat_metrics.reliability_rating >= base_metrics.reliability_rating - 1e-9,
+        "opening a shoulder lane must not lower the reliability rating ({} vs {})",
+        strat_metrics.reliability_rating,
+        base_metrics.reliability_rating
+    );
+    assert!(
+        with_strategy.expected_vhd <= base.expected_vhd + 1e-6,
+        "opening a shoulder lane must not raise expected VHD ({} vs {})",
+        with_strategy.expected_vhd,
+        base.expected_vhd
+    );
+}
+
+/// HCM Chapter 37, Section 4 ramp-metering strategy: the 1.03 merge-CAF
+/// applied to every merge segment (indices 1 and 7 in this fixture) must
+/// not degrade reliability (direction-of-effect assertion). Metering only
+/// a subset of merge segments can shift the facility's binding bottleneck
+/// downstream and produce a small, legitimate regression elsewhere (see
+/// the shoulder-lane strategy test above), so — consistent with a
+/// facility-wide ramp-metering deployment — the strategy here targets all
+/// merge segments rather than one in isolation.
+#[test]
+fn ep7_atdm_ramp_metering_strategy_improves_or_holds_reliability() {
+    use transportations_library::hcm::chapter10::freeway_facilities::SegmentType;
+    use transportations_library::hcm::chapter11::scenario_generation::{WorkZoneEvent, WEEKDAYS};
+
+    let mut base = load_case("case1.json");
+    base.run().unwrap();
+    let base_metrics = base.metrics.clone().unwrap();
+
+    let mut with_strategy = load_case("case1.json");
+    let merge_segments: Vec<usize> = with_strategy
+        .facility
+        .segments
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.seg_type == SegmentType::Merge)
+        .map(|(i, _)| i)
+        .collect();
+    assert!(!merge_segments.is_empty(), "fixture must contain at least one merge segment");
+    with_strategy.scenario_generation.work_zones.push(
+        WorkZoneEvent::ramp_metering_merge_strategy(
+            merge_segments,
+            None,
+            (1..=12).collect(),
+            WEEKDAYS.to_vec(),
+        ),
+    );
+    with_strategy.run().unwrap();
+    let strat_metrics = with_strategy.metrics.clone().unwrap();
+
+    assert!(
+        strat_metrics.tti_mean <= base_metrics.tti_mean + 1e-9,
+        "ramp metering's merge CAF must not raise mean TTI ({} vs {})",
+        strat_metrics.tti_mean,
+        base_metrics.tti_mean
+    );
+    assert!(
+        strat_metrics.reliability_rating >= base_metrics.reliability_rating - 1e-9,
+        "ramp metering's merge CAF must not lower the reliability rating ({} vs {})",
+        strat_metrics.reliability_rating,
+        base_metrics.reliability_rating
+    );
+}

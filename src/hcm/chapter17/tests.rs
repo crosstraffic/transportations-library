@@ -578,6 +578,101 @@ fn test_atdm_strategy_hooks() {
     );
 }
 
+/// Residual-queue carryover (HCM Chapter 17, Section 3, Facility
+/// Evaluation: "the initial queue input value for the next analysis
+/// period is set equal to the residual queue output for the current
+/// analysis period"). A single-lane, deliberately over-capacity segment
+/// with no weather/incidents (so demand ratio and capacity are identical
+/// across matching periods) isolates the carryover effect: the second of
+/// two same-hour analysis periods must show a higher TTI than the first
+/// because it inherits a nonzero initial queue Qb, and the pattern must
+/// reset (not persist) across the ~21-h gap to the next day's first
+/// period.
+#[test]
+fn test_residual_queue_carryover_and_day_reset() {
+    let mut s = UrbanSegment::new(2_640.0, 1, 35.0, 3_000.0, BoundaryControlType::Signalized);
+    s.proportion_with_curb = 1.0;
+    s.n_access_points_subject = 2.0;
+    s.n_access_points_opposing = 2.0;
+    s.midsegment_flow_veh_h = Some(3_000.0);
+    s.cycle_length_s = Some(100.0);
+    s.effective_green_s = Some(45.0);
+    s.platoon_ratio = Some(1.0);
+    s.sat_flow_veh_h_ln = Some(1_800.0);
+    s.full_stop_rate_override = Some(0.5);
+    let facility = UrbanFacility::new(vec![s]);
+
+    let cfg = UrbanReliabilityConfig {
+        functional_class: FunctionalClass::UrbanPrincipalArterial,
+        months: vec![1],
+        days_of_week: vec![2], // Tuesdays only
+        jan1_day_of_week: 6,   // Saturday -> Jan 4 is a Tuesday
+        study_period_start_hour: 7,
+        analysis_periods_per_day: 2, // two 15-min periods, same clock hour
+        weather: vec![MonthlyWeather::default(); 12], // all-zero: no events
+        count_month: 1,
+        count_day_of_week: 2,
+        count_hour: 7,
+        incidents: IncidentConfig {
+            segment_crash_frequencies: vec![0.0],
+            intersection_crash_frequencies: vec![0.0, 0.0],
+            shoulder_present: true,
+            ..IncidentConfig::default()
+        },
+        boundary_signals: vec![BoundarySignal {
+            cycle_length_s: 100.0,
+            effective_green_s: 45.0,
+            sat_flow_veh_h_ln: 1_800.0,
+            platoon_ratio: 1.0,
+            k_factor: 0.5,
+            i_factor: 1.0,
+            approach_lanes: 1,
+        }],
+        weather_seed: 1,
+        demand_seed: 1,
+        incident_seed: 1,
+        ..UrbanReliabilityConfig::default()
+    };
+
+    let mut analysis = UrbanReliability::new(facility, cfg);
+    let results = analysis.run().unwrap().clone();
+    assert!(
+        results.num_scenarios >= 4,
+        "need at least two Tuesdays of two periods each, got {}",
+        results.num_scenarios
+    );
+
+    let r = &analysis.scenario_results;
+    // Demand (3,000 veh/h) vastly exceeds the one-lane capacity
+    // (1 * 1,800 * 45/100 = 810 veh/h), so both periods of every day are
+    // oversaturated even at ratio 1.0.
+    assert!(r[0].oversaturated, "day A period 1 must be oversaturated");
+    assert!(r[1].oversaturated, "day A period 2 must be oversaturated");
+    assert!(
+        r[1].tti > r[0].tti,
+        "carried-in queue must raise period 2 TTI above period 1 ({} vs {})",
+        r[1].tti,
+        r[0].tti
+    );
+    assert!(
+        r[1].vhd > r[0].vhd,
+        "carried-in queue must raise period 2 vehicle-hours of delay ({} vs {})",
+        r[1].vhd,
+        r[0].vhd
+    );
+
+    // Day-boundary reset: day B's first period starts fresh (Qb = 0) with
+    // the same demand ratio, weather, and capacity as day A's first
+    // period, so it must reproduce day A's period-1 TTI exactly rather
+    // than inheriting day A's end-of-study-period queue.
+    assert!(
+        (r[2].tti - r[0].tti).abs() < 1e-9,
+        "day reset: day B period 1 TTI {} should equal day A period 1 TTI {}",
+        r[2].tti,
+        r[0].tti
+    );
+}
+
 #[test]
 fn test_validation_errors() {
     let mut a = ep4_like();

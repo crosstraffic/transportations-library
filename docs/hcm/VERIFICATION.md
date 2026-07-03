@@ -172,7 +172,63 @@ as `Provided` junction steps.
    rate differ slightly from published (22.1 vs 22.6 mi/h); the fully published Ch 30 EP1 segment
    case reproduces exactly.
 6. Ch 29 EP4 reliability: TTI-80 within 0.03 of published; PTI tail lighter (1.73 vs ~2.6-3.0)
-   because residual-queue carryover between periods (d3) is deferred — the main known gap.
+   because residual-queue carryover between periods (d3) was deferred. **Update (feat/hcm-
+   reliability-enhancements): carryover is now implemented** (see the new section below); the PTI
+   gap narrowed only modestly (1.73 → 1.75) and is now attributed to other still-deferred elements,
+   not to the missing carryover mechanism itself.
+
+## Reliability enhancements (Ch 17 carryover, Ch 37 ATDM) (feat/hcm-reliability-enhancements)
+1. **Residual-queue carryover day-boundary reset is an interpretation, not a literal reading.**
+   Chapter 17, Section 3 ("Facility Evaluation") states "the initial queue input value for the next
+   analysis period is set equal to the residual queue output for the current analysis period" without
+   an explicit exception at the boundary between one day's study period and the next day's. A
+   strictly literal reading would carry a queue across the ~21-h gap between (e.g.) 9:45-10:00 a.m.
+   Monday and 7:00-7:15 a.m. Tuesday, which is not physically defensible and is inconsistent with (a)
+   the Chapter 11 freeway reliability engine, where each scenario/day is evaluated from a fresh
+   facility clone with no cross-scenario state, and (b) the Chapter 29, Section 3 multiple-time-period/
+   spillback technique, whose queue hand-off is described as scoped to "subperiods" of one multi-period
+   analysis. Implemented: carryover resets to Qb = 0 at the first analysis period of each day.
+   `src/hcm/chapter17/urban_reliability.rs` (module docs + `run()`).
+2. **Ch 19, Section 4's saturated/baseline capacity blend (Eqs 19-38 through 19-43) is not
+   implemented.** The full HCM initial-queue extension computes a blended average capacity `cA`
+   from a separate "saturated capacity" `cs` (serving the backlog) and the ordinary capacity `c`,
+   weighted by the unmet-demand duration within the period, and similarly blends d1. This
+   implementation uses the scenario's ordinary lane-group capacity directly as `cA` in
+   `common::delay::initial_queue_delay`/`queue_end_of_period` — exact when there is no initial
+   queue, an approximation otherwise. `src/hcm/common/delay.rs`,
+   `src/hcm/chapter17/urban_reliability.rs`.
+3. **Shoulder/median lane "user-specified capacity" default is unstated.** Chapter 37, Section 3
+   says the buses-only/HOV-only shoulder lane capacity is "the number of buses [or HOVs] per hour
+   ... or the user-specified capacity, whichever is less (the user can override the default
+   capacity)" but never states what that default numerically is. Implemented: defaults to a normal
+   mixed-flow lane's capacity (so the observed vehicle count is normally the binding term).
+   `src/hcm/common/atdm.rs` (`ShoulderLaneUse::BusesOnly`/`HovOnly`).
+4. **Adaptive signal control has no HCM-endorsed delay-reduction formula.** Chapter 37, Section 5
+   explicitly states "it has not been possible to develop a generalized method adaptive signal
+   control method for the HCM" and reports only an illustrative three-corridor simulation study
+   (Exhibit 37-9: delay reductions 3%-24%, TTI reductions 3%-13%) with inconsistent magnitudes
+   across corridors/directions. `adaptive_signal_sat_flow_adjustment` converts a target delay-
+   reduction percentage (default: the range midpoint, 13.5%) into a Chapter 17
+   `AtdmStrategy::sat_flow_adjustment` via `1 / (1 - pct/100)`, a documented modeling
+   simplification (not an HCM-derived equation) chosen so a fixed demand held at capacity yields
+   the same fractional delay reduction as the target. Analysts should prefer a directly calibrated
+   value from their own study. `src/hcm/common/atdm.rs`
+   (`adaptive_signal_sat_flow_adjustment`).
+5. **Ch 37, Sections 6-7 (Dynamic Lane Grouping, Reversible Center Lanes) are not modeled.** Both
+   sections list Chapter 18/19 inputs an analyst may need to reconsider (lane assignments, turn bay
+   lengths, left/right-turn operational mode, median type) but publish no exhibit, equation, or
+   default adjustment factor — nothing to transcribe without fabricating a number. Not implemented;
+   flagged here rather than with an in-code `// VERIFY-HCM` marker since there is no code to attach
+   it to.
+6. **Multi-segment CAF interactions can shift a freeway facility's bottleneck downstream.**
+   Verified while testing the Ch 37 shoulder-lane/ramp-metering CAFs against the Chapter 25 EP7
+   fixture: applying a capacity-increasing CAF to a single segment (or a single merge segment) can
+   *raise* the facility's aggregate TTI/VHD, because relieving an upstream bottleneck sends more
+   vehicles into a downstream segment that was already the binding constraint. This is legitimate
+   Chapter 10 facility-engine behavior (not a bug), so the Chapter 11 integration tests apply these
+   strategies uniformly across all affected segments (all segments for the shoulder-lane strategy,
+   all merge segments for the ramp-metering strategy) rather than asserting a naive "capacity up ⇒
+   TTI down" monotonicity for a single segment in isolation. `tests/chapter11_integration.rs`.
 
 ## Chapter 19 milestone 2 (feat/hcm-ch19-actuated)
 1. **Actuated phase-duration convergence vs published EP1 durations (Exhibit 31-79).** The Section 2

@@ -189,6 +189,47 @@ pub fn initial_queue_delay(queue_initial_veh: f64, v: f64, capacity: f64, t_h: f
             - qb * qb / (2.0 * capacity))
 }
 
+/// HCM Equation 19-45: residual queue at the end of the analysis period
+/// `Qe = Qb + t_A (v - c_A)`, with `t_A`/`Qeo` from Equations 19-46 through
+/// 19-49 as in [`initial_queue_delay`].
+///
+/// HCM Chapter 17, Section 3, "Facility Evaluation": for a multi-period
+/// analysis, "the initial queue input value for the next analysis period
+/// is set equal to the residual queue output for the current analysis
+/// period" — i.e., this function's return value is the `queue_initial_veh`
+/// (Qb) to pass to [`initial_queue_delay`] and to this function itself for
+/// the next chronological analysis period. Chapter 29, Section 3 describes
+/// the same hand-off for the multiple-time-period/spillback technique
+/// ("the residual queue from one subperiod becomes the initial queue for
+/// the next subperiod").
+///
+/// * `queue_initial_veh` — initial queue at the start of the analysis
+///   period Qb, veh
+/// * `v` — demand flow rate, veh/h
+/// * `capacity` — average lane group capacity c_A, veh/h
+/// * `t_h` — analysis period duration T, h
+///
+/// Returns Qe, veh (>= 0). When `v < c_A` and the initial queue fully
+/// dissipates within the period (`t_A < T`), Qe = 0 by construction. When
+/// there is no initial queue and `v < c_A`, Qe = 0 (no queue forms). When
+/// `v >= c_A`, Qe = Qb + T(v - c_A) regardless of whether Qb was 0 (a new
+/// queue forms/grows during an oversaturated period even without a
+/// carried-in queue).
+pub fn queue_end_of_period(queue_initial_veh: f64, v: f64, capacity: f64, t_h: f64) -> f64 {
+    let qb = queue_initial_veh.max(0.0);
+    if v <= 0.0 || t_h <= 0.0 {
+        return qb;
+    }
+    let t_a = if v >= capacity {
+        t_h // Eq. 19-47
+    } else if capacity > v {
+        (qb / (capacity - v)).min(t_h) // Eq. 19-49
+    } else {
+        t_h
+    };
+    (qb + t_a * (v - capacity)).max(0.0)
+}
+
 /// HCM Equation 19-18: lane group control delay `d = d1 + d2 + d3`.
 ///
 /// * `d1` — uniform delay, s/veh (Equation 19-19)
@@ -403,6 +444,52 @@ mod tests {
         let d3 = initial_queue_delay(qb, v, ca, T);
         assert!((d3 - expected).abs() < 1e-9);
         assert!(d3 > 0.0);
+    }
+
+    #[test]
+    fn test_queue_end_of_period_no_initial_queue_undersaturated() {
+        // Qb = 0, v < cA => no queue forms, Qe = 0.
+        assert_eq!(queue_end_of_period(0.0, 400.0, 800.0, T), 0.0);
+    }
+
+    #[test]
+    fn test_queue_end_of_period_clears_within_period() {
+        // Small Qb, v < cA, queue fully dissipates before T => Qe = 0.
+        let qe = queue_end_of_period(10.0, 400.0, 800.0, T);
+        assert_eq!(qe, 0.0);
+    }
+
+    #[test]
+    fn test_queue_end_of_period_large_initial_queue_undersaturated() {
+        // Large Qb, v < cA, but t_A = Qb/(cA-v) > T => queue does not fully
+        // clear; Qe = Qb + T(v - cA) > 0.
+        let (qb, v, ca) = (500.0, 400.0, 800.0);
+        let expected = qb + T * (v - ca);
+        let qe = queue_end_of_period(qb, v, ca, T);
+        assert!((qe - expected).abs() < 1e-9);
+        assert!(qe > 0.0);
+    }
+
+    #[test]
+    fn test_queue_end_of_period_oversaturated_matches_eq_19_45() {
+        // v >= cA: Qe = Qb + T(v - cA), independent of whether Qb = 0.
+        let (v, ca) = (900.0, 600.0);
+        let qe_no_initial = queue_end_of_period(0.0, v, ca, T);
+        assert!((qe_no_initial - T * (v - ca)).abs() < 1e-9);
+        let qe_with_initial = queue_end_of_period(20.0, v, ca, T);
+        assert!((qe_with_initial - (20.0 + T * (v - ca))).abs() < 1e-9);
+        assert!(qe_with_initial > qe_no_initial);
+    }
+
+    #[test]
+    fn test_queue_end_of_period_monotonic_in_initial_queue() {
+        let mut prev = 0.0;
+        for i in 0..10 {
+            let qb = i as f64 * 50.0;
+            let qe = queue_end_of_period(qb, 900.0, 600.0, T);
+            assert!(qe >= prev, "Qe not monotonic in Qb at qb={qb}");
+            prev = qe;
+        }
     }
 
     #[test]
