@@ -2,7 +2,12 @@
 //! types, common segment/flow models, plus adjustment-factor and PCE tables.
 
 pub mod adjustment_factors;
+pub mod delay;
+pub mod gap_acceptance;
+pub mod intersection;
+pub mod los_tables;
 pub mod pce_table;
+pub mod time_period;
 
 use serde::{Deserialize, Serialize};
 
