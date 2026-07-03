@@ -1,3 +1,9 @@
+//! Shared HCM types and cross-chapter utilities: level of service, facility
+//! types, common segment/flow models, plus adjustment-factor and PCE tables.
+
+pub mod adjustment_factors;
+pub mod pce_table;
+
 use serde::{Deserialize, Serialize};
 
 // ═══════════════════════════════════════════════════════════════════════════════

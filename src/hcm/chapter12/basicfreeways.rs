@@ -1,7 +1,7 @@
 use crate::utils::math;
-use super::common::{CommonSegment, LevelOfService, FacilityCalculation, CityType};
+use crate::hcm::common::{CommonSegment, LevelOfService, FacilityCalculation, CityType};
 use serde::{Deserialize, Serialize};
-use super::utils::pce_table::{ET_TABLE_30SUT, ET_TABLE_50SUT, ET_TABLE_70SUT};
+use crate::hcm::common::pce_table::{ET_TABLE_30SUT, ET_TABLE_50SUT, ET_TABLE_70SUT};
 
 /// Constants from HCM Chapter 12
 /// Density at capacity (pc/mi/ln) - Exhibit 12-6

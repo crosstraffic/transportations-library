@@ -15,7 +15,7 @@
 //! - Equation 12-19: Additional speed drop due to GP friction (S3)
 
 use serde::{Deserialize, Serialize};
-use super::common::LevelOfService;
+use crate::hcm::common::LevelOfService;
 
 /// Managed lane segment types from Exhibit 12-9
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
