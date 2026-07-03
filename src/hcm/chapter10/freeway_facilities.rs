@@ -104,7 +104,7 @@ impl Terrain {
     /// VERIFY-HCM: Exhibit 12-25 provides no PCE for mountainous terrain
     /// (HCM directs to the Chapter 25/26 mixed-flow model); 3.0 is used as
     /// a conservative stand-in, consistent with the other chapter modules.
-    fn pce(self) -> f64 {
+    pub fn pce(self) -> f64 {
         match self {
             Terrain::Level => 2.0,
             Terrain::Rolling => 3.0,

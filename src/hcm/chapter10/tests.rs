@@ -331,3 +331,167 @@ fn test_work_zone_reduces_capacity_and_speed() {
     );
     assert!(fac.speed[4][0] < base.speed[4][0]);
 }
+
+// ═════════════════════════════════════════════════════════════════════════
+// Managed-lane facility (Steps A-9/A-13/A-14) and cross-weave CAF
+// ═════════════════════════════════════════════════════════════════════════
+
+use super::managed_lanes::{
+    cross_weave_caf, cross_weave_crf, ManagedLaneFacility, MlSegmentInput,
+};
+use crate::hcm::chapter12::managed_lanes::ManagedLaneType;
+
+#[test]
+fn test_cross_weave_caf_equation_13_24() {
+    // Equation 13-24: CRF = -0.0897 + 0.0252 ln(CW) - 0.00001453 L_cw-min
+    //                       + 0.002967 N_GP.
+    // CW = 1,000 pc/h, L_cw-min = 1,000 ft, N_GP = 3:
+    // CRF = -0.0897 + 0.0252*6.90776 - 0.01453 + 0.008901 = 0.07885 -> CAF ~0.921.
+    let crf = cross_weave_crf(1000.0, 1000.0, 3);
+    approx(crf, 0.0788, 0.001, "CRF");
+    approx(cross_weave_caf(1000.0, 1000.0, 3), 1.0 - 0.0788, 0.001, "CAF");
+    // No cross-weave demand => no reduction.
+    approx(cross_weave_caf(0.0, 1000.0, 3), 1.0, 1e-12, "CAF no demand");
+    // Longer cross-weave length reduces the CRF (less friction).
+    assert!(cross_weave_crf(1000.0, 3000.0, 3) < cross_weave_crf(1000.0, 1000.0, 3));
+}
+
+#[test]
+fn test_cross_weave_reduces_gp_capacity_step_a9() {
+    // A cross-weave on GP segment 5 lowers that segment's capacity below the
+    // unadjusted 6,748 veh/h (Step A-9 / Equation 13-25).
+    let gp = ep1_facility();
+    let n = gp.num_segments();
+    let mut fac = ManagedLaneFacility {
+        gp,
+        ml: vec![None; n],
+        ml_entry_demand: vec![0.0; 5],
+        ml_ffs: 60.0,
+        cross_weave: vec![None; n],
+        ..Default::default()
+    };
+    fac.cross_weave[4] = Some(super::managed_lanes::CrossWeave {
+        cw_demand_pc: vec![800.0; 5],
+        l_cw_min_ft: 1000.0,
+    });
+    fac.run_analysis().unwrap();
+    assert!(
+        fac.gp.capacity[4][0] < 6748.0,
+        "cross-weave CAF should reduce GP segment 5 capacity, got {}",
+        fac.gp.capacity[4][0]
+    );
+    // A segment without a cross-weave keeps the full capacity.
+    approx(fac.gp.capacity[0][0], 6748.0, 5.0, "no cross-weave capacity");
+}
+
+#[test]
+fn test_ml_adjacent_friction_activates_above_threshold() {
+    // A single Continuous Access ML paired with every GP segment: the ML
+    // speed drops only where the adjacent GP density exceeds 35 pc/mi/ln.
+    let gp = ep2_facility(); // +11% demand -> some GP segments dense
+    let n = gp.num_segments();
+    let ml: Vec<Option<MlSegmentInput>> = (0..n)
+        .map(|_| {
+            Some(MlSegmentInput {
+                lane_type: ManagedLaneType::ContinuousAccess,
+                lanes: 1,
+                ..Default::default()
+            })
+        })
+        .collect();
+    let mut fac = ManagedLaneFacility {
+        gp,
+        ml,
+        ml_entry_demand: vec![1000.0, 1100.0, 1160.0, 1040.0, 840.0],
+        ml_ffs: 60.0,
+        ..Default::default()
+    };
+    fac.run_analysis().unwrap();
+    // Where friction is active the ML speed is strictly below the free-flow
+    // uniform value; where inactive it equals the unaffected speed.
+    let mut any_friction = false;
+    for i in 0..n {
+        for p in 0..5 {
+            if fac.ml_friction_active[i][p] {
+                any_friction = true;
+                assert!(
+                    fac.gp.density_pc[i][p] > 35.0,
+                    "friction flagged but GP density {} <= 35",
+                    fac.gp.density_pc[i][p]
+                );
+            }
+        }
+    }
+    assert!(any_friction, "the +11% facility should trigger ML friction");
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// Planning-level method (Chapter 25 Section 6)
+// ═════════════════════════════════════════════════════════════════════════
+
+use super::planning::{
+    basic_section_capacity_pc, oversaturated_delay_rate, undersaturated_delay_rate, weave_caf,
+    PlanningFacility, PlanningSection, PlanningSectionType,
+};
+
+#[test]
+fn test_planning_equation_25_45_basic_capacity() {
+    // FFS 60 -> 2,300 pc/h/ln; FFS capped at 70.
+    approx(basic_section_capacity_pc(60.0), 2300.0, 1e-9, "c(60)");
+    approx(basic_section_capacity_pc(70.0), 2400.0, 1e-9, "c(70)");
+    approx(basic_section_capacity_pc(75.0), 2400.0, 1e-9, "c(75) capped");
+    approx(basic_section_capacity_pc(55.0), 2250.0, 1e-9, "c(55)");
+}
+
+#[test]
+fn test_planning_equation_25_46_weave_caf() {
+    // Example Problem 6 weave section: V_r ~0.164, L_s = 0.5 mi = 2,640 ft:
+    // CAF = 0.884 - 0.0752*0.164 + 0.0000243*2640 = 0.9358.
+    approx(weave_caf(0.164, 0.5), 0.9358, 0.001, "CAF_weave");
+    // Capped at 1.0 for a very long weave (0.884 + 0.0000243*10,560 > 1).
+    approx(weave_caf(0.0, 2.0), 1.0, 1e-9, "CAF_weave cap");
+}
+
+#[test]
+fn test_planning_equation_25_47_delay_rate() {
+    // FFS 60 threshold E = 0.72: below it the delay rate is 0.
+    approx(undersaturated_delay_rate(0.71, 60.0), 0.0, 1e-12, "below E");
+    // At d/c = 0.86: 121.35(0.86)^3 - 184.84(0.86)^2 + 83.21(0.86) - 9.33 = 2.8.
+    approx(undersaturated_delay_rate(0.86, 60.0), 2.8, 0.1, "d/c 0.86");
+    // Oversaturated ΔRO (Equation 25-48): 450/L * (d/c - 1).
+    approx(oversaturated_delay_rate(1.02, 0.5), 18.0, 0.01, "ΔRO");
+    approx(oversaturated_delay_rate(0.9, 0.5), 0.0, 1e-12, "ΔRO under 1");
+}
+
+#[test]
+fn test_planning_carryover_propagates_downstream() {
+    // Two ramp sections in series; the upstream one is oversaturated, and its
+    // released vertical queue raises the downstream section demand in the
+    // next period (Equation 25-43).
+    let mut fac = PlanningFacility {
+        sections: vec![
+            PlanningSection {
+                sec_type: PlanningSectionType::Basic,
+                length_mi: 1.0,
+                lanes: 2,
+                inflow_aadt: 100_000.0,
+                ..Default::default()
+            },
+            PlanningSection {
+                sec_type: PlanningSectionType::Basic,
+                length_mi: 1.0,
+                lanes: 2,
+                ..Default::default()
+            },
+        ],
+        ffs: 60.0,
+        k_factor: 0.09,
+        growth_factor: 1.0,
+        phf: 0.9,
+        ..Default::default()
+    };
+    fac.run_analysis().unwrap();
+    // Peak period 2 (multiplier 1/PHF) should push section 1 over capacity.
+    assert!(fac.dc_ratio(0, 1) > 1.0, "section 1 should be oversaturated in p2");
+    assert!(fac.facility_results[1].total_queue_mi > 0.0, "queue reported");
+}
