@@ -2,6 +2,8 @@
 //! One module per HCM chapter plus `support` for constraint helpers.
 
 #[cfg(feature = "with-python")]
+pub mod chapter10;
+#[cfg(feature = "with-python")]
 pub mod chapter12;
 #[cfg(feature = "with-python")]
 pub mod chapter13;

@@ -5,6 +5,7 @@
 pub mod common;
 pub mod support;
 
+pub mod chapter10;
 pub mod chapter12;
 pub mod chapter13;
 pub mod chapter14;
@@ -14,6 +15,7 @@ pub const HCM_VERSION: &str = "7th Edition";
 
 // Backward-compatible module paths from the pre-chapter layout.
 // Deprecated: import via `hcm::chapterNN::*` or `hcm::support::*` instead.
+pub use chapter10::freeway_facilities;
 pub use chapter12::basicfreeways;
 pub use chapter12::managed_lanes;
 pub use chapter13::weaving;
