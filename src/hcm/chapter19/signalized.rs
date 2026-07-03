@@ -546,6 +546,7 @@ pub struct PermittedGreen {
 ///   (Y + R_c), s
 /// * `g_q` — opposing-queue clearance Gq (= worst opposing-lane g_s + l_1,
 ///   Exhibit 31-12 note a), s
+#[allow(clippy::too_many_arguments)] // mirrors the HCM equation parameter list
 pub fn permitted_green_times(
     seq: LeftTurnSequence,
     dp_own_left: f64,
@@ -664,6 +665,7 @@ pub fn queue_service_time(v_ln: f64, s_ln: f64, p: f64, g: f64, cycle_s: f64) ->
 ///        + min(g_p - g_f, g_u)/(1 + P_L[EL1/f_Lpb - 1]) )`
 ///
 /// with `g_diff = g_p - g_u - g_f >= 0` (HCM Equation 31-107).
+#[allow(clippy::too_many_arguments)] // mirrors the HCM equation parameter list
 pub fn shared_left_lane_saturation_flow(
     s_th: f64,
     g_p: f64,
@@ -687,6 +689,7 @@ pub fn shared_left_lane_saturation_flow(
 /// saturation flow used inside the lane-flow-distribution procedure
 /// (modified through-car equivalents EL1,m / EL2,m and the sneaker term
 /// `3,600 n_s* f_ms f_sp / s_th`).
+#[allow(clippy::too_many_arguments)] // mirrors the HCM equation parameter list
 pub fn shared_left_lane_saturation_flow_modified(
     s_th: f64,
     g_p: f64,
@@ -1023,6 +1026,7 @@ pub fn third_term_back_of_queue(q_b: f64, v: f64, c_a: f64, n_lanes: u32, t_h: f
 ///
 /// * `z` — percentile parameter (1.04 = 85th, 1.28 = 90th, 1.64 = 95th)
 /// * `i_factor` — upstream filtering adjustment factor I
+#[allow(clippy::too_many_arguments)] // mirrors the HCM equation parameter list
 pub fn percentile_back_of_queue(
     q1: f64,
     q2: f64,
