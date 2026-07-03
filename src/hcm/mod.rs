@@ -19,6 +19,7 @@ pub mod chapter20;
 pub mod chapter21;
 pub mod chapter22;
 pub mod chapter23;
+pub mod chapter24;
 
 pub const HCM_VERSION: &str = "7th Edition";
 
@@ -38,6 +39,7 @@ pub use chapter20::twsc;
 pub use chapter21::awsc;
 pub use chapter22::roundabouts;
 pub use chapter23::ramp_terminals;
+pub use chapter24::offstreet_pedbike;
 pub use support::{constraints, geometric, topology, traffic_flow};
 
 pub mod adjustment_factors {

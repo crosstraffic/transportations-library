@@ -17,6 +17,7 @@ pub use super::chapter20::*;
 pub use super::chapter21::*;
 pub use super::chapter22::*;
 pub use super::chapter23::*;
+pub use super::chapter24::*;
 
 #[pymodule]
 fn transportations_library(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -34,6 +35,7 @@ fn transportations_library(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()>
     super::chapter21::register(m)?;
     super::chapter22::register(m)?;
     super::chapter23::register(m)?;
+    super::chapter24::register(m)?;
     super::support::register(m)?;
 
     m.add(
