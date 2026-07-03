@@ -86,6 +86,41 @@ for p*_0,j — an HCM6 number; HCM7 equivalents are Eqs 20-29..20-34.
 7. Exhibit 34-9 CGRD=34 counts only the phase-3 overlap; interval-intersection gives 39 (no outcome effect).
 8. Shared-group f_RT convention: flow-weighted f_R via Eq 23-23 (Exhibit 34-7 convention) used.
 
+## Chapter 23 Part C (feat/hcm-ch23-alternative-intersections)
+Alternative intersections (RCUT / MUT / DLT), EPUB 178–182_Ch23_pt3_*.xhtml, Ch 34 Example
+Problems 12–17 (269_Ch34_02b/02c.xhtml). The Part C module (`alternative_intersections.rs`)
+implements the genuinely Part-C-specific steps — the O-D → junction traversal (Exhibits 23-48/49/50),
+EDTT (Eq 23-58/23-59), ETT assembly (Eq 23-60), approach/intersection aggregation (Eq 23-61/23-62),
+LOS (Exhibit 23-13), and the DLT offset (Eq 23-63…23-68) and weighted-average delay (Eq 23-69).
+STOP-controlled junction delays are computed from Chapter 20 primitives (Eq 20-18 + Eq 20-61) and
+reproduce Exhibit 34-128 exactly; signalized junction delays are the Chapter 19 IQA outputs supplied
+as `Provided` junction steps.
+
+1. **DLT LOS basis.** Part C Step 10 for RCUT/MUT reads LOS from Exhibit 23-13, but the DLT worked
+   examples (Ch 34 Ex. 16/17 discussion of Exhibit 34-145) read LOS from the **Chapter 19**
+   control-delay thresholds (ETT ≈ control delay for a DLT). `DisplacedLeftTurn::los` follows the
+   worked examples (Ch 19 thresholds); `los_alternative_intersection_od` (Exhibit 23-13) remains
+   available. Flagged `// VERIFY-HCM` in code.
+2. **Ex. 15 EDTT is misprinted in the manual.** The inline equation prints
+   EDTT = (800+800)/(1.47·50) = 21.8 s — a copy-paste from Ex. 14 — while the facts state 600 ft /
+   40 mi/h and the Exhibit 34-138 ETT column uses the correct (600+600)/(1.47·40) = 20.4 s. The
+   fixture (case3) and tests use 20.4 s (reproduces the published ETTs).
+3. **Ex. 13 EB L ETT.** Fully computed value 55.1 s (22.9 + 16.3 + 15.9) vs. published 55.2 s — a
+   0.1 s intermediate-rounding delta; LOS E either way. Asserted computed within ±1 s.
+4. **Eq 23-66 / 23-68 print errors.** Eq 23-66 prints the last term as `TT_LTD` (a typo for
+   `TT_DLT`); Eq 23-68 prints the guard as `if O_SUPP < C` while the accompanying prose says
+   "lower than zero". Both implemented per the prose / derivation (Ex. 16 reproduces O_SUPP = 45.2 s
+   vs. the published 45 s, which rounds TT_DLT 6.8 → 7 s).
+5. **Ex. 12 inputs not fully tabulated.** The Exhibit 34-123 turning-movement demands are not in the
+   extracted text, and the two major-street-left control delays (11.2 / 15.0 s) come from a Chapter 20
+   run whose conflicting flows the example does not print. Both are supplied as fixture inputs; the
+   asserted EDTT/ETT/LOS are independent of the unlisted demands.
+6. **Scope: signalized RCUT/MUT junction delays are inputs, not recomputed.** Wiring the full
+   Chapter 19 incremental-queue-accumulation + Chapter 18 flow-profile pipeline per signalized
+   sub-junction (Ex. 14/15 main junctions and signal crossovers) is deferred; those junction control
+   delays enter as `Provided` steps (Exhibit 34-132/34-137 values). The STOP junctions (Ex. 13, and
+   the RCUT/MUT U-turn crossovers) are computed from first principles.
+
 ## Chapter 16/17 (feat/hcm-ch16-17-urban-facilities)
 1. Exhibit 29-66's snow rows omit the +0.19 night drying term of Eq 29-12 while its rain rows
    include it; implementation follows the exhibit.
