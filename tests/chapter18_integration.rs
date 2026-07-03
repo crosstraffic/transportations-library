@@ -3,11 +3,12 @@
 //! answers of HCM 7th Edition, Chapter 30, Section 8, Example Problem 1
 //! (Exhibits 30-26 through 30-36).
 //!
-//! Fixtures:
+//! Fixtures (three modes for the access-point delay term):
 //! * `case1.json` — Example Problem 1, eastbound direction, with the
 //!   published Chapter 30, Section 4 per-access-point turning delays
-//!   (Exhibit 30-35) supplied as inputs. Reproduces every published
-//!   segment performance measure of Exhibit 30-36.
+//!   (Exhibit 30-35) supplied directly as the `access_point_delays_s` input
+//!   hook. Reproduces every published segment performance measure of
+//!   Exhibit 30-36.
 //! * `case2.json` — Example Problem 1, westbound direction (identical
 //!   published results by symmetry), exercising the Exhibit 18-13
 //!   planning-level turning-delay estimate instead. The estimate is
@@ -15,6 +16,12 @@
 //!   computes to 33.70 s vs. the published 33.54 s and travel speed to
 //!   23.60 mi/h vs. the published 23.67 mi/h (asserted within the fixture
 //!   tolerances below); all other measures reproduce exactly.
+//! * `case3.json` — Example Problem 1, eastbound, COMPUTED MODE: the
+//!   Chapter 30, Section 4 access-point delay procedure (Equations 30-31
+//!   through 30-68) computes the per-access-point delay from the access
+//!   point geometry and turn volumes, reproducing the published 0.193/0.194
+//!   s/veh (Exhibit 30-35) and the 0.115 inside-lane blockage probability,
+//!   and every downstream measure identically to case1.
 //!
 //! Documented tolerances:
 //! * LOS — exact;
@@ -95,10 +102,14 @@ fn test_case1_example_problem_1_eastbound() {
     assert_near!(seg.free_flow_speed_mph.unwrap(), 39.33, 0.01, "S_f");
     assert_near!(seg.f_v.unwrap(), 1.034, 0.0005, "f_v");
 
-    // Step 3 under the milestone-1 uniform-arrival assumption:
-    // P = g/C = 48.63/100 = 0.486. The published engine value is 0.493
-    // (Exhibit 30-32, WB through at Intersection 1) via the Chapter 30
-    // platoon-dispersion procedure, which is deferred.
+    // Step 3 under the uniform-arrival assumption (no upstream discharge-
+    // flow profiles supplied): P = g/C = 48.63/100 = 0.486. The published
+    // engine value is 0.493 (Exhibit 30-32, WB through — an internal
+    // movement — at Intersection 1) via the Chapter 30 platoon-dispersion
+    // procedure. The dispersion primitives (Equations 30-9 through 30-13)
+    // are implemented and unit-tested; reproducing the 0.493 arrival profile
+    // from the raw coordinated-actuated signal requires the full Chapter 19
+    // discharge-profile + O-D engine (see docs/hcm/VERIFICATION.md).
     assert_near!(
         seg.proportion_arriving_green.unwrap(),
         0.486,
@@ -145,6 +156,83 @@ fn test_case2_example_problem_1_westbound_planning_estimate() {
         2.53,
         0.01,
         "traveler perception score [30-36]"
+    );
+}
+
+/// Chapter 30, Example Problem 1, eastbound — COMPUTED MODE. The Chapter 30,
+/// Section 4 access-point delay procedure (Equations 30-31 through 30-68)
+/// computes the per-access-point through delay from the access-point
+/// geometry and turn volumes, in place of the case1 published-input hook.
+/// Asserts the computed intermediates against the published Exhibit 30-35
+/// values and confirms every downstream performance measure reproduces the
+/// published Exhibit 30-36 values identically to case1.
+#[test]
+fn test_case3_example_problem_1_computed_access_point_delay() {
+    let mut seg = load_case("case3.json");
+    seg.analyze();
+
+    // Computed per-access-point delay (Exhibit 30-35): AP1 = 0.193 s/veh,
+    // AP2 = 0.194 s/veh; inside-lane blockage probability 0.115 at both.
+    let computed = seg
+        .access_point_delays_computed
+        .as_ref()
+        .expect("computed access-point delays");
+    assert_eq!(computed.len(), 2, "two active access points");
+    assert_near!(computed[0].delay_total_s, 0.193, 0.001, "d_ap AP1 [30-35]");
+    assert_near!(computed[1].delay_total_s, 0.194, 0.001, "d_ap AP2 [30-35]");
+    assert_near!(
+        computed[0].prob_inside_lane_blocked,
+        0.115,
+        0.001,
+        "p_ov AP1 [30-35]"
+    );
+    assert_near!(
+        computed[1].prob_inside_lane_blocked,
+        0.115,
+        0.001,
+        "p_ov AP2 [30-35]"
+    );
+    // Σ d_ap,i matches the case1 published-input total (0.193 + 0.194).
+    // Σ = 0.1934 + 0.1947 = 0.3881 vs published 0.193 + 0.194 = 0.387
+    // (the two per-point roundings accumulate).
+    assert_near!(
+        seg.access_point_delay_total_s.unwrap(),
+        0.387,
+        0.002,
+        "Σ d_ap,i (computed vs Exhibit 30-35)"
+    );
+
+    // Every published Exhibit 30-36 measure reproduces identically to case1.
+    assert_near!(seg.base_ffs_mph.unwrap(), 40.78, 0.01, "base FFS [30-36]");
+    assert_near!(seg.running_time_s.unwrap(), 33.54, 0.01, "running time [30-36]");
+    assert_near!(seg.running_speed_mph.unwrap(), 36.59, 0.01, "running speed [30-36]");
+    assert_near!(seg.travel_speed_mph.unwrap(), 23.67, 0.01, "travel speed [30-36]");
+    assert_near!(
+        seg.spatial_stop_rate_stops_mi.unwrap(),
+        1.61,
+        0.01,
+        "spatial stop rate [30-36]"
+    );
+    assert_near!(seg.vc_ratio.unwrap(), 0.52, 0.005, "through v/c [30-36]");
+    assert_eq!(seg.los, Some(LevelOfService::C), "LOS [30-36]");
+    assert_near!(
+        seg.perception_score.unwrap(),
+        2.53,
+        0.01,
+        "traveler perception score [30-36]"
+    );
+
+    // Step 3 proportion arriving during green: without upstream discharge-
+    // flow profiles supplied, the uniform assumption gives P = g/C = 0.486.
+    // The published dispersion value (0.493) requires the full Chapter 19
+    // coordinated-actuated discharge-profile + O-D engine (see
+    // docs/hcm/VERIFICATION.md); the dispersion primitives themselves are
+    // unit-tested in chapter18/tests.rs.
+    assert_near!(
+        seg.proportion_arriving_green.unwrap(),
+        0.486,
+        0.001,
+        "P (uniform; computed-dispersion value 0.493 deferred)"
     );
 }
 

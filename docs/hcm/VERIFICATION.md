@@ -60,6 +60,35 @@ No VERIFY-HCM items. Spec gaps documented: Exhibit 18-13 clamping outside 200–
 Exhibit 18-1 outside 25–55 mi/h BFFS are undefined by the exhibits. Ch 18 text cites "Eq 20-43"
 for p*_0,j — an HCM6 number; HCM7 equivalents are Eqs 20-29..20-34.
 
+## Chapter 18/30 computed procedures (feat/hcm-ch18-platoon-dispersion)
+Ch 30 §3 platoon dispersion (Eqs 30-9..30-13) and §4 delay due to turns (Eqs 30-31..30-68)
+implemented (EPUB `235_Ch30_03.xhtml`, `236_Ch30_04.xhtml`; EP1 intermediates in
+`240_Ch30_08.xhtml`). All §4 equations transcribed verbatim from the MathML.
+1. **§4 right-turn delay approach speed.** Eqs 30-56/30-58 print `S_f = free-flow speed`, but
+   EP1's published per-access-point delay (0.193/0.194 s/veh, Exhibit 30-35) reproduces exactly
+   only when the right-turn branch uses the **posted speed limit** (35 mi/h): AP1 EB = 0.1934,
+   AP2 EB = 0.1947; using the segment free-flow speed (39.33 mi/h) gives 0.217. The reference
+   engine evidently evaluates the maneuver at the posted speed. `p_ov = v_lt/c_l = 0.115`
+   (Exhibit 30-35) and `d_ap,l` are speed-independent and reproduce regardless. Implementation
+   defaults the turn-delay speed to the posted limit (overridable via
+   `access_point_turn_delay_speed_mph`).
+2. **Eq 30-60 grouping.** The `(1/r_d + 1/r_a)` factor multiplies the fraction
+   `(1.47 S_f − u_m)²/(2·1.47 S_f)`; reading it as a denominator (a plausible OCR flattening)
+   inflates d1 ≈ 5× and d_ap,r ≈ 12×. MathML `<mfrac>…</mfrac><mrow>(…)</mrow>` confirms the
+   multiplier reading.
+3. **§4 turn-bay right-turn delay.** A right-turn bay zeroes `d_ap,r` (the right-turner
+   decelerates in the bay, not the through lane), consistent with Exhibit 18-13's "both bays ⇒
+   0.0" rule; the printed §4 right-turn equations have no explicit bay term.
+4. **§3 EP1 P = 0.493 (deferred).** The published proportion arriving on green for the internal
+   WB-through at Intersection 1 (0.493, Exhibit 30-32) is only +0.007 above the uniform
+   `g/C = 0.486`. Reproducing it requires the full Chapter 19 coordinated-actuated discharge-flow
+   profiles (the through queue-service times print as 0.000 in Exhibit 30-33) plus the Section 2
+   O-D distribution and offset alignment — not reproducible from the published intermediates
+   alone. The dispersion primitives (Eqs 30-9..30-13), the discharge/arrival profile builders,
+   and the computed-P path are implemented and unit-tested against the equations; `step_3` uses
+   them when `upstream_discharge_profiles` is supplied and falls back to the uniform /
+   platoon-ratio assumption otherwise (P = 0.486 for EP1).
+
 ## Chapter 11 (feat/hcm-ch11-freeway-reliability)
 1. Exhibit 11-22 vs Exhibit 25-41 disagree on 3-lane incident mean duration (67.9 vs 69.6); 11-22 used.
 2. Incident lane closures modeled via total-capacity CAF (CAF×open/N) rather than FREEVAL's
@@ -106,7 +135,10 @@ for p*_0,j — an HCM6 number; HCM7 equivalents are Eqs 20-29..20-34.
   phasing, ped/bike LOS, multi-period.
 - Ch 10/25: managed-lane facilities, planning method, special work-zone config tables, per-segment
   work-zone alpha.
-- Ch 18: Ch 30 platoon dispersion + O-D/spillback + access-point delay procedure (input hooks provided).
+- Ch 18: Ch 30 §4 access-point delay procedure and §3 platoon-dispersion primitives now implemented
+  (see "Chapter 18/30 computed procedures"); still deferred: the §2 O-D/volume-balance/spillback
+  adjustment and the coordinated-actuated convergence loop that would drive §3 discharge profiles
+  from Ch 19 timing (so EP1 computed P = 0.493 from the raw signal remains deferred).
 - Ch 20: Ch 30 upstream-signal platoon inputs (p_b,x supplied by caller); pedestrian-mode method.
 - Ch 23 milestone 2: RCUT/MUT/DLT alternative intersections.
 - All chapters: pedestrian/bicycle/transit LOS second pass.

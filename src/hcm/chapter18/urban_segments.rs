@@ -60,10 +60,12 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::access_point_delay::{access_point_through_delay, AccessPointApproach, AccessPointDelay};
 use super::exhibits::{
     access_point_adjustment, access_point_density, cross_section_adjustment,
     exhibit_18_13_turn_delay_adjusted, exhibit_18_1_los, parking_adjustment, speed_constant_s0,
 };
+use super::platoon_dispersion::{combined_arrival_profile, proportion_arriving_green, MovementDischarge};
 use crate::hcm::chapter19::exhibits::platoon_ratio_for_arrival_type;
 use crate::hcm::common::LevelOfService;
 
@@ -283,6 +285,9 @@ fn default_one() -> f64 {
 fn default_ten() -> f64 {
     10.0
 }
+fn default_quarter() -> f64 {
+    0.25
+}
 
 /// One direction of travel on an urban street segment (HCM Chapter 18,
 /// motorized vehicle methodology).
@@ -457,6 +462,55 @@ pub struct UrbanSegment {
     #[serde(default)]
     pub midsegment_other_delay_s: f64,
 
+    // ─────────── Access point delay (Chapter 30, Section 4 computed) ───────────
+    /// Active access point approaches on the segment, one per point in the
+    /// subject direction of travel (Chapter 30, Section 4). When supplied,
+    /// the computed `d_ap = d_ap,l + d_ap,r` per approach (Equations 30-31
+    /// through 30-68) replaces both the `access_point_delays_s` input hook
+    /// and the Exhibit 18-13 planning estimate. Leave `None` to keep the
+    /// input-hook / planning-estimate behavior.
+    #[serde(default)]
+    pub access_point_approaches: Option<Vec<AccessPointApproach>>,
+    /// Analysis period duration T used by the Chapter 30, Section 4
+    /// incremental-delay terms (Equations 30-48 and 30-51), h. Default 0.25
+    /// (a 15-min analysis period).
+    #[serde(default = "default_quarter")]
+    pub analysis_period_h: f64,
+    /// Approaching through-vehicle speed for the Chapter 30, Section 4
+    /// right-turn delay (Equations 30-56 and 30-58), mi/h. Defaults to the
+    /// posted speed limit, which reproduces the Example Problem 1 published
+    /// per-access-point delay (see the `access_point_delay` VERIFY-HCM note);
+    /// the printed equation names the free-flow speed.
+    #[serde(default)]
+    pub access_point_turn_delay_speed_mph: Option<f64>,
+
+    // ─────────── Platoon dispersion (Chapter 30, Section 3 computed) ───────────
+    /// Upstream signalized-movement discharge flow profiles contributing to
+    /// the arrival flow at the downstream boundary (Chapter 30, Section 3).
+    /// When supplied (with the signal timing inputs), the computed
+    /// proportion arriving during green from the platoon-dispersion model
+    /// (Equations 30-9 through 30-12) replaces the uniform / platoon-ratio
+    /// assumption in Step 3.
+    #[serde(default)]
+    pub upstream_discharge_profiles: Option<Vec<MovementDischarge>>,
+    /// Midblock (access-point) volume that enters the downstream arrival flow
+    /// uniformly across the cycle, veh/h (Chapter 30, Section 3 — midsegment
+    /// arrivals are assumed uniform). Used only with
+    /// `upstream_discharge_profiles`.
+    #[serde(default)]
+    pub arrival_uniform_volume_veh_h: f64,
+    /// Time step duration d_t for the flow-profile representation, s/step
+    /// (Chapter 30, Section 3 recommends 1.0). Used only with
+    /// `upstream_discharge_profiles`.
+    #[serde(default = "default_one")]
+    pub flow_profile_time_step_s: f64,
+    /// Start time of the downstream through-movement effective green relative
+    /// to system time 0.0, s (Chapter 30, Section 3). Used with
+    /// `upstream_discharge_profiles` to locate the green window in the
+    /// arrival flow profile. Defaults to 0.0.
+    #[serde(default)]
+    pub downstream_green_start_s: f64,
+
     // ───────────────────── Perception score ─────────────────────
     /// Proportion of intersections with a left-turn lane (or bay) on the
     /// segment, P_LTL,seg (decimal; Equations 18-18 through 18-22).
@@ -492,6 +546,11 @@ pub struct UrbanSegment {
     /// s/veh (Equation 18-7 term).
     #[serde(default)]
     pub access_point_delay_total_s: Option<f64>,
+    /// Per-access-point Chapter 30, Section 4 delay breakdown (left/right/
+    /// total delay and inside-lane blockage probability), populated when
+    /// `access_point_approaches` is supplied.
+    #[serde(default)]
+    pub access_point_delays_computed: Option<Vec<AccessPointDelay>>,
     /// Segment running time t_R, s (Equation 18-7).
     #[serde(default)]
     pub running_time_s: Option<f64>,
@@ -577,6 +636,13 @@ impl UrbanSegment {
             access_left_bay_adequate: false,
             access_right_bay_adequate: false,
             midsegment_other_delay_s: 0.0,
+            access_point_approaches: None,
+            analysis_period_h: 0.25,
+            access_point_turn_delay_speed_mph: None,
+            upstream_discharge_profiles: None,
+            arrival_uniform_volume_veh_h: 0.0,
+            flow_profile_time_step_s: 1.0,
+            downstream_green_start_s: 0.0,
             prop_left_turn_lanes: None,
             speed_constant_mph: None,
             f_cs_mph: None,
@@ -587,6 +653,7 @@ impl UrbanSegment {
             free_flow_speed_mph: None,
             f_v: None,
             access_point_delay_total_s: None,
+            access_point_delays_computed: None,
             running_time_s: None,
             running_speed_mph: None,
             proportion_arriving_green: None,
@@ -748,23 +815,40 @@ impl UrbanSegment {
         let f_v = proximity_adjustment(v_m, n_th, s_f);
         self.f_v = Some(f_v);
 
-        // C. Delay due to turning vehicles at access points.
-        let d_ap_total = match &self.access_point_delays_s {
-            Some(delays) => delays.iter().sum(),
-            None => {
-                let n_ap = self
-                    .n_influential_access_points
-                    .unwrap_or_else(|| self.n_influential_access_points_computed());
-                let per_point = exhibit_18_13_turn_delay_adjusted(
-                    v_m / n_th as f64,
-                    n_th,
-                    self.pct_left_turns_access,
-                    self.pct_right_turns_access,
-                    self.access_left_bay_adequate,
-                    self.access_right_bay_adequate,
-                );
-                per_point * n_ap
-            }
+        // C. Delay due to turning vehicles at access points. Preference:
+        //   1. the Chapter 30, Section 4 procedure when the active
+        //      access-point approaches are supplied (computed d_ap,i);
+        //   2. the analyst-supplied per-access-point delays; or
+        //   3. the Exhibit 18-13 planning estimate.
+        let d_ap_total = if let Some(approaches) = self.access_point_approaches.clone() {
+            // The right-turn branch uses the posted speed limit unless the
+            // analyst overrides it (see the access_point_delay VERIFY-HCM
+            // note); S_f is the printed variable.
+            let speed = self
+                .access_point_turn_delay_speed_mph
+                .unwrap_or(self.speed_limit_mph);
+            let results: Vec<AccessPointDelay> = approaches
+                .iter()
+                .map(|ap| access_point_through_delay(ap, speed, self.analysis_period_h))
+                .collect();
+            let total = results.iter().map(|r| r.delay_total_s).sum();
+            self.access_point_delays_computed = Some(results);
+            total
+        } else if let Some(delays) = &self.access_point_delays_s {
+            delays.iter().sum()
+        } else {
+            let n_ap = self
+                .n_influential_access_points
+                .unwrap_or_else(|| self.n_influential_access_points_computed());
+            let per_point = exhibit_18_13_turn_delay_adjusted(
+                v_m / n_th as f64,
+                n_th,
+                self.pct_left_turns_access,
+                self.pct_right_turns_access,
+                self.access_left_bay_adequate,
+                self.access_right_bay_adequate,
+            );
+            per_point * n_ap
         };
         self.access_point_delay_total_s = Some(d_ap_total);
 
@@ -809,6 +893,15 @@ impl UrbanSegment {
         if c <= 0.0 {
             return None;
         }
+        // Chapter 30, Section 3 platoon-dispersion computation when the
+        // upstream discharge flow profiles are supplied; otherwise the
+        // uniform / platoon-ratio assumption (Equation 19-15).
+        if let Some(movements) = self.upstream_discharge_profiles.clone() {
+            if let Some(p) = self.computed_proportion_arriving_green(&movements, g, c) {
+                self.proportion_arriving_green = Some(p);
+                return Some(p);
+            }
+        }
         let r_p = self
             .platoon_ratio
             .or_else(|| self.arrival_type.and_then(platoon_ratio_for_arrival_type))
@@ -816,6 +909,35 @@ impl UrbanSegment {
         let p = (r_p * g / c).min(1.0);
         self.proportion_arriving_green = Some(p);
         Some(p)
+    }
+
+    /// Chapter 30, Section 3: proportion arriving during green computed from
+    /// the projected arrival flow profile (platoon dispersion, Equations
+    /// 30-9 through 30-12). Requires the segment running time (Step 2). The
+    /// downstream green window is `downstream_green_start_s` for `g` seconds.
+    fn computed_proportion_arriving_green(
+        &self,
+        movements: &[MovementDischarge],
+        g: f64,
+        c: f64,
+    ) -> Option<f64> {
+        let t_r = self.running_time_s?;
+        let dt = self.flow_profile_time_step_s.max(1e-6);
+        let cycle_steps = (c / dt).round() as usize;
+        if cycle_steps == 0 {
+            return None;
+        }
+        let arrival = combined_arrival_profile(
+            movements,
+            self.arrival_uniform_volume_veh_h,
+            cycle_steps,
+            dt,
+            t_r,
+        );
+        let green_start_step =
+            (self.downstream_green_start_s / dt).round().rem_euclid(cycle_steps as f64) as usize;
+        let green_steps = (g / dt).round() as usize;
+        Some(proportion_arriving_green(&arrival, green_start_step, green_steps))
     }
 
     /// Step 5: Determine through delay, s/veh. The control delay at a
