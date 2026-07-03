@@ -1,5 +1,7 @@
 use crate::hcm::basicfreeways::BasicFreeways as LibBasicFreeways;
 use crate::hcm::common::CityType;
+use crate::hcm::managed_lanes::{ManagedLaneSegment as LibManagedLaneSegment, ManagedLaneType};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 #[pyclass]
@@ -179,7 +181,156 @@ impl BasicFreeways {
     }
 }
 
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct ManagedLanes {
+    pub inner: LibManagedLaneSegment,
+}
+
+#[pymethods]
+impl ManagedLanes {
+    /// Create a basic managed lane segment (HCM Chapter 12, Section 4).
+    ///
+    /// Args:
+    ///     lane_type: "continuous_access" (default), "buffer1", "buffer2",
+    ///         "barrier1", or "barrier2" (Exhibit 12-30 segment types)
+    ///     ffs: free-flow speed, mi/h
+    ///     demand: 15-min average flow rate v_p, pc/h/ln
+    ///     gp_density: adjacent general purpose lane density K_GP, pc/mi/ln
+    ///     caf, saf: capacity/speed adjustment factors
+    #[new]
+    #[pyo3(signature = (lane_type=None, ffs=None, demand=None, gp_density=None, caf=None, saf=None))]
+    pub fn new(
+        lane_type: Option<String>,
+        ffs: Option<f64>,
+        demand: Option<f64>,
+        gp_density: Option<f64>,
+        caf: Option<f64>,
+        saf: Option<f64>,
+    ) -> PyResult<Self> {
+        let lt = match lane_type.as_deref().map(str::to_lowercase).as_deref() {
+            None | Some("continuous_access") | Some("continuous") => {
+                ManagedLaneType::ContinuousAccess
+            }
+            Some("buffer1") => ManagedLaneType::Buffer1,
+            Some("buffer2") => ManagedLaneType::Buffer2,
+            Some("barrier1") => ManagedLaneType::Barrier1,
+            Some("barrier2") => ManagedLaneType::Barrier2,
+            Some(other) => {
+                return Err(PyValueError::new_err(format!("unknown lane_type: {other}")))
+            }
+        };
+        let mut inner = LibManagedLaneSegment::new(lt, ffs.unwrap_or(65.0));
+        if let Some(v) = demand {
+            inner.set_demand(v);
+        }
+        if let Some(v) = gp_density {
+            inner.set_gp_density(v);
+        }
+        if let Some(v) = caf {
+            inner.set_caf(v);
+        }
+        if let Some(v) = saf {
+            inner.set_saf(v);
+        }
+        Ok(ManagedLanes { inner })
+    }
+
+    // ── HCM Ch.12 Section 4 step methods ───────────────────────────────
+
+    /// Breakpoint BP (pc/h/ln) - Equation 12-13.
+    pub fn calculate_breakpoint(&mut self) -> f64 {
+        self.inner.calculate_ffs_adj();
+        self.inner.calculate_breakpoint()
+    }
+
+    /// Adjusted capacity c_adj (pc/h/ln) - Equation 12-14.
+    pub fn calculate_capacity(&mut self) -> f64 {
+        self.inner.calculate_ffs_adj();
+        self.inner.calculate_capacity()
+    }
+
+    /// Space mean speed S_ML (mi/h) - Equation 12-12.
+    pub fn calculate_speed(&mut self) -> f64 {
+        self.inner.calculate_speed()
+    }
+
+    /// Density (pc/mi/ln).
+    pub fn calculate_density(&mut self) -> f64 {
+        self.inner.calculate_density()
+    }
+
+    /// Level of service letter (Exhibit 12-15 criteria).
+    pub fn determine_los(&mut self) -> String {
+        let los: char = self.inner.determine_los().into();
+        los.to_string()
+    }
+
+    /// Run the full managed lane analysis; returns the LOS letter.
+    pub fn run_analysis(&mut self) -> String {
+        let los: char = self.inner.run_analysis().into();
+        los.to_string()
+    }
+
+    pub fn set_demand(&mut self, v_p: f64) {
+        self.inner.set_demand(v_p);
+    }
+
+    pub fn set_gp_density(&mut self, k_gp: f64) {
+        self.inner.set_gp_density(k_gp);
+    }
+
+    // ── Getters ─────────────────────────────────────────────────────────
+
+    #[getter]
+    pub fn breakpoint(&self) -> f64 {
+        self.inner.breakpoint
+    }
+
+    #[getter]
+    pub fn capacity(&self) -> f64 {
+        self.inner.capacity_adj
+    }
+
+    #[getter]
+    pub fn speed(&self) -> f64 {
+        self.inner.speed
+    }
+
+    #[getter]
+    pub fn density(&self) -> f64 {
+        self.inner.density
+    }
+
+    #[getter]
+    pub fn los(&self) -> Option<String> {
+        self.inner.los.map(|l| {
+            let c: char = l.into();
+            c.to_string()
+        })
+    }
+
+    /// Whether the segment type is subject to GP-lane friction
+    /// (continuous access and Buffer 1 types).
+    pub fn has_friction_effect(&self) -> bool {
+        self.inner.has_friction_effect()
+    }
+
+    /// Whether friction is active (K_GP > 35 pc/mi/ln on a friction type).
+    pub fn is_friction_active(&self) -> bool {
+        self.inner.is_friction_active()
+    }
+
+    pub fn __repr__(&self) -> String {
+        format!(
+            "ManagedLanes(type={:?}, ffs={:.0}, demand={:.0}, gp_density={:.1})",
+            self.inner.lane_type, self.inner.ffs, self.inner.v_p, self.inner.k_gp
+        )
+    }
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<BasicFreeways>()?;
+    m.add_class::<ManagedLanes>()?;
     Ok(())
 }
