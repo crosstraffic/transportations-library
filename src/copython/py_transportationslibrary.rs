@@ -5,11 +5,13 @@ use pyo3::prelude::*;
 
 pub use super::chapter12::*;
 pub use super::chapter15::*;
+pub use super::chapter24::*;
 
 #[pymodule]
 fn transportations_library(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     super::chapter12::register(m)?;
     super::chapter15::register(m)?;
+    super::chapter24::register(m)?;
     super::support::register(m)?;
 
     m.add(

@@ -1,0 +1,33 @@
+{
+    "description": "HCM 7th Edition, Chapter 35, Example Problem 2: Bicycle LOS on a Shared-Use Path (planning analysis)",
+    "bicycle_facility": {
+        "path_width": 10.0,
+        "has_centerline": false,
+        "segment_length": 3.0,
+        "is_one_way": false,
+        "two_way_demand": 340.0,
+        "directional_split": 0.5,
+        "phf": 0.90,
+        "user_groups": [
+            { "mode_split": 0.55, "average_speed": 12.8, "speed_standard_deviation": 3.4 },
+            { "mode_split": 0.20, "average_speed": 3.4, "speed_standard_deviation": 0.6 },
+            { "mode_split": 0.10, "average_speed": 6.5, "speed_standard_deviation": 1.2 },
+            { "mode_split": 0.10, "average_speed": 10.1, "speed_standard_deviation": 2.7 },
+            { "mode_split": 0.05, "average_speed": 7.9, "speed_standard_deviation": 1.9 }
+        ]
+    },
+    "expected": {
+        "directional_bicycle_flow_rate": 104.0,
+        "directional_pedestrian_flow_rate": 38.0,
+        "directional_runner_flow_rate": 19.0,
+        "directional_inline_skater_flow_rate": 19.0,
+        "directional_child_bicyclist_flow_rate": 9.0,
+        "active_passings_per_minute": 2.42,
+        "meetings_per_minute": 8.33,
+        "effective_lanes": 2,
+        "total_probability_delayed_passing": 0.8334,
+        "delayed_passings_per_minute": 1.82,
+        "blos_score": 2.69,
+        "bicycle_los": "D"
+    }
+}

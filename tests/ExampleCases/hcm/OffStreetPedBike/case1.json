@@ -1,0 +1,30 @@
+{
+    "description": "HCM 7th Edition, Chapter 35, Example Problem 1: Pedestrian LOS on Shared-Use and Exclusive Paths (operational analysis)",
+    "shared_use_path": {
+        "bicycle_demand_same_direction": 100.0,
+        "bicycle_demand_opposing": 100.0,
+        "phf": 0.83,
+        "pedestrian_speed": 4.0,
+        "bicycle_speed": 16.0,
+        "is_one_way": false
+    },
+    "exclusive_path": {
+        "total_walkway_width": 5.0,
+        "fixed_object_width": 0.0,
+        "peak_15min_volume": 100.0,
+        "phf": 0.83,
+        "pedestrian_speed": 240.0,
+        "facility_type": "Walkway",
+        "flow_type": "Random"
+    },
+    "expected": {
+        "passing_events_per_hour": 90.0,
+        "meeting_events_per_hour": 151.0,
+        "total_events_per_hour": 166.0,
+        "shared_use_path_pedestrian_los": "E",
+        "effective_width_ft": 5.0,
+        "unit_flow_rate_p_ft_min": 1.33,
+        "pedestrian_space_ft2_p": 180.0,
+        "exclusive_path_pedestrian_los": "A"
+    }
+}
