@@ -405,3 +405,205 @@ fn ep2_queue_lifecycle() {
     // No unserved vehicles remain at the facility entrance.
     assert!(fac.unserved_entry_veh[4] < 0.5);
 }
+
+// ═════════════════════════════════════════════════════════════════════════
+// Example Problem 5: managed-lane facility (Exhibits 25-78 through 25-87)
+// ═════════════════════════════════════════════════════════════════════════
+
+use transportations_library::hcm::chapter10::managed_lanes::ManagedLaneFacility;
+
+fn load_ml_case(name: &str) -> ManagedLaneFacility {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/ExampleCases/hcm/FreewayFacilities");
+    path.push(name);
+    let f = File::open(&path).unwrap_or_else(|_| panic!("Unable to open {path:?}"));
+    serde_json::from_reader(BufReader::new(f)).expect("Failed to parse fixture JSON")
+}
+
+/// ML capacity (Exhibit 25-81): 1,614 veh/h for the marking-separated
+/// Continuous Access lane at FFS 60 (1,650 pc/h/ln x f_HV).
+#[test]
+fn ep5_ml_capacity_matches_exhibit_25_81() {
+    let mut fac = load_ml_case("ml_case1.json");
+    fac.run_analysis().unwrap();
+    for p in 0..5 {
+        for i in 0..11 {
+            assert_approx(fac.ml_capacity[i][p], 1614.0, 3.0, "ML capacity");
+        }
+    }
+}
+
+/// ML demand-to-capacity ratios (Exhibit 25-82, lower table): uniform along
+/// the facility (no ML ramps) at [0.62, 0.68, 0.72, 0.64, 0.52] by period.
+#[test]
+fn ep5_ml_dc_ratios_match_exhibit_25_82() {
+    let mut fac = load_ml_case("ml_case1.json");
+    fac.run_analysis().unwrap();
+    let expected = [0.62, 0.68, 0.72, 0.64, 0.52];
+    for (p, e) in expected.iter().enumerate() {
+        for i in 0..11 {
+            assert_approx(fac.ml_dc_ratio[i][p], *e, 0.005, "ML vd/c");
+        }
+    }
+}
+
+/// GP segment density matrix (Exhibit 25-84, upper table): validates the GP
+/// lane group whose densities drive the ML adjacent-friction check.
+#[test]
+fn ep5_gp_density_matrix_matches_exhibit_25_84() {
+    let mut fac = load_ml_case("ml_case1.json");
+    fac.run_analysis().unwrap();
+    let expected = [
+        [22.2, 27.6, 25.0, 26.7, 23.3, 25.0, 24.4, 30.3, 30.3, 29.1, 25.6],
+        [24.4, 31.0, 27.9, 29.8, 25.6, 28.9, 27.9, 35.2, 35.2, 33.4, 29.8],
+        [25.8, 33.4, 30.1, 31.8, 28.1, 32.2, 31.6, 40.2, 40.2, 37.8, 33.2],
+        [23.1, 28.0, 25.3, 27.1, 23.7, 23.4, 23.7, 29.3, 29.3, 28.3, 24.8],
+        [18.7, 21.5, 19.8, 21.1, 18.1, 16.9, 18.7, 22.1, 22.1, 21.6, 19.2],
+    ];
+    assert_matrix(&fac.gp.density_veh, &expected, 0.6, "GP density (veh/mi/ln)");
+}
+
+/// ML adjacent-friction speed reductions (Exhibit 25-83, lower table): the
+/// Continuous Access ML loses speed where the adjacent GP density exceeds
+/// 35 pc/mi/ln (Step A-13 / Equations 12-18/12-19). Segments 8-9 in period 2
+/// (53.5 mi/h) and Segments 8-10 in period 3 (52.1 mi/h) are affected; the
+/// unaffected uniform speeds are 59.3/58.9/58.6/59.2/59.7 mi/h.
+#[test]
+fn ep5_ml_speeds_and_friction_match_exhibit_25_83() {
+    let mut fac = load_ml_case("ml_case1.json");
+    fac.run_analysis().unwrap();
+    // Unaffected segments (period, segment, speed).
+    assert_approx(fac.ml_speed[0][0], 59.3, 0.3, "ML speed p1 seg1");
+    assert_approx(fac.ml_speed[0][1], 58.9, 0.3, "ML speed p2 seg1");
+    assert_approx(fac.ml_speed[0][2], 58.6, 0.3, "ML speed p3 seg1");
+    assert_approx(fac.ml_speed[0][4], 59.7, 0.3, "ML speed p5 seg1");
+    // Friction-affected cells.
+    assert_approx(fac.ml_speed[7][1], 53.5, 0.4, "ML speed p2 seg8 (friction)");
+    assert_approx(fac.ml_speed[8][1], 53.5, 0.4, "ML speed p2 seg9 (friction)");
+    assert_approx(fac.ml_speed[7][2], 52.1, 0.4, "ML speed p3 seg8 (friction)");
+    assert_approx(fac.ml_speed[8][2], 52.1, 0.4, "ML speed p3 seg9 (friction)");
+    assert_approx(fac.ml_speed[9][2], 52.1, 0.4, "ML speed p3 seg10 (friction)");
+    assert!(fac.ml_friction_active[7][2], "friction active p3 seg8");
+    assert!(!fac.ml_friction_active[0][0], "no friction p1 seg1");
+}
+
+/// Lane-group performance (Exhibit 25-86): GP and ML space mean speed and
+/// average density by analysis period.
+#[test]
+fn ep5_lane_group_performance_matches_exhibit_25_86() {
+    let mut fac = load_ml_case("ml_case1.json");
+    fac.run_analysis().unwrap();
+    let gp = [(57.7, 24.9), (57.3, 28.1), (56.5, 31.0), (58.0, 24.6), (58.5, 19.1)];
+    let ml = [(59.3, 16.9), (58.6, 18.8), (58.0, 20.0), (59.2, 17.6), (59.7, 14.1)];
+    for p in 0..5 {
+        let g = &fac.gp_group_performance[p];
+        assert_approx(g.space_mean_speed, gp[p].0, 0.6, "GP group SMS");
+        assert_approx(g.avg_density_veh, gp[p].1, 0.6, "GP group density");
+        let m = &fac.ml_group_performance[p];
+        assert_approx(m.space_mean_speed, ml[p].0, 0.5, "ML group SMS");
+        assert_approx(m.avg_density_veh, ml[p].1, 0.5, "ML group density");
+    }
+}
+
+/// Combined facility performance and LOS (Exhibit 25-87).
+#[test]
+fn ep5_facility_performance_matches_exhibit_25_87() {
+    let mut fac = load_ml_case("ml_case1.json");
+    fac.run_analysis().unwrap();
+    let expected = [
+        (58.0, 23.4, 'C'),
+        (57.5, 26.4, 'D'),
+        (56.7, 29.1, 'D'),
+        (58.2, 23.3, 'C'),
+        (58.7, 18.1, 'C'),
+    ];
+    for (p, (s, k, l)) in expected.iter().enumerate() {
+        let perf = &fac.facility_performance[p];
+        assert_approx(perf.space_mean_speed, *s, 0.6, "facility SMS");
+        // VERIFY-HCM: our combined density is the exact Equation 10-1
+        // lane-mile-weighted average of the GP (Exhibit 25-86) and ML lane
+        // groups. In the peak period (p3) that yields 28.3 veh/mi/ln, whereas
+        // Exhibit 25-87 reports 29.1 — a value not reproducible from the
+        // book's own Exhibit 25-86 group densities (31.0 GP, 20.0 ML) under
+        // Equation 10-1. LOS (D) is unaffected. Wider tolerance covers p3.
+        assert_approx(perf.avg_density_veh, *k, 1.0, "facility density");
+        let got: char = perf.los.into();
+        assert_eq!(got, *l, "facility LOS p{}", p + 1);
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// Example Problem 6: planning-level method (Exhibits 25-88 through 25-96)
+// ═════════════════════════════════════════════════════════════════════════
+
+use transportations_library::hcm::chapter10::planning::PlanningFacility;
+
+fn load_planning_case(name: &str) -> PlanningFacility {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/ExampleCases/hcm/FreewayFacilities");
+    path.push(name);
+    let f = File::open(&path).unwrap_or_else(|_| panic!("Unable to open {path:?}"));
+    serde_json::from_reader(BufReader::new(f)).expect("Failed to parse fixture JSON")
+}
+
+/// Demand-to-capacity ratios by section and period (Exhibit 25-91).
+#[test]
+fn ep6_dc_ratios_match_exhibit_25_91() {
+    let mut fac = load_planning_case("planning_case1.json");
+    fac.run_analysis().unwrap();
+    let expected = [
+        [0.72, 0.86, 0.74, 0.65, 0.76, 0.91, 0.79],
+        [0.80, 0.96, 0.82, 0.72, 0.85, 1.02, 0.88],
+        [0.72, 0.86, 0.74, 0.65, 0.76, 0.93, 0.80],
+        [0.64, 0.77, 0.66, 0.58, 0.68, 0.81, 0.70],
+    ];
+    for (p, row) in expected.iter().enumerate() {
+        for (i, e) in row.iter().enumerate() {
+            assert_approx(fac.dc_ratio(i, p), *e, 0.01, &format!("d/c sec {} p{}", i + 1, p + 1));
+        }
+    }
+}
+
+/// Delay rates by section and period (Exhibit 25-92), s/mi.
+#[test]
+fn ep6_delay_rates_match_exhibit_25_92() {
+    let mut fac = load_planning_case("planning_case1.json");
+    fac.run_analysis().unwrap();
+    let expected = [
+        [0.0, 2.8, 0.2, 0.0, 0.5, 5.0, 0.8],
+        [1.0, 7.4, 1.6, 0.1, 2.3, 11.7, 3.3],
+        [0.0, 2.8, 0.2, 0.0, 0.5, 5.8, 1.1],
+        [0.0, 0.5, 0.0, 0.0, 0.0, 1.3, 0.0],
+    ];
+    for (p, row) in expected.iter().enumerate() {
+        for (i, e) in row.iter().enumerate() {
+            let got = fac.section_results[i][p].delay_rate;
+            assert_approx(got, *e, 0.4, &format!("delay sec {} p{}", i + 1, p + 1));
+        }
+    }
+}
+
+/// Facility performance summary (Exhibit 25-96): capacity assessment, travel
+/// time, space mean speed, density, queue length, and LOS by period.
+#[test]
+fn ep6_facility_performance_matches_exhibit_25_96() {
+    let mut fac = load_planning_case("planning_case1.json");
+    fac.run_analysis().unwrap();
+    // (oversaturated, travel_time_min, sms, density, queue_mi, los)
+    let expected = [
+        (false, 6.1, 58.9, 29.2, 0.0, 'D'),
+        (true, 6.4, 56.6, 33.7, 0.8, 'F'),
+        (false, 6.1, 58.8, 29.4, 0.0, 'D'),
+        (false, 6.0, 59.8, 25.5, 0.0, 'C'),
+    ];
+    for (p, (over, tt, sms, dens, q, los)) in expected.iter().enumerate() {
+        let r = &fac.facility_results[p];
+        assert_eq!(r.oversaturated, *over, "oversat p{}", p + 1);
+        assert_approx(r.travel_time_min, *tt, 0.15, &format!("travel time p{}", p + 1));
+        assert_approx(r.space_mean_speed, *sms, 0.6, &format!("SMS p{}", p + 1));
+        assert_approx(r.avg_density, *dens, 0.8, &format!("density p{}", p + 1));
+        assert_approx(r.total_queue_mi, *q, 0.15, &format!("queue p{}", p + 1));
+        let got: char = r.los.into();
+        assert_eq!(got, *los, "LOS p{}", p + 1);
+    }
+}

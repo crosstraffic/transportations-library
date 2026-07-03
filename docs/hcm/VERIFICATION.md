@@ -32,6 +32,15 @@ comments unless noted.
 9. EP2 period 4: published engine spills residual queue into segments 1–4; ours holds it in 5–6.
    Facility-level aggregates match (±0.2 mi/h); segment speeds in that period differ (documented in tests).
 
+## Chapter 10/25 managed lanes + planning (feat/hcm-ch10-managed-lanes)
+1. **Eq 25-87 (Example Problem 5) combined facility density is not reproducible from its own Exhibit 25-86 lane-group densities.** Our combined density is the exact Equation 10-1 lane-mile-weighted average of the GP (31.0) and ML (20.0) group densities the book itself reports; in the peak period that gives 28.3 veh/mi/ln, but Exhibit 25-87 prints 29.1. The facility LOS (D) is unaffected. Asserted at the computed value with a wider tolerance (`tests/chapter10_integration.rs`).
+2. **Example Problem 5, ML speed Segment 10 / Period 2 (58.1 mi/h) not reproducible.** The adjacent GP density there is 33.4 veh/mi/ln ⇒ 34.2 pc/mi/ln, below the 35 pc/mi/ln friction threshold (Eq 12-18), so our friction-free speed is 58.9 mi/h. Every other ML cell — including the friction-active cells (Segments 8–9 P2 = 53.5; Segments 8–10 P3 = 52.1) and the friction-free 59.3/58.9/58.6/59.2/59.7 — reproduces exactly. Single 0.8-mi/h cell; the lane-group aggregate (Exhibit 25-86) still matches.
+3. **Planning method (Eqs 25-47..25-49) — the worked Example Problem 6 contradicts the printed equations.** Exhibit 25-92 delay rates and Exhibit 25-93 travel rates use ΔRU **only**: the oversaturated ΔRO term (Eq 25-48) is not added to the travel rate as Eq 25-49 states, and ΔRU is evaluated at the **actual** d/c even when d/c > 1.0 (e.g. Section 6 P2: ΔRU(1.016)=11.7, matching the exhibit — not ΔRU capped at 1.0 plus ΔRO). Oversaturation is expressed only through the vertical-queue carryover (Eqs 25-43/25-44, which reproduce the published 0.8-mi queue). Implemented per the worked example; `oversaturated_delay_rate` (Eq 25-48) retained as a public helper but unused in the reported results. `planning.rs`.
+4. Eq 25-47 delay-rate polynomial output is treated as **s/mi** (not the "min/mi" printed with the equation): the worked example adds it directly to TR_FFS=3600/FFS s/mi and reproduces Exhibit 25-93. Exhibit 25-16 parameters transcribed verbatim (the FFS=55 row's `D=−0.12` looks anomalous next to the −5.44…−9.33 of the other rows, but is transcribed as printed).
+5. Planning facility density is a **length-weighted** (not lane-weighted) average of section densities, per the Exhibit 25-96 note — different from Equation 10-1. Minor book rounding: Section 6 P2 density printed as 41.2 vs 41.9 implied by its own travel rate; facility aggregates asserted within ~0.8 pc/mi/ln.
+6. **Oversaturated ML vertical-queue delay (Eqs 25-35/25-36) deferred.** Chapter 25 §4 runs the oversaturated engine separately per lane group and models access-segment spillback only as a non-propagating vertical queue. The GP and ML groups are each analyzed with the existing engines (exact when lane groups do not exchange flow through access segments — the case in Example Problem 5, which is undersaturated). The vertical-queue delay accounting is not implemented.
+7. Cross-weave CAF (Eq 13-24/13-25) is provided as `cross_weave_caf` and applied to GP capacity in Step A-9, but no published HCM example exercises it (Example Problem 5 has no cross-weave); unit-tested against the equation directly, integration-tested for the capacity-reduction effect only.
+
 ## Chapter 19 (feat/hcm-ch19-signalized)
 No VERIFY-HCM items. Interpretation notes: Exhibit 31-12 lag-row sub-variants transcribed but only
 PermPerm/LeadLead validated against published g_u; Gq for opposing shared T+R uses g_s+l1
@@ -104,8 +113,10 @@ for p*_0,j — an HCM6 number; HCM7 equivalents are Eqs 20-29..20-34.
 ## Deferred scopes (tracked, by design — not errors)
 - Ch 19 milestone 2: actuated phase-duration loop, left-turn ADP percentile queues, RTOR, Dallas
   phasing, ped/bike LOS, multi-period.
-- Ch 10/25: managed-lane facilities, planning method, special work-zone config tables, per-segment
-  work-zone alpha.
+- Ch 10/25: special work-zone config tables (Exhibits 25-8..25-14), per-segment work-zone alpha, and
+  the oversaturated managed-lane vertical-queue delay (Eqs 25-35/25-36). Managed-lane facilities
+  (Steps A-9/A-13/A-14/A-17) and the planning-level method (Ch 25 §6) are now implemented
+  (feat/hcm-ch10-managed-lanes).
 - Ch 18: Ch 30 platoon dispersion + O-D/spillback + access-point delay procedure (input hooks provided).
 - Ch 20: Ch 30 upstream-signal platoon inputs (p_b,x supplied by caller); pedestrian-mode method.
 - Ch 23 milestone 2: RCUT/MUT/DLT alternative intersections.
