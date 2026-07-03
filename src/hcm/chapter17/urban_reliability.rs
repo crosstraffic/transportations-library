@@ -44,19 +44,57 @@
 //! the deterministic sub-computations (crash frequencies, demand ratios,
 //! adjustment factors, incident probabilities) are verified exactly.
 //!
+//! ## Residual-queue carryover between analysis periods
+//! The Facility Evaluation stage (Chapter 17, Section 3) states: "The
+//! analysis periods are evaluated in chronological order... the initial
+//! queue input value for the next analysis period is set equal to the
+//! residual queue output for the current analysis period." This is
+//! implemented per boundary-intersection through movement (one lane group
+//! per segment's downstream signal): each scenario's evaluation computes
+//! initial queue delay d3 (Equations 19-44 through 19-49, via
+//! [`crate::hcm::common::delay::initial_queue_delay`]) using the queue
+//! `Qb` carried in from the prior chronological analysis period, and
+//! carries the residual queue `Qe` (Equation 19-45, via
+//! [`crate::hcm::common::delay::queue_end_of_period`]) forward to the
+//! next. Carryover is scoped to one day's sequence of analysis periods and
+//! resets to Qb = 0 at the first period of each day: the reliability
+//! reporting period enumerates many nearly-independent days (e.g., 260
+//! weekdays for a 7-10 a.m. study period), and a queue could not
+//! physically survive the ~21-h gap between one day's last analysis
+//! period and the next day's first. This mirrors the Chapter 11 freeway
+//! reliability engine, where each scenario (day) is evaluated from a fresh
+//! facility clone with no cross-scenario state, and the Chapter 29,
+//! Section 3 multiple-time-period/spillback technique, whose queue
+//! hand-off is explicitly scoped to "subperiods" of one multi-period
+//! analysis rather than across separate days.
+//!
+//! Documented simplification vs. the full HCM/STREETVAL procedure: the
+//! initial-queue extension in Chapter 19, Section 4 also blends a
+//! separate "saturated capacity" `cs` (capacity while an unmet-demand
+//! backlog is being served) with the ordinary capacity `c` over the
+//! unmet-demand duration `t` to obtain the average capacity `cA` used in
+//! d2/d3 (Equations 19-38 through 19-43), and re-derives d1 with a
+//! saturated/baseline uniform-delay blend (Equations 19-40/19-41). This
+//! module uses the scenario's ordinary lane-group capacity directly as
+//! `cA` (no saturated/baseline capacity or uniform-delay blending), which
+//! the HCM notes is exact when there is no initial queue and is a
+//! reasonable approximation otherwise since d2 and d3 are additive and
+//! `cA` differs from `c` only during the (typically short) unmet-demand
+//! duration within a 15-min period.
+//!
 //! ## Documented deferrals
 //! * Random 15-min demand variation (Equations 29-30 through 29-33) — the
 //!   optional randomized flow-rate element; scenarios use the systematic
 //!   hour/day/month/weather demand factors only.
-//! * Residual-queue carryover between analysis periods (the facility
-//!   evaluation stage's initial-queue hand-off) — each analysis period is
-//!   evaluated without an initial queue (d3 = 0).
 //! * Work zones and special events — supported through the
 //!   [`AtdmStrategy`] alternative-dataset hook (input-level adjustments
 //!   with a schedule), not through full alternative HCM datasets.
-//! * ATDM strategy assessment — input-hook level only (demand/saturation
-//!   flow/green-time/crash-frequency adjustments per strategy schedule);
-//!   the Chapter 37 strategy-specific models are deferred.
+//! * ATDM strategy assessment — input-hook level (demand/saturation
+//!   flow/green-time/free-flow-speed/crash-frequency adjustments per
+//!   strategy schedule) plus the Chapter 37 strategy-impact models in
+//!   [`crate::hcm::common::atdm`] (shoulder use, ramp metering duration
+//!   reduction, and incident management CFAF/duration adjustments feed
+//!   this hook via the strategy's constructors).
 //! * Critical left-turn headway adjustment (Exhibit 29-5) — exposed in
 //!   [`super::exhibits::exhibit_29_5_extra_lt_headway_s`] for use with the
 //!   Chapter 19/20 engines; the facility evaluation here models the
@@ -66,7 +104,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::hcm::chapter11::scenario_generation::Prng;
 use crate::hcm::chapter16::urban_facilities::UrbanFacility;
-use crate::hcm::common::delay::{incremental_delay, progression_factor, uniform_delay};
+use crate::hcm::common::delay::{
+    incremental_delay, initial_queue_delay, progression_factor, queue_end_of_period, uniform_delay,
+};
 use crate::hcm::common::reliability::{ReliabilityMetrics, TravelTimeDistribution};
 
 use super::exhibits::{
@@ -403,6 +443,42 @@ impl Default for AtdmStrategy {
             effective_green_adjustment_s: 0.0,
             ffs_adjustment: 1.0,
             crash_frequency_adjustment: 1.0,
+        }
+    }
+}
+
+impl AtdmStrategy {
+    /// An HCM Chapter 37, Section 5 adaptive signal control ATDM strategy.
+    /// Sets [`Self::sat_flow_adjustment`] to the
+    /// [`crate::hcm::common::atdm::adaptive_signal_sat_flow_adjustment`]
+    /// value for `target_delay_reduction_pct` (`None` uses the published
+    /// Exhibit 37-9 range's midpoint, 13.5%). See that function's docs for
+    /// the VERIFY-HCM caveat: the HCM publishes only an illustrative
+    /// simulation-study range (delay reductions of 3%-24%), not a
+    /// closed-form method, so this is a documented modeling
+    /// simplification, not an HCM-derived equation — prefer a directly
+    /// calibrated `sat_flow_adjustment` when available.
+    ///
+    /// * `name` — strategy label for reporting
+    /// * `target_delay_reduction_pct` — desired delay reduction, percent
+    /// * `months`, `days_of_week`, `periods` — the strategy's schedule
+    ///   (empty = always active, matching [`AtdmStrategy::default`])
+    pub fn adaptive_signal_control(
+        name: impl Into<String>,
+        target_delay_reduction_pct: Option<f64>,
+        months: Vec<u32>,
+        days_of_week: Vec<u32>,
+        periods: Vec<usize>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            months,
+            days_of_week,
+            periods,
+            sat_flow_adjustment: crate::hcm::common::atdm::adaptive_signal_sat_flow_adjustment(
+                target_delay_reduction_pct,
+            ),
+            ..Self::default()
         }
     }
 }
@@ -1144,7 +1220,19 @@ impl UrbanReliability {
     /// Stage 2: evaluate one scenario with the Chapter 16/18 facility
     /// methodology (Equations 29-25 through 29-36 applied to the base
     /// dataset, then the segment/facility computations).
-    fn evaluate_scenario(&self, scenario: &UrbanScenario) -> UrbanScenarioResult {
+    ///
+    /// `queue_in` is the initial queue Qb, veh, at each boundary
+    /// intersection's through movement (one entry per segment, same order
+    /// as `self.facility.segments`), carried in from the previous
+    /// chronological analysis period (0 for the first period of a day).
+    /// Returns the scenario result and the residual queue Qe, veh, at each
+    /// boundary intersection to carry into the next analysis period (see
+    /// the module-level "Residual-queue carryover" docs).
+    fn evaluate_scenario(
+        &self,
+        scenario: &UrbanScenario,
+        queue_in: &[f64],
+    ) -> (UrbanScenarioResult, Vec<f64>) {
         let cfg = &self.config;
         let n_seg = self.facility.segments.len();
         // Weather adjustment factors (Step 2).
@@ -1172,11 +1260,13 @@ impl UrbanReliability {
         let mut base_tt_s = 0.0;
         let mut vmt = 0.0;
         let mut oversaturated = false;
+        let mut queue_out = vec![0.0; n_seg];
 
         for i in 0..n_seg {
             let base_seg = &self.facility.segments[i];
             let sig = &cfg.boundary_signals[i];
             let mut seg = base_seg.clone();
+            let qb = queue_in.get(i).copied().unwrap_or(0.0).max(0.0);
 
             // Demand (Equation 29-29 ratio; the weather DCF is already in
             // the scenario ratio).
@@ -1274,13 +1364,15 @@ impl UrbanReliability {
             let s_adj = sig.sat_flow_veh_h_ln * f_rs * f_ic * strat_sat;
 
             // Through control delay with the Chapter 19 delay equations
-            // (uniform + incremental; d3 = 0 — see module deferrals).
+            // (uniform + incremental + initial-queue; see the module-level
+            // "Residual-queue carryover" docs for d3 and the Eq 19-38..43
+            // average-capacity simplification).
             let g = (sig.effective_green_s + strat_green)
                 .clamp(1.0, sig.cycle_length_s - 1.0);
             let c_veh_h =
                 (base_seg.n_through_lanes as f64) * s_adj * g / sig.cycle_length_s;
             let x = if c_veh_h > 0.0 { seg.through_demand_veh_h / c_veh_h } else { f64::INFINITY };
-            if x > 1.0 {
+            if x > 1.0 || qb > 0.0 {
                 oversaturated = true;
             }
             let g_over_c = g / sig.cycle_length_s;
@@ -1294,7 +1386,19 @@ impl UrbanReliability {
                 sig.k_factor,
                 sig.i_factor,
             );
-            seg.through_control_delay_s = Some(d1 + d2);
+            let d3 = initial_queue_delay(
+                qb,
+                seg.through_demand_veh_h,
+                c_veh_h,
+                ANALYSIS_PERIOD_H,
+            );
+            queue_out[i] = queue_end_of_period(
+                qb,
+                seg.through_demand_veh_h,
+                c_veh_h,
+                ANALYSIS_PERIOD_H,
+            );
+            seg.through_control_delay_s = Some(d1 + d2 + d3);
             seg.through_capacity_veh_h = Some(c_veh_h);
             seg.effective_green_s = Some(g);
             seg.sat_flow_veh_h_ln = Some(s_adj);
@@ -1325,7 +1429,10 @@ impl UrbanReliability {
         };
         let vhd = avg_flow * ANALYSIS_PERIOD_H * (travel_time_s - base_tt_s).max(0.0) / 3_600.0;
 
-        UrbanScenarioResult { travel_time_s, tti: tti.max(0.0), vmt, vhd, oversaturated }
+        (
+            UrbanScenarioResult { travel_time_s, tti: tti.max(0.0), vmt, vhd, oversaturated },
+            queue_out,
+        )
     }
 
     /// Run the full Chapter 17 reliability methodology: generate weather,
@@ -1351,8 +1458,19 @@ impl UrbanReliability {
         let mut total_vhd = 0.0;
         let mut nondry = 0usize;
         let mut mean_tt_num = 0.0;
+        // Residual-queue carryover state: one entry per boundary
+        // intersection (segment), reset to 0 at the start of each day's
+        // sequence of analysis periods (see the module-level docs).
+        let n_seg = self.facility.segments.len();
+        let mut queue_state = vec![0.0; n_seg];
+        let mut last_day: Option<usize> = None;
         for scenario in &self.scenarios {
-            let r = self.evaluate_scenario(scenario);
+            if last_day != Some(scenario.day_of_year) {
+                queue_state = vec![0.0; n_seg];
+                last_day = Some(scenario.day_of_year);
+            }
+            let (r, queue_out) = self.evaluate_scenario(scenario, &queue_state);
+            queue_state = queue_out;
             let weight = if self.config.vmt_weighted { r.vmt.max(1e-9) } else { 1.0 };
             distribution.add(r.tti, weight);
             total_vhd += r.vhd;

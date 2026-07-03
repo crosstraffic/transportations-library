@@ -276,6 +276,73 @@ impl Default for WorkZoneEvent {
     }
 }
 
+impl WorkZoneEvent {
+    /// An HCM Chapter 37, Section 3 shoulder/median lane ATDM strategy,
+    /// scheduled like a work zone: the affected `segments` gain the
+    /// [`crate::hcm::common::atdm::shoulder_lane_caf`] capacity multiplier
+    /// on the months/weekdays/periods the strategy is active
+    /// (`active_day_ratio = 1.0`, i.e., every matching day, since ATDM
+    /// strategies are deployed on a schedule rather than probabilistically
+    /// assigned to a fraction of replications).
+    ///
+    /// * `use_` — how the shoulder/median lane is opened
+    /// * `mixed_flow_capacity_veh_h_ln` — capacity of a normal mixed-flow
+    ///   lane in the section, veh/h/ln (CapMFlanes(s) of Equation 37-1)
+    /// * `segments`, `periods`, `months`, `weekdays` — the strategy's
+    ///   schedule and affected segments
+    pub fn shoulder_lane_strategy(
+        use_: crate::hcm::common::atdm::ShoulderLaneUse,
+        mixed_flow_capacity_veh_h_ln: f64,
+        mixed_flow_lanes: u32,
+        segments: Vec<usize>,
+        periods: Option<Vec<usize>>,
+        months: Vec<u32>,
+        weekdays: Vec<Weekday>,
+    ) -> Self {
+        let shldr_cap = crate::hcm::common::atdm::shoulder_lane_capacity_veh_h_ln(
+            use_,
+            mixed_flow_capacity_veh_h_ln,
+        );
+        let caf = crate::hcm::common::atdm::shoulder_lane_caf(
+            shldr_cap,
+            mixed_flow_capacity_veh_h_ln,
+            mixed_flow_lanes,
+        );
+        Self { months, weekdays, active_day_ratio: 1.0, segments, periods, caf, saf: 1.0, daf: 1.0, lanes_closed: 0 }
+    }
+
+    /// An HCM Chapter 37, Section 4 ramp-metering ATDM strategy: applies
+    /// [`crate::hcm::common::atdm::RAMP_METERED_MERGE_CAF`] (1.03) to the
+    /// affected merge segments' capacity while metering is scheduled to be
+    /// in operation. Does not model the locally dynamic (ALINEA) metering
+    /// rate itself — see
+    /// [`crate::hcm::common::atdm::alinea_metering_rate`], a pure Equation
+    /// 37-2 computation an analyst applies directly to a facility's
+    /// on-ramp demand, since it caps a specific ramp's volume rather than
+    /// producing a CAF/SAF/DAF.
+    ///
+    /// * `merge_segments` — indices of the affected merge segments
+    /// * `periods`, `months`, `weekdays` — the metering schedule
+    pub fn ramp_metering_merge_strategy(
+        merge_segments: Vec<usize>,
+        periods: Option<Vec<usize>>,
+        months: Vec<u32>,
+        weekdays: Vec<Weekday>,
+    ) -> Self {
+        Self {
+            months,
+            weekdays,
+            active_day_ratio: 1.0,
+            segments: merge_segments,
+            periods,
+            caf: crate::hcm::common::atdm::RAMP_METERED_MERGE_CAF,
+            saf: 1.0,
+            daf: 1.0,
+            lanes_closed: 0,
+        }
+    }
+}
+
 /// A special event (input hook; Chapter 11 Step B-8 guidance). Applied to
 /// one specific scenario replication.
 #[derive(Debug, Clone, Serialize, Deserialize)]

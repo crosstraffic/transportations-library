@@ -2,6 +2,7 @@
 
 use crate::hcm::chapter11::reliability::ReliabilityAnalysis as LibReliabilityAnalysis;
 use crate::hcm::chapter11::exhibits;
+use crate::hcm::common::atdm;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -174,8 +175,115 @@ pub fn planning_reliability(
     )
 }
 
+/// HCM Chapter 37, Section 3 shoulder/median lane strategy: total-segment
+/// capacity adjustment factor (CAF) for opening a shoulder/median lane
+/// (Equation 37-1), for use in a `WorkZoneEvent`'s `caf` field (or a
+/// `scenario_generation.work_zones[].caf` entry in the JSON config).
+///
+/// Args:
+///     shoulder_capacity_veh_h_ln: capacity of the shoulder/median lane
+///         itself, veh/h/ln (e.g., half a normal lane's capacity for a
+///         general-traffic auxiliary lane; see
+///         `shoulder_lane_capacity_veh_h_ln`).
+///     mixed_flow_capacity_veh_h_ln: capacity of a normal mixed-flow
+///         lane, veh/h/ln.
+///     mixed_flow_lanes: number of mixed-flow lanes in the section.
+///
+/// Returns:
+///     float: capacity adjustment factor (>= 1.0).
+#[pyfunction]
+pub fn shoulder_lane_caf(
+    shoulder_capacity_veh_h_ln: f64,
+    mixed_flow_capacity_veh_h_ln: f64,
+    mixed_flow_lanes: u32,
+) -> f64 {
+    atdm::shoulder_lane_caf(shoulder_capacity_veh_h_ln, mixed_flow_capacity_veh_h_ln, mixed_flow_lanes)
+}
+
+/// Default capacity of an auxiliary shoulder/median lane open to all
+/// traffic, veh/h/ln (half a normal mixed-flow lane's capacity; HCM
+/// Chapter 37, Section 3).
+///
+/// Args:
+///     mixed_flow_capacity_veh_h_ln: capacity of a normal mixed-flow
+///         lane, veh/h/ln.
+///
+/// Returns:
+///     float: default shoulder/median lane capacity, veh/h/ln.
+#[pyfunction]
+pub fn shoulder_lane_default_capacity_veh_h_ln(mixed_flow_capacity_veh_h_ln: f64) -> f64 {
+    atdm::AUX_SHOULDER_CAPACITY_RATIO * mixed_flow_capacity_veh_h_ln
+}
+
+/// HCM Chapter 37, Section 4 ramp-metering strategy: capacity adjustment
+/// factor recommended for freeway merge segments while ramp metering is
+/// in operation (1.03).
+#[pyfunction]
+pub fn ramp_metered_merge_caf() -> f64 {
+    atdm::RAMP_METERED_MERGE_CAF
+}
+
+/// HCM Equation 37-2 (ALINEA-derived locally dynamic ramp-metering rate).
+///
+/// Args:
+///     downstream_capacity_veh_h: capacity of the downstream section,
+///         veh/h (CM).
+///     upstream_volume_veh_h: volume on the upstream section for the
+///         analysis period, veh/h (VM(t)).
+///     ramp_volume_veh_h: volume on the ramp during the analysis period,
+///         veh/h (VR(t)).
+///     ramp_queue_prev_veh: queue on the ramp at the end of the previous
+///         analysis period, veh (QR(t-1)).
+///     ramp_queue_storage_veh: queue storage capacity of the ramp, veh
+///         (QRS).
+///     metered_lanes: number of metered lanes on the ramp (NR).
+///     min_rate_veh_h_ln: minimum metering rate, veh/h/ln (default 240 if
+///         omitted).
+///     max_rate_veh_h_ln: maximum metering rate, veh/h/ln (default 900 if
+///         omitted).
+///
+/// Returns:
+///     float: metering rate R(t), veh/h/ln.
+#[pyfunction]
+#[pyo3(signature = (
+    downstream_capacity_veh_h,
+    upstream_volume_veh_h,
+    ramp_volume_veh_h,
+    ramp_queue_prev_veh,
+    ramp_queue_storage_veh,
+    metered_lanes,
+    min_rate_veh_h_ln=None,
+    max_rate_veh_h_ln=None,
+))]
+#[allow(clippy::too_many_arguments)]
+pub fn alinea_metering_rate(
+    downstream_capacity_veh_h: f64,
+    upstream_volume_veh_h: f64,
+    ramp_volume_veh_h: f64,
+    ramp_queue_prev_veh: f64,
+    ramp_queue_storage_veh: f64,
+    metered_lanes: u32,
+    min_rate_veh_h_ln: Option<f64>,
+    max_rate_veh_h_ln: Option<f64>,
+) -> f64 {
+    atdm::alinea_metering_rate(
+        downstream_capacity_veh_h,
+        upstream_volume_veh_h,
+        ramp_volume_veh_h,
+        ramp_queue_prev_veh,
+        ramp_queue_storage_veh,
+        metered_lanes,
+        min_rate_veh_h_ln.unwrap_or(atdm::ALINEA_DEFAULT_MIN_RATE_VEH_H_LN),
+        max_rate_veh_h_ln.unwrap_or(atdm::ALINEA_DEFAULT_MAX_RATE_VEH_H_LN),
+    )
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<FreewayReliability>()?;
     m.add_function(wrap_pyfunction!(planning_reliability, m)?)?;
+    m.add_function(wrap_pyfunction!(shoulder_lane_caf, m)?)?;
+    m.add_function(wrap_pyfunction!(shoulder_lane_default_capacity_veh_h_ln, m)?)?;
+    m.add_function(wrap_pyfunction!(ramp_metered_merge_caf, m)?)?;
+    m.add_function(wrap_pyfunction!(alinea_metering_rate, m)?)?;
     Ok(())
 }
