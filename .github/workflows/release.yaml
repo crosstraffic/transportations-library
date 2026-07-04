@@ -47,7 +47,7 @@ jobs:
         with:
           args: |
             --release
-            --features pybindings
+            --features with-python
             --out dist
             -i python3.10
             -i python3.11
@@ -59,7 +59,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           manylinux: off
-          args: --release --features pybindings --out dist
+          args: --release --features with-python --out dist
         if: matrix.os != 'ubuntu-latest'
 
       - name: Upload wheel artifacts

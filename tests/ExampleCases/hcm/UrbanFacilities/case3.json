@@ -1,0 +1,81 @@
+{
+  "_source": "Chapter 18-driven facility built from three copies of the HCM 7th Edition Chapter 30 (Urban Street Segments: Supplemental) Example Problem 1 eastbound segment (tests/ExampleCases/hcm/UrbanSegments/case1.json; Exhibits 30-26 through 30-36). Because Equations 16-2/16-3 are length-weighted harmonic means and Equation 16-4 a length-weighted arithmetic mean, a facility of identical segments must reproduce the published segment values exactly at facility level: base FFS 40.78 mi/h, travel speed 23.67 mi/h, spatial stop rate 1.61 stops/mi, critical v/c 0.52 (968/1848), LOS C (Exhibit 16-3 = Exhibit 18-1). The test drives the full UrbanFacility::analyze() path (Chapter 18 engine per segment, then the Chapter 16 aggregation) and cross-checks the facility travel speed against the direct length-weighted computation on the Chapter 18 outputs.",
+  "prop_left_turn_lanes": 0.33,
+  "segments": [
+    {
+      "segment_length_ft": 1800.0,
+      "upstream_intersection_width_ft": 50.0,
+      "n_through_lanes": 2,
+      "speed_limit_mph": 35.0,
+      "restrictive_median_length_ft": 0.0,
+      "proportion_with_curb": 0.7,
+      "proportion_on_street_parking": 0.0,
+      "n_access_points_subject": 4.0,
+      "n_access_points_opposing": 4.0,
+      "signal_spacing_ft": 1800.0,
+      "through_demand_veh_h": 968.0,
+      "midsegment_flow_veh_h": 1150.0,
+      "through_capacity_veh_h": 1848.0,
+      "control": "Signalized",
+      "through_control_delay_s": 18.31,
+      "cycle_length_s": 100.0,
+      "effective_green_s": 48.63,
+      "access_point_delays_s": [
+        0.193,
+        0.194
+      ],
+      "full_stop_rate_override": 0.547,
+      "prop_left_turn_lanes": 0.33
+    },
+    {
+      "segment_length_ft": 1800.0,
+      "upstream_intersection_width_ft": 50.0,
+      "n_through_lanes": 2,
+      "speed_limit_mph": 35.0,
+      "restrictive_median_length_ft": 0.0,
+      "proportion_with_curb": 0.7,
+      "proportion_on_street_parking": 0.0,
+      "n_access_points_subject": 4.0,
+      "n_access_points_opposing": 4.0,
+      "signal_spacing_ft": 1800.0,
+      "through_demand_veh_h": 968.0,
+      "midsegment_flow_veh_h": 1150.0,
+      "through_capacity_veh_h": 1848.0,
+      "control": "Signalized",
+      "through_control_delay_s": 18.31,
+      "cycle_length_s": 100.0,
+      "effective_green_s": 48.63,
+      "access_point_delays_s": [
+        0.193,
+        0.194
+      ],
+      "full_stop_rate_override": 0.547,
+      "prop_left_turn_lanes": 0.33
+    },
+    {
+      "segment_length_ft": 1800.0,
+      "upstream_intersection_width_ft": 50.0,
+      "n_through_lanes": 2,
+      "speed_limit_mph": 35.0,
+      "restrictive_median_length_ft": 0.0,
+      "proportion_with_curb": 0.7,
+      "proportion_on_street_parking": 0.0,
+      "n_access_points_subject": 4.0,
+      "n_access_points_opposing": 4.0,
+      "signal_spacing_ft": 1800.0,
+      "through_demand_veh_h": 968.0,
+      "midsegment_flow_veh_h": 1150.0,
+      "through_capacity_veh_h": 1848.0,
+      "control": "Signalized",
+      "through_control_delay_s": 18.31,
+      "cycle_length_s": 100.0,
+      "effective_green_s": 48.63,
+      "access_point_delays_s": [
+        0.193,
+        0.194
+      ],
+      "full_stop_rate_override": 0.547,
+      "prop_left_turn_lanes": 0.33
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 [package]
 name = "transportations_library"
-version = "0.1.12"
+version = "0.2.0"
 authors = ["Rei Tamaru <tamaru@wisc.edu>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
@@ -33,7 +33,9 @@ once_cell = "1.21.3"
 
 [features]
 default = []
-pybindings = ["pyo3"]
+with-python = ["pyo3"]
+# Deprecated alias for with-python; will be removed in a future release.
+pybindings = ["with-python"]
 
 [package.metadata.maturin]
 name = "transportations_library"

@@ -1,3 +1,5 @@
+.claude/
+
 **/__pycache__
 .pytest_cache/
 .vscode/
@@ -9,3 +11,8 @@ __pycache__/
 
 docs/plans
 test_pdf.py
+# Copyrighted source material (HCM/Green Book/MUTCD extracts) - keep local only
+/resources/
+/additional.md
+/greenbook_front.md
+/greenbook_appendix.md
