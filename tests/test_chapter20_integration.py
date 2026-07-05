@@ -105,6 +105,44 @@ class TestTwscExampleProblem4:
         capacity, _delay, los, _q95 = twsc_ep4.get_lane_result("NB", 0)
         assert los == "F"
 
+    def test_shared_major_left_capacities(self, twsc_ep4):
+        # Step 7d p*_0 = 0.856 substitution yields c_m,7 = c_m,10 = 47 veh/h.
+        assert twsc_ep4.get_movement_capacity("7") == pytest.approx(47.0, abs=1.0)
+        assert twsc_ep4.get_movement_capacity("10") == pytest.approx(47.0, abs=1.0)
+
+    def test_major_left_config_binding(self, twsc_ep4):
+        # case3.json declares shared major-left lanes on both approaches.
+        assert twsc_ep4.get_major_left_config("EB") == ("shared", None)
+        assert twsc_ep4.get_major_left_config("WB") == ("shared", None)
+
+    def test_rank1_major_delay(self, twsc_ep4):
+        # Step 11b Rank 1 delay d_2+3 = d_5+6 = 1.3 s (Equations 20-62/20-63).
+        d23, d56 = twsc_ep4.rank1_major_delay
+        assert d23 == pytest.approx(1.3, abs=0.1)
+        assert d56 == pytest.approx(1.3, abs=0.1)
+
+    def test_approach_and_intersection_delay(self, twsc_ep4):
+        # Published d_A,EB = d_A,WB = 1.9 s (with Step 11b Rank 1 delay);
+        # d_A,NB = d_A,SB = 241 s; d_I = 34.1 s.
+        d_eb, d_wb, d_nb, d_sb = twsc_ep4.approach_delays
+        assert d_eb == pytest.approx(1.9, abs=0.5)
+        assert d_wb == pytest.approx(1.9, abs=0.5)
+        assert d_nb == pytest.approx(241.0, abs=5.0)
+        assert d_sb == pytest.approx(241.0, abs=5.0)
+        assert twsc_ep4.intersection_delay == pytest.approx(34.1, abs=0.5)
+
+    def test_exclusive_major_left_no_rank1_delay(self):
+        # Overriding to exclusive major-left lanes removes the p* substitution
+        # and the Rank 1 delay, raising c_m,7 above the shared-lane value.
+        with open(FIXTURE_EP4) as f:
+            config = f.read()
+        analysis = tl.Twsc(config)
+        analysis.set_major_left_config("EB", "exclusive")
+        analysis.set_major_left_config("WB", "exclusive")
+        analysis.analyze()
+        assert analysis.rank1_major_delay is None
+        assert analysis.get_movement_capacity("7") > 47.0
+
     def test_set_platoon_blockage_setter(self):
         # Setting all-zero p_b reduces Step 5 to Equation 20-18; the platooned
         # potential capacity then differs from the case3 platooned value.

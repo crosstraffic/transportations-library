@@ -264,6 +264,29 @@ pub enum MinorLaneConfig {
     Separate,
 }
 
+/// Lane configuration of a major-street left-turn movement, controlling the
+/// queue-free probability used in the Rank 3/4 impedance chain (HCM Step 7d,
+/// Equations 20-29 through 20-34).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum MajorLeftLaneConfig {
+    /// Exclusive left-turn lane long enough to store the left-turn queue. The
+    /// queue-free probability p_0,j of Equation 20-28 is used unchanged.
+    #[default]
+    Exclusive,
+    /// Left turn shares the adjacent through lane (n_L = 0). The shared-lane
+    /// queue-free probability p*_0,j (Equations 20-33/20-34) is substituted
+    /// for p_0,j everywhere it enters the impedance products.
+    Shared,
+    /// Left turn has a short storage pocket holding `storage_veh` vehicles
+    /// (n_L > 0). The short-pocket queue-free probability p*_0,j (Equations
+    /// 20-29/20-31, the (n_L + 1)-root form) is substituted for p_0,j.
+    SharedShortPocket {
+        /// Number of vehicles that can be stored in the left-turn pocket (n_L,
+        /// HCM Exhibit 20-20).
+        storage_veh: u32,
+    },
+}
+
 /// Median nose width category for major-street U-turns (note a of HCM
 /// Exhibit 20-17: narrow < 21 ft, wide >= 21 ft).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -289,6 +312,15 @@ pub struct TwscGeometry {
     /// Configuration of major-street right-turn movement 6 (WB approach).
     #[serde(default)]
     pub major_right_turn_wb: MajorRightTurnConfig,
+    /// Left-turn lane configuration on the EB major approach (movements 1+1U),
+    /// HCM Step 7d. Default `Exclusive` reproduces the exclusive-lane p_0,j of
+    /// Equation 20-28; `Shared` / `SharedShortPocket` trigger the p*_0,j
+    /// substitution of Equations 20-29 through 20-34.
+    #[serde(default)]
+    pub major_left_eb: MajorLeftLaneConfig,
+    /// Left-turn lane configuration on the WB major approach (movements 4+4U).
+    #[serde(default)]
+    pub major_left_wb: MajorLeftLaneConfig,
     /// Median nose width category for U-turn base headways (Exhibit 20-17).
     #[serde(default)]
     pub uturn_median_width: UTurnMedianWidth,
@@ -337,6 +369,8 @@ impl Default for TwscGeometry {
             major_lanes_per_direction: 1,
             major_right_turn_eb: MajorRightTurnConfig::Shared,
             major_right_turn_wb: MajorRightTurnConfig::Shared,
+            major_left_eb: MajorLeftLaneConfig::Exclusive,
+            major_left_wb: MajorLeftLaneConfig::Exclusive,
             uturn_median_width: UTurnMedianWidth::Wide,
             grade_minor_nb_pct: 0.0,
             grade_minor_sb_pct: 0.0,
@@ -573,11 +607,24 @@ pub struct Twsc {
     /// defined for a TWSC intersection as a whole (Exhibit 20-2 note).
     #[serde(default)]
     pub intersection_delay: Option<f64>,
+    /// HCM Step 11b Rank 1 delay to major-street through-and-right vehicles
+    /// that share a lane with a blocked left turn, `[d_2+3 (EB), d_5+6 (WB)]`,
+    /// s/veh (Equations 20-62 and 20-63). `None` when both major-street left
+    /// turns have exclusive lanes, in which case Rank 1 delay is 0 s/veh.
+    #[serde(default)]
+    pub rank1_major_delay: Option<[f64; 2]>,
 }
 
 fn default_analysis_period() -> f64 {
     0.25
 }
+
+/// Default major-street through saturation flow rate s_2 = s_5 (HCM
+/// Equations 20-30/20-32), veh/h.
+const MAJOR_THROUGH_SAT_FLOW: f64 = 1_800.0;
+/// Default major-street right-turn saturation flow rate s_3 = s_6 (HCM
+/// Equations 20-30/20-32), veh/h.
+const MAJOR_RIGHT_SAT_FLOW: f64 = 1_500.0;
 
 impl Twsc {
     /// Create a new analysis from demand and geometry.
@@ -595,6 +642,7 @@ impl Twsc {
             lanes_sb: Vec::new(),
             approach_delays: None,
             intersection_delay: None,
+            rank1_major_delay: None,
         }
     }
 
@@ -639,6 +687,63 @@ impl Twsc {
     /// Number of major-street through lanes per direction N.
     fn n_major(&self) -> u32 {
         self.geometry.major_lanes_per_direction
+    }
+
+    /// Factor f_LL estimating the portion of major-street through and
+    /// right-turn traffic using the left lane (HCM Equations 20-30 and 20-32):
+    /// 1.0 for one through lane, and the default 0.5 for two / 0.33 for three.
+    fn f_ll_major(&self) -> f64 {
+        match self.n_major() {
+            1 => 1.0,
+            2 => 0.5,
+            _ => 0.33,
+        }
+    }
+
+    /// Vehicles storable in the major-street left-turn pocket (n_L) for the
+    /// p*_0,j substitution, or `None` when the left turn has an exclusive lane
+    /// (in which case the exclusive-lane p_0,j of Equation 20-28 is kept).
+    fn major_left_storage(cfg: MajorLeftLaneConfig) -> Option<u32> {
+        match cfg {
+            MajorLeftLaneConfig::Exclusive => None,
+            MajorLeftLaneConfig::Shared => Some(0),
+            MajorLeftLaneConfig::SharedShortPocket { storage_veh } => Some(storage_veh),
+        }
+    }
+
+    /// Combined degree of saturation x_2+3 (EB) or x_5+6 (WB) of the
+    /// major-street through and right-turn movements (HCM Equations 20-30 and
+    /// 20-32), using default saturation flow rates s = 1,800 veh/h (through)
+    /// and 1,500 veh/h (right turn).
+    fn major_through_saturation(&self, eb: bool) -> f64 {
+        let (through, right) = if eb {
+            (Mv::M2, Mv::M3)
+        } else {
+            (Mv::M5, Mv::M6)
+        };
+        let v_t = self.m(through).flow_rate;
+        let v_r = self.m(right).flow_rate;
+        self.f_ll_major() * (v_t / MAJOR_THROUGH_SAT_FLOW + v_r / MAJOR_RIGHT_SAT_FLOW)
+    }
+
+    /// HCM Step 7d: shared/short-pocket queue-free probability p*_0,j for a
+    /// major-street left turn (Equations 20-29/20-31, reducing to 20-33/20-34
+    /// for a shared lane with n_L = 0), to be substituted for the
+    /// exclusive-lane p_0,j (Equation 20-28) in every Rank 3/4 impedance
+    /// product and in the Step 11b Rank 1 delay. Returns `None` when the
+    /// approach has an exclusive left-turn lane.
+    ///
+    /// * `eb` — true for the EB approach (movements 1+1U), false for WB (4+4U)
+    /// * `p0_exclusive` — exclusive-lane p_0,j from [`Twsc::p0_major_left`]
+    fn p0_star_major_left(&self, eb: bool, p0_exclusive: f64) -> Option<f64> {
+        let cfg = if eb {
+            self.geometry.major_left_eb
+        } else {
+            self.geometry.major_left_wb
+        };
+        let n_l = Self::major_left_storage(cfg)?;
+        let x_23 = self.major_through_saturation(eb);
+        Some(Self::prob_queue_free_shared_major(p0_exclusive, x_23, n_l))
     }
 
     /// Whether a movement is two-stage per the geometry configuration.
@@ -1268,9 +1373,20 @@ impl Twsc {
         assign(self, Mv::M4U, p0_9); // Equation 20-25 + 20-26
 
         // ── Step 7d: queue-free probabilities of the major-street left-turn
-        //    movements (Equation 20-28 with shared L+U lanes).
-        let p0_1 = self.p0_major_left(Mv::M1, Mv::M1U);
-        let p0_4 = self.p0_major_left(Mv::M4, Mv::M4U);
+        //    movements. Equation 20-28 gives the exclusive-lane p_0,j (using a
+        //    combined L+U shared-lane capacity per Equation 20-27); if the left
+        //    turn instead shares the through lane or uses a short pocket, the
+        //    p*_0,j of Equations 20-29 through 20-34 is substituted here so it
+        //    propagates to every Rank 3/4 impedance product below and to the
+        //    Step 11b Rank 1 delay (HCM Chapter 32 Example Problem 4).
+        let p0_1_excl = self.p0_major_left(Mv::M1, Mv::M1U);
+        let p0_4_excl = self.p0_major_left(Mv::M4, Mv::M4U);
+        let p0_1 = self
+            .p0_star_major_left(true, p0_1_excl)
+            .unwrap_or(p0_1_excl);
+        let p0_4 = self
+            .p0_star_major_left(false, p0_4_excl)
+            .unwrap_or(p0_4_excl);
 
         // ── Step 8: Rank 3 movement capacities.
         if self.geometry.is_three_leg {
@@ -1642,6 +1758,39 @@ impl Twsc {
         }
         self.lanes_sb = all_lanes.split_off(n_nb);
         self.lanes_nb = all_lanes;
+
+        // ── Step 11b: Rank 1 delay from a shared or short major-street
+        //    left-turn lane (Equations 20-62/20-63); `None` (0 s/veh) when both
+        //    major lefts have exclusive lanes.
+        self.rank1_major_delay = self.compute_rank1_major_delay();
+    }
+
+    /// HCM Step 11b: Rank 1 delay `[d_2+3 (EB), d_5+6 (WB)]` to major-street
+    /// through-and-right vehicles sharing a lane with a blocked left turn
+    /// (Equations 20-62/20-63), or `None` when both major-street left turns
+    /// have exclusive lanes. Requires the Step 11a major-left delays to have
+    /// been computed. `d_1+1U` / `d_4+4U` are taken as the left-turn movement
+    /// delay (exact when no U-turn shares the lane, as in Example Problem 4).
+    fn compute_rank1_major_delay(&self) -> Option<[f64; 2]> {
+        let f_ll = self.f_ll_major();
+        let n = self.n_major();
+        let per_approach = |eb: bool, left: Mv, uturn: Mv, through: Mv, right: Mv| -> Option<f64> {
+            let p0_excl = self.p0_major_left(left, uturn);
+            let p0_star = self.p0_star_major_left(eb, p0_excl)?;
+            let v_left = self.m(left).flow_rate + self.m(uturn).flow_rate;
+            let v_through = self.m(through).flow_rate;
+            let v_right = self.m(right).flow_rate;
+            let d_left = self.m(left).control_delay.unwrap_or(0.0);
+            Some(Self::rank1_delay(
+                p0_star, v_left, v_through, v_right, d_left, f_ll, n,
+            ))
+        };
+        let d23 = per_approach(true, Mv::M1, Mv::M1U, Mv::M2, Mv::M3);
+        let d56 = per_approach(false, Mv::M4, Mv::M4U, Mv::M5, Mv::M6);
+        match (d23, d56) {
+            (None, None) => None,
+            _ => Some([d23.unwrap_or(0.0), d56.unwrap_or(0.0)]),
+        }
     }
 
     /// HCM Chapter 20, Step 11b (Equations 20-62 and 20-63): delay to
@@ -1677,24 +1826,30 @@ impl Twsc {
     }
 
     /// HCM Chapter 20, Step 12 (Equations 20-64 and 20-65): approach and
-    /// intersection control delay. Rank 1 movements are assigned 0 s/veh.
+    /// intersection control delay. Rank 1 major-street through/right movements
+    /// carry 0 s/veh with an exclusive major-left lane; with a shared or short
+    /// major-left lane they carry the Step 11b Rank 1 delay d_2+3 / d_5+6
+    /// (Equations 20-62/20-63), as in HCM Chapter 32 Example Problem 4.
     ///
     /// Returns `[d_EB, d_WB, d_NB, d_SB]` and stores the intersection delay.
     pub fn step12_approach_intersection_delay(&mut self) -> [f64; 4] {
         let f = |mv: Mv| self.m(mv).flow_rate;
         let d = |mv: Mv| self.m(mv).control_delay.unwrap_or(0.0);
-        // Equation 20-64 per approach; Rank 1 through/right = 0 s/veh.
+        // Step 11b Rank 1 delay to the shared-lane major through/right
+        // movements; 0 s/veh when the major left has an exclusive lane.
+        let [d23, d56] = self.rank1_major_delay.unwrap_or([0.0, 0.0]);
+        // Equation 20-64 per approach.
         let eb: Vec<(f64, f64)> = vec![
             (d(Mv::M1), f(Mv::M1)),
             (d(Mv::M1U), f(Mv::M1U)),
-            (0.0, f(Mv::M2)),
-            (0.0, f(Mv::M3)),
+            (d23, f(Mv::M2)),
+            (d23, f(Mv::M3)),
         ];
         let wb: Vec<(f64, f64)> = vec![
             (d(Mv::M4), f(Mv::M4)),
             (d(Mv::M4U), f(Mv::M4U)),
-            (0.0, f(Mv::M5)),
-            (0.0, f(Mv::M6)),
+            (d56, f(Mv::M5)),
+            (d56, f(Mv::M6)),
         ];
         let nb: Vec<(f64, f64)> = self
             .lanes_nb

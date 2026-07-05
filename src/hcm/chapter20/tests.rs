@@ -438,6 +438,105 @@ fn test_rank1_delay() {
     assert!(approx(d2, 0.2 * 250.0 / 350.0 * 9.0, 1e-12));
 }
 
+/// Step 7d, Equations 20-33/20-34: the shared-lane (n_L = 0) queue-free
+/// probability reproduces the published HCM Chapter 32 Example Problem 4
+/// value p*_0 = 0.856 from its inputs (p_0 = 0.900, x_2+3 = 0.304).
+#[test]
+fn test_p0_star_shared_major_ep4_value() {
+    // x_2+3 = f_LL (v2/s2 + v3/s3) = 0.5 (982/1800 + 94/1500) (Equation 20-30)
+    let x_23 = 0.5 * (982.0 / 1800.0 + 94.0 / 1500.0);
+    assert!(approx(x_23, 0.304, 5e-4), "x_2+3 = {x_23}");
+    let p_star = Twsc::prob_queue_free_shared_major(0.900, x_23, 0);
+    assert!(approx(p_star, 0.856, 1e-3), "p*_0 = {p_star} (published 0.856)");
+}
+
+/// Step 7d, Equations 20-29/20-31: the short-pocket (n_L > 0) form is the
+/// (n_L + 1)-root of Equation 20-29, lies between the shared-lane value and
+/// the exclusive-lane p_0, and increases monotonically toward p_0 as the
+/// pocket lengthens.
+#[test]
+fn test_p0_star_short_pocket_variant() {
+    let (p0, x): (f64, f64) = (0.90, 0.304);
+    let n_l = 2u32;
+    // Closed-form Equation 20-29 for n_L = 2
+    let n = (n_l + 1) as f64;
+    let bracket = (1.0 + x.powf(n) / (1.0 - x)).powf(1.0 / n);
+    let expected = 1.0 - (1.0 - p0) * bracket;
+    let p_pocket = Twsc::prob_queue_free_shared_major(p0, x, n_l);
+    assert!(approx(p_pocket, expected, 1e-12), "p*(n_L=2) = {p_pocket}");
+    // Ordering: shared (n_L = 0) < short pocket < exclusive p_0
+    let p_shared = Twsc::prob_queue_free_shared_major(p0, x, 0);
+    assert!(p_shared < p_pocket, "{p_shared} !< {p_pocket}");
+    assert!(p_pocket < p0, "{p_pocket} !< {p0}");
+    // Monotone increasing toward p_0 as the pocket grows
+    let p_long = Twsc::prob_queue_free_shared_major(p0, x, 10);
+    assert!(p_long > p_pocket && p_long <= p0 + 1e-9);
+}
+
+/// Equations 20-62/20-63 with the Example Problem 4 inputs reproduce the
+/// published Rank 1 shared-lane delay d_2+3 = 1.3 s.
+#[test]
+fn test_rank1_delay_ep4_value() {
+    // (1 - 0.856) f_LL (v2+v3) / (v_1+1U + f_LL (v2+v3)) d_1+1U, N = 2
+    let d = Twsc::rank1_delay(0.856, 75.0, 982.0, 94.0, 10.3, 0.5, 2);
+    assert!(approx(d, 1.3, 0.05), "d_2+3 = {d} (published 1.3)");
+}
+
+/// End-to-end Step 7d wiring: declaring a shared major-street left lane
+/// substitutes p*_0 for p_0, lowering the Rank 4 minor-left capacity, and
+/// exposes the Step 11b Rank 1 delay; the default `Exclusive` config is
+/// bit-identical to omitting the field (backward compatibility).
+#[test]
+fn test_major_left_shared_wiring() {
+    let demand = TwscDemand {
+        v1: 75.0,
+        v2: 982.0,
+        v3: 94.0,
+        v4: 76.0,
+        v5: 992.0,
+        v6: 94.0,
+        v7: 80.0,
+        v9: 100.0,
+        v10: 80.0,
+        v12: 100.0,
+        ..Default::default()
+    };
+    let base_geom = TwscGeometry {
+        is_three_leg: false,
+        major_lanes_per_direction: 2,
+        minor_lanes_nb: MinorLaneConfig::Separate,
+        minor_lanes_sb: MinorLaneConfig::Separate,
+        ..Default::default()
+    };
+
+    // Exclusive (default): no p* substitution, no Rank 1 delay.
+    let mut excl = Twsc::new(demand.clone(), base_geom.clone());
+    excl.heavy_vehicle_pct = 1.0;
+    excl.analyze();
+    let cm7_excl = excl.get_movement_capacity(Mv::M7).unwrap();
+    assert!(excl.rank1_major_delay.is_none(), "exclusive => no Rank 1 delay");
+
+    // Shared major left on both approaches: p*_0 < p_0 lowers c_m,7 and the
+    // Rank 1 delay becomes nonzero.
+    let mut shared = Twsc::new(
+        demand,
+        TwscGeometry {
+            major_left_eb: MajorLeftLaneConfig::Shared,
+            major_left_wb: MajorLeftLaneConfig::Shared,
+            ..base_geom
+        },
+    );
+    shared.heavy_vehicle_pct = 1.0;
+    shared.analyze();
+    let cm7_shared = shared.get_movement_capacity(Mv::M7).unwrap();
+    assert!(
+        cm7_shared < cm7_excl,
+        "shared c_m,7 = {cm7_shared} !< exclusive {cm7_excl}"
+    );
+    let [d23, d56] = shared.rank1_major_delay.expect("shared => Rank 1 delay");
+    assert!(d23 > 0.0 && d56 > 0.0, "Rank 1 delay = [{d23}, {d56}]");
+}
+
 /// Movement labels round-trip.
 #[test]
 fn test_movement_labels() {

@@ -17,6 +17,8 @@
     "major_lanes_per_direction": 2,
     "major_right_turn_eb": "Shared",
     "major_right_turn_wb": "Shared",
+    "major_left_eb": "Shared",
+    "major_left_wb": "Shared",
     "minor_lanes_nb": "Separate",
     "minor_lanes_sb": "Separate"
   },
