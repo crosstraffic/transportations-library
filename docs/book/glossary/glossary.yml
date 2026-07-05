@@ -1,0 +1,20 @@
+meta:
+  version: 0.1.0
+  last_reviewed: 2025-08-09
+  name: "Highway Capacity Manual — Chapter 9: Glossary and Symbols"
+  note: Definitions paraphrased for internal developer documentation; consult HCM for authoritative wording.
+  license: Internal reference only
+
+terms:
+  AADT:
+    title: "Annual Average Daily Traffic"
+    definition: "Total yearly traffic volume divided by 365."
+    aliases: ["Average Annual Daily Traffic"]
+    category: "Traffic Volume"
+    version: "0.1.0"
+
+  LOS:
+    title: "Level of Service"
+    definition: "Qualitative measure describing operational conditions."
+    category: "Performance Measures"
+    version: "0.1.0"

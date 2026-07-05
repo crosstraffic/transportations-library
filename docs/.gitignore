@@ -1,0 +1,4 @@
+*.swp
+book/book
+node_modules
+book/xtask/target

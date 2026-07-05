@@ -1,6 +1,6 @@
-// tests/common/mod.rs
+#![allow(dead_code)]
 use transportations_library::*;
-use transportations_library::hcm::chapter15::twolanehighways::{TwoLaneHighways, Segment, SubSegment};
+use transportations_library::hcm::twolanehighways::{TwoLaneHighways, Segment, SubSegment};
 use std::fs::{self, File};
 use std::io::BufReader;
 
@@ -224,6 +224,7 @@ pub fn run_complete_analysis(highway: &mut TwoLaneHighways, segment_index: usize
     } else {
         highway.determine_follower_density_pc_pz(segment_index);
     }
+    highway.determine_adjustment_to_follower_density(segment_index);
 }
 
 /// Analyze complete facility and return summary

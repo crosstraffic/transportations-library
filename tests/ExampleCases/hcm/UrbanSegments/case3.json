@@ -1,0 +1,53 @@
+{
+  "_source": "HCM 7th Edition, Chapter 30, Example Problem 1, eastbound direction — COMPUTED MODE. Identical to case1.json except the Chapter 30, Section 4 access-point delay procedure (access_point_approaches, Equations 30-31 through 30-68) computes the per-access-point through delay in place of the case1 published-input hook (access_point_delays_s). The two active access points seen by the eastbound through movement are AP1 (adjusted volumes 74.80 L / 981.71 T / 93.50 R veh/h, opposing westbound 991.70 T + 94.45 R) and AP2 (75.56 L / 991.70 T / 94.45 R, opposing 981.71 T + 93.50 R), both undivided two-through-lane approaches with no turn bays (Exhibit 30-35). The integration test asserts the computed per-access-point delays reproduce the published 0.193 (AP1) and 0.194 (AP2) s/veh and the published inside-lane blockage probability 0.115, and that every downstream performance measure reproduces the published Exhibit 30-36 values identically to case1. The right-turn branch uses the posted speed limit (35 mi/h); see the access_point_delay VERIFY-HCM note.",
+  "segment_length_ft": 1800.0,
+  "upstream_intersection_width_ft": 50.0,
+  "n_through_lanes": 2,
+  "speed_limit_mph": 35.0,
+  "restrictive_median_length_ft": 0.0,
+  "proportion_with_curb": 0.70,
+  "proportion_on_street_parking": 0.0,
+  "n_access_points_subject": 4.0,
+  "n_access_points_opposing": 4.0,
+  "signal_spacing_ft": 1800.0,
+  "through_demand_veh_h": 968.0,
+  "midsegment_flow_veh_h": 1150.0,
+  "through_capacity_veh_h": 1848.0,
+  "control": "Signalized",
+  "through_control_delay_s": 18.310,
+  "cycle_length_s": 100.0,
+  "effective_green_s": 48.63,
+  "analysis_period_h": 0.25,
+  "access_point_approaches": [
+    {
+      "v_lt": 74.80,
+      "v_th": 981.71,
+      "v_rt": 93.50,
+      "n_sl": 0,
+      "n_t": 2,
+      "n_sr": 0,
+      "opposing_flow_veh_h": 1086.15,
+      "left_turn_bay": false,
+      "right_turn_bay": false,
+      "n_lt_lanes": 0,
+      "left_bay_storage_ft": 0.0,
+      "pct_heavy_veh": 0.0
+    },
+    {
+      "v_lt": 75.56,
+      "v_th": 991.70,
+      "v_rt": 94.45,
+      "n_sl": 0,
+      "n_t": 2,
+      "n_sr": 0,
+      "opposing_flow_veh_h": 1075.21,
+      "left_turn_bay": false,
+      "right_turn_bay": false,
+      "n_lt_lanes": 0,
+      "left_bay_storage_ft": 0.0,
+      "pct_heavy_veh": 0.0
+    }
+  ],
+  "full_stop_rate_override": 0.547,
+  "prop_left_turn_lanes": 0.33
+}

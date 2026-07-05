@@ -1,0 +1,29 @@
+{
+  "_source": "HCM 7th Edition, Chapter 34, Example Problem 12: Four-Legged Restricted Crossing U-Turn Intersection with Merges (Exhibits 34-123 through 34-125, 269_Ch34_02b.xhtml). Rural RCUT, main street E-W, distance main-junction-to-U-turn-crossover = 2,000 ft (D_t = D_f), left-turn crossover storage 300 ft, PHF = 0.92, FFS = 60 mi/h, no trucks, no grades. Minor-street left and through movements are rerouted through the U-turn crossovers (merges, zero control delay) and experience EDTT. EDTT computed with Equation 23-58: minor left = (2000+2000)/(1.47*60) + 10 = 55.4 s; minor through = ... + 15 = 60.4 s. The two major-street left turns are YIELD/merge-controlled and their control delays (EB L 11.2 s at v/c 0.18, WB L 15.0 s at v/c 0.35) are computed by Chapter 20 in the source; supplied here as provided junction delays. Published ETT/LOS: major-street lefts 11.2/B, 15.0/B; major through/right 0/A; minor lefts 55.4/E; minor throughs 60.4/E; minor rights 0/A (Exhibit 23-13). Per-movement demand_veh_h values are illustrative placeholders (Exhibit 34-123 turning-movement demands are not tabulated in the extracted text); the asserted ETT and LOS are independent of demand.",
+  "form": "RcutFourLeg",
+  "movements": [
+    { "label": "EB L", "approach": "Eb", "demand_veh_h": 60.0, "edtt_s": 0.0, "junctions": [ { "type": "provided", "control_delay_s": 11.2 } ] },
+    { "label": "WB L", "approach": "Wb", "demand_veh_h": 120.0, "edtt_s": 0.0, "junctions": [ { "type": "provided", "control_delay_s": 15.0 } ] },
+    { "label": "EB T", "approach": "Eb", "demand_veh_h": 1100.0, "edtt_s": 0.0, "junctions": [] },
+    { "label": "WB T", "approach": "Wb", "demand_veh_h": 1000.0, "edtt_s": 0.0, "junctions": [] },
+    { "label": "EB R", "approach": "Eb", "demand_veh_h": 90.0, "edtt_s": 0.0, "junctions": [] },
+    { "label": "WB R", "approach": "Wb", "demand_veh_h": 80.0, "edtt_s": 0.0, "junctions": [] },
+    { "label": "NB L", "approach": "Nb", "demand_veh_h": 60.0, "edtt_s": 55.4, "junctions": [ { "type": "merge" }, { "type": "merge" } ] },
+    { "label": "NB T", "approach": "Nb", "demand_veh_h": 50.0, "edtt_s": 60.4, "junctions": [ { "type": "merge" }, { "type": "merge" } ] },
+    { "label": "NB R", "approach": "Nb", "demand_veh_h": 70.0, "edtt_s": 0.0, "junctions": [ { "type": "merge" } ] },
+    { "label": "SB L", "approach": "Sb", "demand_veh_h": 65.0, "edtt_s": 55.4, "junctions": [ { "type": "merge" }, { "type": "merge" } ] },
+    { "label": "SB T", "approach": "Sb", "demand_veh_h": 55.0, "edtt_s": 60.4, "junctions": [ { "type": "merge" }, { "type": "merge" } ] },
+    { "label": "SB R", "approach": "Sb", "demand_veh_h": 75.0, "edtt_s": 0.0, "junctions": [ { "type": "merge" } ] }
+  ],
+  "_expected": {
+    "EB L": { "ett_s": 11.2, "los": "B" },
+    "WB L": { "ett_s": 15.0, "los": "B" },
+    "EB T": { "ett_s": 0.0, "los": "A" },
+    "WB R": { "ett_s": 0.0, "los": "A" },
+    "NB L": { "ett_s": 55.4, "los": "E" },
+    "NB T": { "ett_s": 60.4, "los": "E" },
+    "NB R": { "ett_s": 0.0, "los": "A" },
+    "SB L": { "ett_s": 55.4, "los": "E" },
+    "SB T": { "ett_s": 60.4, "los": "E" }
+  }
+}

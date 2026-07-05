@@ -1,0 +1,66 @@
+{
+  "_source": "HCM 7th Edition, Chapter 29, Section 5, Example Problem 1: Automobile-Oriented Urban Street, WESTBOUND direction (Exhibits 29-47 through 29-49). Same 1-mi five-segment facility as case1; westbound published segment values: Segment 1 (Exhibit 29-47) base FFS 40.9 mi/h, travel speed 23.4 mi/h, spatial stop rate 1.93 stops/mi, LOS C; Segment 5 (Exhibit 29-48) base FFS 37.9 mi/h, travel speed 17.4 mi/h, stop rate 2.75 stops/mi, LOS D. Segments 2-3 assume Segment 1's values and Segment 4 assumes Segment 5's (unpublished). Published facility results (Exhibit 29-49, westbound): base free-flow speed 40.1 mi/h (EXACT), travel speed 22.2 mi/h and spatial stop rate 1.93 stops/mi (approximate here: 21.5 and 2.14 — the unpublished westbound Segments 2-4 evidently perform better than the copied Segment 1/5 values), LOS C (exact), poorest-performing segment LOS D (exact).",
+  "prop_left_turn_lanes": 1.0,
+  "segments": [
+    {
+      "segment_length_ft": 1320.0,
+      "n_through_lanes": 2,
+      "speed_limit_mph": 35.0,
+      "through_demand_veh_h": 800.0,
+      "control": "Signalized",
+      "base_ffs_mph": 40.9,
+      "travel_speed_mph": 23.4,
+      "spatial_stop_rate_stops_mi": 1.93,
+      "vc_ratio": 0.85,
+      "los": "C"
+    },
+    {
+      "segment_length_ft": 1320.0,
+      "n_through_lanes": 2,
+      "speed_limit_mph": 35.0,
+      "through_demand_veh_h": 800.0,
+      "control": "Signalized",
+      "base_ffs_mph": 40.9,
+      "travel_speed_mph": 23.4,
+      "spatial_stop_rate_stops_mi": 1.93,
+      "vc_ratio": 0.85,
+      "los": "C"
+    },
+    {
+      "segment_length_ft": 1320.0,
+      "n_through_lanes": 2,
+      "speed_limit_mph": 35.0,
+      "through_demand_veh_h": 800.0,
+      "control": "Signalized",
+      "base_ffs_mph": 40.9,
+      "travel_speed_mph": 23.4,
+      "spatial_stop_rate_stops_mi": 1.93,
+      "vc_ratio": 0.85,
+      "los": "C"
+    },
+    {
+      "segment_length_ft": 660.0,
+      "n_through_lanes": 2,
+      "speed_limit_mph": 30.0,
+      "through_demand_veh_h": 800.0,
+      "control": "Signalized",
+      "base_ffs_mph": 37.9,
+      "travel_speed_mph": 17.4,
+      "spatial_stop_rate_stops_mi": 2.75,
+      "vc_ratio": 0.9,
+      "los": "D"
+    },
+    {
+      "segment_length_ft": 660.0,
+      "n_through_lanes": 2,
+      "speed_limit_mph": 30.0,
+      "through_demand_veh_h": 800.0,
+      "control": "Signalized",
+      "base_ffs_mph": 37.9,
+      "travel_speed_mph": 17.4,
+      "spatial_stop_rate_stops_mi": 2.75,
+      "vc_ratio": 0.9,
+      "los": "D"
+    }
+  ]
+}

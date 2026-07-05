@@ -1,12 +1,9 @@
-// lib.rs - Clean and focused
-//! Transportation Engineering Library
-//! 
 //! A comprehensive Rust library implementing transportation engineering methodologies
 //! from the Highway Capacity Manual (HCM) and other sources.
 
 pub mod hcm;
-pub mod copython;
-mod utils;
+pub mod utils;
+mod copython;
 
 use std::fmt;
 use std::io;
@@ -14,6 +11,16 @@ use serde_json;
 
 // Re-export main types for easier access
 pub use crate::hcm::*;
+pub use crate::hcm::basicfreeways::*;
+pub use crate::hcm::constraints::*;
+pub use crate::hcm::twolanehighways::*;
+pub use crate::hcm::topology::*;
+pub use crate::hcm::traffic_flow::*;
+pub use crate::hcm::geometric::*;
+#[cfg(feature = "with-python")]
+pub use copython::py_transportationslibrary::*;
+
+pub use utils::math;
 
 // Library metadata
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

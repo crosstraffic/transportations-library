@@ -1,8 +1,6 @@
-// hcm/chapter15/mod.rs
-pub mod twolanehighways;
+//! HCM Chapter 15: Two-Lane Highways.
 
-#[cfg(test)]
-mod tests; // This imports tests.rs for unit tests
+pub mod twolanehighways;
 
 pub use twolanehighways::*;
 
