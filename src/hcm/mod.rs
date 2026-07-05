@@ -1,9 +1,9 @@
 //! Highway Capacity Manual (HCM 7th Edition) methodologies, organized one
 //! module per HCM chapter, plus shared types (`common`) and cross-cutting
-//! geometry/topology support (`support`).
+//! geometry/topology helpers (`utils`).
 
 pub mod common;
-pub mod support;
+pub mod utils;
 
 pub mod chapter10;
 pub mod chapter11;
@@ -24,7 +24,7 @@ pub mod chapter24;
 pub const HCM_VERSION: &str = "7th Edition";
 
 // Backward-compatible module paths from the pre-chapter layout.
-// Deprecated: import via `hcm::chapterNN::*` or `hcm::support::*` instead.
+// Deprecated: import via `hcm::chapterNN::*` or `hcm::utils::*` instead.
 pub use chapter10::freeway_facilities;
 pub use chapter12::basicfreeways;
 pub use chapter12::managed_lanes;
@@ -40,7 +40,7 @@ pub use chapter21::awsc;
 pub use chapter22::roundabouts;
 pub use chapter23::ramp_terminals;
 pub use chapter24::offstreet_pedbike;
-pub use support::{constraints, geometric, topology, traffic_flow};
+pub use utils::{constraints, geometric, topology, traffic_flow};
 
 pub mod adjustment_factors {
     pub use crate::hcm::common::adjustment_factors::*;
