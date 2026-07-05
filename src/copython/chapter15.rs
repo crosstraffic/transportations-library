@@ -19,7 +19,7 @@ impl SubSegment {
     /// Create a new SubSegment.
     ///
     /// Args:
-    ///     length: Length of the sub-segment in miles (default: 0.0)
+    ///     length: Length of the sub-segment in FEET (default: 0.0). Note: unlike Segment.length (miles), sub-segment lengths are in feet; the engine divides by 5,280 internally.
     ///     avg_speed: Average travel speed in mph (default: 0.0)
     ///     hor_class: Horizontal alignment class (1-5, default: 1)
     ///     design_rad: Design radius in feet (default: 0.0)
@@ -50,7 +50,7 @@ impl SubSegment {
         }
     }
 
-    /// Get the length of the sub-segment in miles.
+    /// Get the length of the sub-segment in feet.
     #[getter]
     pub fn get_length(&self) -> f64 {
         self.inner.get_length()
@@ -102,7 +102,7 @@ impl SubSegment {
     /// Detailed string representation.
     pub fn __str__(&self) -> String {
         format!(
-            "SubSegment: {:.2} miles, {:.1} mph average speed, horizontal class {}",
+            "SubSegment: {:.2} ft, {:.1} mph average speed, horizontal class {}",
             self.get_length(),
             self.get_avg_speed(),
             self.get_hor_class()

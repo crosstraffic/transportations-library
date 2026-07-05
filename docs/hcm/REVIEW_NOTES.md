@@ -4,14 +4,14 @@ Code-level findings surfaced by the documentation pass (independent agents readi
 
 ## Likely bugs (recommend fixing before or during branch review)
 
-1. **PyO3 `SubSegment` docstring says length is in miles; the engine treats it as feet** (÷5280). A Python caller following the docstring gets a 5,280x error. This is the historical Ch 15 unit footgun, now printed in the bindings docs. `src/copython/chapter15.rs` (feat/hcm-restructure).
+1. ~~FIXED (feat/hcm-ch15-review-fixes)~~ **PyO3 `SubSegment` docstring says length is in miles; the engine treats it as feet** (÷5280). A Python caller following the docstring gets a 5,280x error. This is the historical Ch 15 unit footgun, now printed in the bindings docs. `src/copython/chapter15.rs` (feat/hcm-restructure).
 2. **`todo!()` panics reachable in `adjustment_heavy_vehicle_factor`** for grade/length PCE combos outside the transcribed grid, and its `length == 0.125` fallback clobbers previously computed `e_t`. Library code should never panic on valid-ish input. `src/hcm/chapter12/basicfreeways.rs` (feat/hcm-ch12-14-completion).
-3. **`determine_vertical_alignment` missing length bucket**: upgrade branch jumps from `<= 0.5` to `> 0.6` mi, so 0.5–0.6 mi segments fall through to the catch-all thresholds. `src/hcm/chapter15/twolanehighways.rs` (feat/hcm-restructure).
+3. ~~FIXED (feat/hcm-ch15-review-fixes; also fixed: missing 0.7-0.8 mi bucket, and the downgrade branch negated LENGTH instead of GRADE so every downgrade returned class 1)~~ **`determine_vertical_alignment` missing length bucket**: upgrade branch jumps from `<= 0.5` to `> 0.6` mi, so 0.5–0.6 mi segments fall through to the catch-all thresholds. `src/hcm/chapter15/twolanehighways.rs` (feat/hcm-restructure).
 4. **Divide-by-zero at g/C = 1.0** in `progression_factor`/`uniform_delay`; guard posture inconsistent with `initial_queue_delay`. `src/hcm/common/delay.rs` (feat/hcm-shared-infra).
 5. **Major-merge LOS inconsistency**: `RampSegment::determine_los` returns `LevelOfService::E` while setting `self.los = None` (HCM defines no LOS there). Callers using the return value get a fabricated letter. `src/hcm/chapter14/merge_diverge.rs` (feat/hcm-ch12-14-completion).
 6. **8-lane P_FM can go negative** for v_R above ~1,742 pc/h — no clamp. `merge_diverge.rs` (feat/hcm-ch12-14-completion).
 7. **Oversaturated managed lane silently reports demand-based results**: `ml_dc_ratio` is computed but never routes the ML lane group through the oversaturated engine. Consistent with the documented Eq 25-35/36 deferral but should hard-error or warn instead of silently passing demand. `src/hcm/chapter10/managed_lanes.rs` (feat/hcm-ch10-managed-lanes).
-8. **`tests/common/mod.rs::load_test_data_files()` reads `src/ExampleCases/...` which does not exist** — `case_study1.json` is silently excluded from all Rust tests (feat/hcm-restructure).
+8. ~~FIXED (feat/hcm-ch15-review-fixes)~~ **`tests/common/mod.rs::load_test_data_files()` reads `src/ExampleCases/...` which does not exist** — `case_study1.json` is silently excluded from all Rust tests (feat/hcm-restructure).
 
 ## Inconsistencies / dead code (fix opportunistically)
 
@@ -21,7 +21,7 @@ Code-level findings surfaced by the documentation pass (independent agents readi
 12. `queue_end_of_period` has an unreachable `else` arm in its t_A selection (feat/hcm-reliability-enhancements).
 13. Stale milestone-1 comment on `step_10_queue_storage` says ADP "is a milestone-2 item" though the code now consumes the ADP result (feat/hcm-ch19-actuated).
 14. `DEFAULT_BFFS_FREEWAY` (75.4) declared, never used (chapter12). Dead duplicate branch in Ch 15 `determine_demand_flow` (pt==2, 5<=phv<10 assigns 1500 in both arms). Live author-doubt comment in `calc_speed` (`// Should be ST instead of S?`).
-15. `TwoLaneHighways.apd` doc comment says default 0; code uses `unwrap_or(5.0)` (feat/hcm-restructure).
+15. ~~FIXED (doc updated to match code, feat/hcm-ch15-review-fixes)~~ `TwoLaneHighways.apd` doc comment says default 0; code uses `unwrap_or(5.0)` (feat/hcm-restructure).
 16. `planning.rs` module doc cites Exhibit 25-17 for LOS but the code reuses `los_freeway_facility` (Exhibit 10-6); EP6 letters pass, so the tables likely agree — one-time check against the book (feat/hcm-ch10-managed-lanes).
 17. Two overlapping validation systems: `support/constraints.rs` vs the SF-001..005 semantic firewall in `common/mod.rs` — candidates for unification (feat/hcm-restructure).
 18. `TurnType::UTurn` never receives a NEMA number despite the doc comment referencing the Ch 20 1U/4U convention (feat/hcm-shared-infra).

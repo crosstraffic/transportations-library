@@ -1,0 +1,36 @@
+{
+    "description": "HCM Ch 26 two-lane highway example: widening/repaving project evaluated for bicycle LOS in the peak direction. Expected values are the published worked-example results (BLOS 5.90/F current, 3.58/D proposed). Note the BLOS method's input set differs from the motorized method: pavement rating and on-highway parking matter, segment length does not.",
+    "current": {
+        "lane_width": 12.0,
+        "shoulder_width": 2.0,
+        "speed_limit": 50.0,
+        "num_lanes": 1,
+        "pavement_condition": 3.0,
+        "hourly_volume": 500.0,
+        "phf": 0.90,
+        "heavy_vehicle_pct": 0.05,
+        "pct_on_highway_parking": 0.0
+    },
+    "proposed": {
+        "lane_width": 12.0,
+        "shoulder_width": 6.0,
+        "speed_limit": 55.0,
+        "num_lanes": 1,
+        "pavement_condition": 5.0,
+        "hourly_volume": 500.0,
+        "phf": 0.90,
+        "heavy_vehicle_pct": 0.05,
+        "pct_on_highway_parking": 0.0
+    },
+    "expected": {
+        "flow_rate_outside_lane": 555.6,
+        "current_effective_width": 14.0,
+        "proposed_effective_width": 24.0,
+        "current_effective_speed_factor": 4.62,
+        "proposed_effective_speed_factor": 4.79,
+        "current_blos_score": 5.90,
+        "proposed_blos_score": 3.58,
+        "current_los": "F",
+        "proposed_los": "D"
+    }
+}
