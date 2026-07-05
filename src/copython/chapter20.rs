@@ -1,7 +1,7 @@
 //! Python bindings for HCM Chapter 20 (Two-Way STOP-Controlled
 //! Intersections).
 
-use crate::hcm::chapter20::twsc::{Mv, Twsc as LibTwsc};
+use crate::hcm::chapter20::twsc::{Mv, PlatoonBlockage, Twsc as LibTwsc};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -28,8 +28,10 @@ impl Twsc {
     ///
     /// Args:
     ///     config_json: JSON with `demand`, `geometry`, optional `phf`,
-    ///         `analysis_period_h` (default 0.25), `heavy_vehicle_pct`, and
-    ///         `conflicting_flow_overrides`.
+    ///         `analysis_period_h` (default 0.25), `heavy_vehicle_pct`,
+    ///         `conflicting_flow_overrides`, and `platoon_blockage` (the
+    ///         Step 5b proportion-of-time-blocked inputs p_b,x for coordinated
+    ///         upstream signals, HCM Equations 20-19 through 20-21).
     #[new]
     pub fn new(config_json: &str) -> PyResult<Self> {
         let inner = LibTwsc::from_json(config_json)
@@ -73,6 +75,45 @@ impl Twsc {
     #[setter]
     pub fn set_analysis_period_h(&mut self, t: f64) {
         self.inner.analysis_period_h = t;
+    }
+
+    /// Set the upstream-signal proportion-of-time-blocked inputs p_b,x for
+    /// Step 5b (HCM Equations 20-19 through 20-21, Exhibit 20-19). Movements
+    /// 1U and 4U reuse `pb1`/`pb4`; the two-stage movements 7, 8, 10, and 11
+    /// draw their Stage I/II values from `pb1`/`pb4` per Exhibit 20-19. Pass
+    /// all zeros (or never call this) for a no-platooning analysis.
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_platoon_blockage(
+        &mut self,
+        pb1: f64,
+        pb4: f64,
+        pb7: f64,
+        pb8: f64,
+        pb9: f64,
+        pb10: f64,
+        pb11: f64,
+        pb12: f64,
+    ) {
+        self.inner.platoon_blockage = Some(PlatoonBlockage {
+            pb1,
+            pb4,
+            pb7,
+            pb8,
+            pb9,
+            pb10,
+            pb11,
+            pb12,
+        });
+    }
+
+    /// The upstream-signal proportion-of-time-blocked inputs as
+    /// `(pb1, pb4, pb7, pb8, pb9, pb10, pb11, pb12)`, or `None` if unset.
+    #[getter]
+    pub fn get_platoon_blockage(&self) -> Option<(f64, f64, f64, f64, f64, f64, f64, f64)> {
+        self.inner
+            .platoon_blockage
+            .as_ref()
+            .map(|p| (p.pb1, p.pb4, p.pb7, p.pb8, p.pb9, p.pb10, p.pb11, p.pb12))
     }
 
     /// Demand flow rate of a movement ("1", "1U", ..., "12"), veh/h.

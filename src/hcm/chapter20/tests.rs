@@ -452,6 +452,104 @@ fn test_movement_labels() {
     assert_eq!(Mv::from_label("13"), None);
 }
 
+/// Exhibit 20-19: proportion-blocked mapping per movement and stage.
+#[test]
+fn test_platoon_blockage_exhibit_20_19_mapping() {
+    let pb = PlatoonBlockage {
+        pb1: 0.11,
+        pb4: 0.44,
+        pb7: 0.77,
+        pb8: 0.88,
+        pb9: 0.99,
+        pb10: 0.10,
+        pb11: 0.11,
+        pb12: 0.12,
+    };
+    // One-stage totals; U-turns mirror their companion left turn.
+    assert_eq!(pb.total(Mv::M1), Some(0.11));
+    assert_eq!(pb.total(Mv::M1U), Some(0.11));
+    assert_eq!(pb.total(Mv::M4), Some(0.44));
+    assert_eq!(pb.total(Mv::M4U), Some(0.44));
+    assert_eq!(pb.total(Mv::M7), Some(0.77));
+    assert_eq!(pb.total(Mv::M8), Some(0.88));
+    assert_eq!(pb.total(Mv::M9), Some(0.99));
+    assert_eq!(pb.total(Mv::M10), Some(0.10));
+    assert_eq!(pb.total(Mv::M11), Some(0.11));
+    assert_eq!(pb.total(Mv::M12), Some(0.12));
+    // Rank 1 movements have no proportion blocked.
+    for mv in [Mv::M2, Mv::M3, Mv::M5, Mv::M6] {
+        assert_eq!(pb.total(mv), None);
+    }
+    // Two-stage per-stage mapping: movements 7/8 -> (p_b,4, p_b,1);
+    // movements 10/11 -> (p_b,1, p_b,4).
+    assert_eq!(pb.stages(Mv::M7), Some((0.44, 0.11)));
+    assert_eq!(pb.stages(Mv::M8), Some((0.44, 0.11)));
+    assert_eq!(pb.stages(Mv::M10), Some((0.11, 0.44)));
+    assert_eq!(pb.stages(Mv::M11), Some((0.11, 0.44)));
+    for mv in [Mv::M1, Mv::M4, Mv::M9, Mv::M12] {
+        assert_eq!(pb.stages(mv), None);
+    }
+}
+
+/// Equation 20-19: the unblocked-period conflicting flow selects the subtract
+/// branch when v_c > 1.5 v_c,min p_b and the zero branch otherwise. Verified
+/// through the published Example Problem 4 case v_c,1 = 1,086, p_b = 0.170,
+/// N = 2 -> v_c,u = 694, and a low-flow case that triggers the zero branch.
+#[test]
+fn test_eq_20_19_unblocked_flow_branches() {
+    // Subtract branch: 1.5 * 2000 * 0.170 = 510 < 1086, and the resulting
+    // platooned c_p,1 matches the published 750 veh/h.
+    let cp = Twsc::potential_capacity_upstream_signal(1086.0, 4.12, 2.21, 0.170, 2);
+    assert!(approx(cp, 750.0, 2.0), "c_p,1 = {cp}");
+    // Zero branch: v_c = 300 < 1.5 * 2000 * 0.5 = 1500, so v_c,u = 0 and
+    // Equation 20-21 falls to 3600/t_f, giving c_p = (1 - p_b) * 3600/t_f.
+    let cp0 = Twsc::potential_capacity_upstream_signal(300.0, 6.5, 3.5, 0.5, 2);
+    assert!(approx(cp0, 0.5 * 3600.0 / 3.5, 1e-9), "zero-branch c_p = {cp0}");
+}
+
+/// Equation 20-21: when v_c,u,x = 0 the random-flow capacity is 3600/t_f and
+/// the potential capacity is (1 - p_b) * 3600/t_f (the fully-random ceiling).
+#[test]
+fn test_eq_20_21_zero_flow_branch() {
+    // v_c = 0 always yields v_c,u = 0 for any p_b in [0, 1).
+    let tf = 3.3;
+    for pb in [0.1, 0.3, 0.6] {
+        let cp = Twsc::potential_capacity_upstream_signal(0.0, 6.9, tf, pb, 2);
+        assert!(approx(cp, (1.0 - pb) * 3600.0 / tf, 1e-9), "p_b = {pb}: {cp}");
+    }
+}
+
+/// Platoon-off equivalence: with no p_b inputs (or an all-zero
+/// [`PlatoonBlockage`]) Step 5 reduces to Equation 20-18 exactly, and the
+/// full pipeline is bit-identical to a run without platooning.
+#[test]
+fn test_platoon_off_equivalence() {
+    // Standalone Step 5b with p_b = 0 equals Equation 20-18.
+    let base = Twsc::potential_capacity_upstream_signal(500.0, 6.5, 3.5, 0.0, 2);
+    let plain = crate::hcm::common::gap_acceptance::potential_capacity(500.0, 6.5, 3.5);
+    assert!(approx(base, plain, 1e-12));
+
+    // Full pipeline: None vs Some(all-zero) must produce identical results.
+    let mut a = example_problem_3();
+    let mut b = example_problem_3();
+    b.platoon_blockage = Some(PlatoonBlockage::default());
+    a.analyze();
+    b.analyze();
+    for mv in ALL_MOVEMENTS {
+        assert_eq!(
+            a.movements[mv.idx()].potential_capacity,
+            b.movements[mv.idx()].potential_capacity,
+            "potential capacity differs for {mv:?}"
+        );
+        assert_eq!(
+            a.movements[mv.idx()].movement_capacity,
+            b.movements[mv.idx()].movement_capacity,
+            "movement capacity differs for {mv:?}"
+        );
+    }
+    assert_eq!(a.intersection_delay, b.intersection_delay);
+}
+
 /// Serde round-trip of the full analysis type.
 #[test]
 fn test_serde_roundtrip() {
