@@ -53,6 +53,20 @@ published QAP interval detail; SB-left back-of-queue needs milestone-2 ADP proce
    reproduced only via explicit `conflicting_flow_overrides` in the fixture. `twsc.rs:655`.
 2. U-turn critical/follow-up headways on two-lane majors are "NA" in Exhibit 20-17/20-18; four-lane
    values used as fallback if coded. `twsc.rs:804,853`.
+3. **Step 5b upstream-signal platoon blockage (Eqs 20-19..20-21, Exhibit 20-19) wired** via the
+   `platoon_blockage` input (analyst-supplied p_b,x; the Chapter 30 §3 derivation is deferred).
+   Validated against Ch 32 TWSC Example Problem 4 (`case3.json`, `test_twsc_example_problem_4_upstream_signals`):
+   conflicting flows, v_c,u,x, and platooned c_p (750/758/859/852/73/72) reproduce exactly. Two
+   findings:
+   - **EP4 Stage II conflicting flow drops the major-street right-turn term** (0.5 v_6 for movement 7,
+     0.5 v_3 for movement 10), same class as finding 1: published v_c,7 = 1,827, v_c,10 = 1,832 vs.
+     Exhibit 20-16 values 1,874/1,879. Fixture uses `conflicting_flow_overrides`.
+   - **EP4 shared major-street left turn not fully modeled.** EP4's major left turns share the through
+     lane, so its published c_m,7 = c_m,10 = 47 uses the shared-lane queue-free probability
+     p*_0 = 0.856 (Eqs 20-33/34). This library has no `TwscGeometry` input marking a shared/short
+     major-left pocket, so it uses the exclusive-lane p_0 = 0.900 and computes ~52 veh/h; the derived
+     d_A,NB/SB = 241 s, d_A,EB/WB = 1.9 s, d_I = 34.1 s are matched in regime only. Same deferred gap
+     as the un-wired `shared_major_lane_capacity`/`rank1_delay` helpers.
 
 ## Chapter 24 (feat/hcm-ch24-offstreet-pedbike)
 1. Eq 24-17 modal-pair passing distance ambiguity: implementation reproduces the worked example

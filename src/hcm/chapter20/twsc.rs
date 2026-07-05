@@ -369,6 +369,99 @@ pub struct ConflictingFlowOverride {
     pub value: f64,
 }
 
+/// Analyst-supplied proportion-of-time-blocked inputs (p_b,x) for the
+/// upstream-signal potential-capacity calculation (HCM Chapter 20, Step 5b,
+/// Equations 20-19 through 20-21; per-movement/per-stage mapping in
+/// Exhibit 20-19).
+///
+/// Each value is the fraction of the analysis period that movement x is
+/// blocked by a platoon released from a coordinated upstream signal. When
+/// [`Twsc::platoon_blockage`] is `None` (the default) or a movement's value
+/// is `0`, Step 5 reduces to Equation 20-18 exactly and results are
+/// bit-identical to a run without platooning.
+///
+/// Per HCM Exhibit 20-19 the U-turn movements reuse their companion
+/// left-turn value (movement 1U uses p_b,1; movement 4U uses p_b,4) and the
+/// two-stage minor movements take a one-stage total plus per-stage values
+/// drawn from the opposing major-street left-turn direction:
+///
+/// | Movement x | One-stage total | Stage I | Stage II |
+/// |------------|-----------------|---------|----------|
+/// | 1, 1U      | p_b,1           | NA      | NA       |
+/// | 4, 4U      | p_b,4           | NA      | NA       |
+/// | 7          | p_b,7           | p_b,4   | p_b,1    |
+/// | 8          | p_b,8           | p_b,4   | p_b,1    |
+/// | 9          | p_b,9           | NA      | NA       |
+/// | 10         | p_b,10          | p_b,1   | p_b,4    |
+/// | 11         | p_b,11          | p_b,1   | p_b,4    |
+/// | 12         | p_b,12          | NA      | NA       |
+///
+/// The HCM Chapter 30, Section 3 computation that derives these proportions
+/// from upstream signal timing and platoon dispersion (the platoon-dispersion
+/// primitives exist in [`crate::hcm::chapter18`] for a future pass) is
+/// deferred; supply the values directly, e.g. from the Chapter 30
+/// movement-based access-point output (HCM Exhibit 32-12).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PlatoonBlockage {
+    /// p_b,1 — major-street EB left turn (also applied to movement 1U).
+    #[serde(default)]
+    pub pb1: f64,
+    /// p_b,4 — major-street WB left turn (also applied to movement 4U).
+    #[serde(default)]
+    pub pb4: f64,
+    /// p_b,7 — minor-street NB left turn (one-stage total).
+    #[serde(default)]
+    pub pb7: f64,
+    /// p_b,8 — minor-street NB through (one-stage total).
+    #[serde(default)]
+    pub pb8: f64,
+    /// p_b,9 — minor-street NB right turn.
+    #[serde(default)]
+    pub pb9: f64,
+    /// p_b,10 — minor-street SB left turn (one-stage total).
+    #[serde(default)]
+    pub pb10: f64,
+    /// p_b,11 — minor-street SB through (one-stage total).
+    #[serde(default)]
+    pub pb11: f64,
+    /// p_b,12 — minor-street SB right turn.
+    #[serde(default)]
+    pub pb12: f64,
+}
+
+impl PlatoonBlockage {
+    /// One-stage (total) proportion blocked p_b,x for movement `mv`
+    /// (HCM Exhibit 20-19). Returns `None` for Rank 1 movements (2, 3, 5, 6),
+    /// which have no capacity of their own. Movements 1U and 4U mirror the
+    /// companion left-turn values p_b,1 and p_b,4.
+    pub fn total(&self, mv: Mv) -> Option<f64> {
+        match mv {
+            Mv::M1 | Mv::M1U => Some(self.pb1),
+            Mv::M4 | Mv::M4U => Some(self.pb4),
+            Mv::M7 => Some(self.pb7),
+            Mv::M8 => Some(self.pb8),
+            Mv::M9 => Some(self.pb9),
+            Mv::M10 => Some(self.pb10),
+            Mv::M11 => Some(self.pb11),
+            Mv::M12 => Some(self.pb12),
+            Mv::M2 | Mv::M3 | Mv::M5 | Mv::M6 => None,
+        }
+    }
+
+    /// Per-stage (Stage I, Stage II) proportion blocked for the two-stage
+    /// minor movements 7, 8, 10, and 11 (HCM Exhibit 20-19). Stage I and
+    /// Stage II take the p_b of the opposing major-street left-turn
+    /// direction: movements 7 and 8 use (p_b,4, p_b,1); movements 10 and 11
+    /// use (p_b,1, p_b,4). Returns `None` for every other movement.
+    pub fn stages(&self, mv: Mv) -> Option<(f64, f64)> {
+        match mv {
+            Mv::M7 | Mv::M8 => Some((self.pb4, self.pb1)),
+            Mv::M10 | Mv::M11 => Some((self.pb1, self.pb4)),
+            _ => None,
+        }
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Computed results
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -457,6 +550,11 @@ pub struct Twsc {
     /// Optional conflicting-flow overrides (see [`ConflictingFlowOverride`]).
     #[serde(default)]
     pub conflicting_flow_overrides: Vec<ConflictingFlowOverride>,
+    /// Optional proportion-of-time-blocked inputs for coordinated upstream
+    /// signals (HCM Step 5b, Equations 20-19 through 20-21, Exhibit 20-19).
+    /// `None` (the default) selects the no-platooning Equation 20-18.
+    #[serde(default)]
+    pub platoon_blockage: Option<PlatoonBlockage>,
 
     // ── Computed ────────────────────────────────────────────────────────────
     /// Per-movement results, indexed by [`Mv::idx`].
@@ -491,6 +589,7 @@ impl Twsc {
             analysis_period_h: 0.25,
             heavy_vehicle_pct: 0.0,
             conflicting_flow_overrides: Vec::new(),
+            platoon_blockage: None,
             movements: (0..14).map(|_| TwscMovementResult::default()).collect(),
             lanes_nb: Vec::new(),
             lanes_sb: Vec::new(),
@@ -660,6 +759,11 @@ impl Twsc {
     // Exhibit 20-16 factor 0.5 on the major-street right turn). This
     // implementation follows the 7th Edition exhibits; use
     // `conflicting_flow_overrides` to reproduce the published example.
+    // The same class of discrepancy appears in Example Problem 4: its
+    // published v_c,7 = 1,827 and v_c,10 = 1,832 drop the major-street
+    // right-turn term (0.5 v_6 for movement 7, 0.5 v_3 for movement 10) in
+    // Stage II, where the Exhibit 20-16 factors used here give 1,874 and
+    // 1,879; case3.json overrides the totals to match.
     pub fn step3_conflicting_flows(&mut self) {
         let d = &self.demand;
         let (v13, v14, v15, v16) = (d.v13, d.v14, d.v15, d.v16);
@@ -938,10 +1042,31 @@ impl Twsc {
     // Step 5: potential capacities
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// HCM Chapter 20, Step 5a (Equation 20-18): potential capacity of every
-    /// Rank 2–4 movement, plus Stage I/II potential capacities for two-stage
-    /// movements.
+    /// HCM Chapter 20, Step 5 (Equation 20-18, or Equations 20-19 through
+    /// 20-21 when [`Twsc::platoon_blockage`] is supplied): potential capacity
+    /// of every Rank 2–4 movement, plus Stage I/II potential capacities for
+    /// two-stage movements.
+    ///
+    /// With no platoon-blockage inputs (Step 5a) each capacity is the plain
+    /// Equation 20-18 gap-acceptance value. With inputs (Step 5b) each
+    /// movement's p_b,x (and, for two-stage movements, its Stage I/II p_b per
+    /// Exhibit 20-19) selects the unblocked-period conflicting flow of
+    /// Equation 20-19 and the platooned capacity of Equations 20-20/20-21. A
+    /// movement whose p_b is `0` falls back to Equation 20-18, so a
+    /// zero-filled [`PlatoonBlockage`] is equivalent to `None`.
     pub fn step5_potential_capacities(&mut self) {
+        let n = self.n_major();
+        let pb = self.platoon_blockage.clone();
+        // Potential capacity of one conflict period: Equation 20-18 when
+        // p_b is absent or zero, otherwise the platooned Step 5b value.
+        let cap = |vc: f64, tc: f64, tf: f64, pbx: Option<f64>| -> f64 {
+            match pbx {
+                Some(pbx) if pbx > 0.0 => {
+                    Self::potential_capacity_upstream_signal(vc, tc, tf, pbx, n)
+                }
+                _ => potential_capacity(vc, tc, tf),
+            }
+        };
         for mv in ALL_MOVEMENTS {
             if matches!(mv, Mv::M2 | Mv::M3 | Mv::M5 | Mv::M6) {
                 continue;
@@ -953,17 +1078,19 @@ impl Twsc {
                 _ => continue,
             };
             let tc = r.critical_headway.unwrap_or(0.0);
-            let cp = potential_capacity(vc, tc, tf);
+            let pbx = pb.as_ref().and_then(|p| p.total(mv));
+            let cp = cap(vc, tc, tf, pbx);
             let two_stage = self.is_two_stage(mv);
             let s = if two_stage {
                 let s1 = self.m(mv).conflicting_flow_stage1.unwrap_or(0.0);
                 let s2 = self.m(mv).conflicting_flow_stage2.unwrap_or(0.0);
                 let tc1 = self.m(mv).critical_headway_stage1.unwrap_or(tc);
                 let tc2 = self.m(mv).critical_headway_stage2.unwrap_or(tc);
-                Some((
-                    potential_capacity(s1, tc1, tf),
-                    potential_capacity(s2, tc2, tf),
-                ))
+                let (pb1, pb2) = match pb.as_ref().and_then(|p| p.stages(mv)) {
+                    Some((p1, p2)) => (Some(p1), Some(p2)),
+                    None => (None, None),
+                };
+                Some((cap(s1, tc1, tf, pb1), cap(s2, tc2, tf, pb2)))
             } else {
                 None
             };
