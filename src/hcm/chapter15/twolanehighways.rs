@@ -537,7 +537,7 @@ impl TwoLaneHighways {
     /// * `segments` - Vector of highway segments (must be contiguous and in order)
     /// * `lane_width` - Lane width in feet (default: 12 ft if None)
     /// * `shoulder_width` - Paved shoulder width in feet (default: 6 ft if None)
-    /// * `apd` - Access point density in points/mile (default: 0 if None)
+    /// * `apd` - Access point density in points/mile (defaults to 5.0 if None)
     /// * `pmhvfl` - Proportion of heavy vehicles in faster lane for PL segments
     /// * `l_de` - Effective distance from passing lane (computed if None)
     ///
@@ -747,7 +747,7 @@ impl TwoLaneHighways {
     /// - Upgrades and downgrades have different classification thresholds
     /// - If the computed class differs from stored value, it updates and re-runs Step 1
     pub fn determine_vertical_alignment(&mut self, seg_num: usize) -> i32 {
-        let mut seg_length = self.segments[seg_num].get_length();
+        let seg_length = self.segments[seg_num].get_length();
         let seg_grade = self.segments[seg_num].get_grade();
 
         let ver_align: i32;
@@ -796,6 +796,17 @@ impl TwoLaneHighways {
                     ver_align = 1
                 } else if seg_grade <= 4.0 {
                     ver_align = 2
+                } else if seg_grade <= 5.0 {
+                    ver_align = 3
+                } else if seg_grade <= 6.0 {
+                    ver_align = 4
+                } else {
+                    ver_align = 5
+                };
+            } else if seg_length > 0.5 && seg_length <= 0.6 {
+                // HCM Exhibit 15-11 row >0.5-0.6 mi (upgrades)
+                if seg_grade <= 2.0 {
+                    ver_align = 1
                 } else if seg_grade <= 3.0 {
                     ver_align = 2
                 } else if seg_grade <= 5.0 {
@@ -817,7 +828,9 @@ impl TwoLaneHighways {
                 } else {
                     ver_align = 5
                 };
-            } else if seg_length > 0.8 && seg_length <= 1.1 {
+            } else if seg_length > 0.7 && seg_length <= 1.1 {
+                // HCM Exhibit 15-11 rows >0.7-0.8 through >1.0-1.1 mi share these
+                // upgrade thresholds; the previous chain skipped >0.7-0.8 entirely.
                 if seg_grade <= 2.0 {
                     ver_align = 1
                 } else if seg_grade <= 3.0 {
@@ -841,7 +854,11 @@ impl TwoLaneHighways {
                 };
             }
         } else {
-            seg_length = -1.0 * seg_length;
+            // Downgrades: Exhibit 15-11 parenthesized values, looked up with the
+            // grade magnitude. (Previously the LENGTH was negated instead, which
+            // sent every downgrade into the first length bucket with an
+            // always-true grade test, so all downgrades returned class 1.)
+            let seg_grade = -1.0 * seg_grade;
             if seg_length <= 0.1 {
                 if seg_grade <= 8.0 {
                     ver_align = 1
@@ -2383,37 +2400,35 @@ impl BicycleLOS {
         self.hourly_volume / (self.phf * self.num_lanes as f64)
     }
 
-    /// Calculate effective width as a function of traffic volume (Equations 15-44, 15-45)
+    /// Calculate effective width as a function of traffic volume (Equations 15-44, 15-45).
+    /// HCM defines V here as the hourly directional volume per lane (veh/h).
     fn calculate_wv(&self) -> f64 {
-        if self.hourly_volume > 160.0 {
-            // Equation 15-44
-            self.lane_width
-        } else {
-            // Equation 15-45
+        let v = self.hourly_volume / self.num_lanes as f64;
+        if v > 160.0 {
+            // HCM Equation 15-44: Wv = W_OL + Ws
             self.lane_width + self.shoulder_width
+        } else {
+            // HCM Equation 15-45: Wv = (W_OL + Ws) * (2 - 0.005 * V)
+            (self.lane_width + self.shoulder_width) * (2.0 - 0.005 * v)
         }
     }
 
     /// Step 3: Calculate the effective width (Equations 15-41 to 15-45)
     pub fn calculate_effective_width(&self) -> f64 {
         let ws = self.shoulder_width;
-        let wol = self.lane_width;
         let wv = self.calculate_wv();
         let pct_ohp = self.pct_on_highway_parking;
 
-        let we = if ws >= 8.0 {
-            // Equation 15-41: Ws >= 8 ft
-            wol + ws - 20.0 * pct_ohp
+        if ws >= 8.0 {
+            // HCM Equation 15-41: Ws >= 8 ft
+            wv + ws - pct_ohp * 10.0
         } else if ws >= 4.0 {
-            // Equation 15-42: 4 ft <= Ws < 8 ft
-            wol + ws - 20.0 * pct_ohp
+            // HCM Equation 15-42: 4 ft <= Ws < 8 ft
+            wv + ws - 2.0 * (pct_ohp * (2.0 + ws))
         } else {
-            // Equation 15-43: Ws < 4 ft
-            wv + ws * (1.0 - 2.0 * pct_ohp)
-        };
-
-        // Ensure effective width is positive
-        we.max(1.0)
+            // HCM Equation 15-43: Ws < 4 ft
+            wv - pct_ohp * (2.0 + ws)
+        }
     }
 
     /// Step 4: Calculate the effective speed factor (Equation 15-46)
@@ -2423,14 +2438,14 @@ impl BicycleLOS {
     }
 
     /// Step 5: Calculate the BLOS score (Equation 15-47)
-    /// BLOS = 0.507 * ln(v_OL) + 0.199 * St * (1 + 10.38 * HV)^2 + 7.066 * (1/P)^2 - 0.005 * We^2 + 0.760
+    /// BLOS = 0.507 * ln(v_OL) + 0.1999 * St * (1 + 10.38 * HV)^2 + 7.066 * (1/P)^2 - 0.005 * We^2 + 0.760
     pub fn calculate_blos_score(&self) -> f64 {
         let v_ol = self.calculate_flow_rate_outside_lane();
         let st = self.calculate_effective_speed_factor();
         let we = self.calculate_effective_width();
         let p = self.pavement_condition;
 
-        // For low volumes (V < 200 veh/h), HV should be limited to max 0.5
+        // HCM Eq 15-47 note: if V < 200 veh/h, HV is limited to a maximum of 0.5
         let hv = if self.hourly_volume < 200.0 {
             self.heavy_vehicle_pct.min(0.5)
         } else {
@@ -2440,9 +2455,9 @@ impl BicycleLOS {
         // Handle edge case where v_OL is very small or zero
         let ln_v_ol = if v_ol > 0.0 { f64::ln(v_ol) } else { 0.0 };
 
-        // Equation 15-47
+        // HCM Equation 15-47
         0.507 * ln_v_ol
-            + 0.199 * st * (1.0 + 10.38 * hv).powi(2)
+            + 0.1999 * st * (1.0 + 10.38 * hv).powi(2)
             + 7.066 * (1.0 / p).powi(2)
             - 0.005 * we.powi(2)
             + 0.760
