@@ -54,7 +54,14 @@ published QAP interval detail; SB-left back-of-queue needs milestone-2 ADP proce
 2. U-turn critical/follow-up headways on two-lane majors are "NA" in Exhibit 20-17/20-18; four-lane
    values used as fallback if coded. `twsc.rs:804,853`.
 3. **Step 5b upstream-signal platoon blockage (Eqs 20-19..20-21, Exhibit 20-19) wired** via the
-   `platoon_blockage` input (analyst-supplied p_b,x; the Chapter 30 §3 derivation is deferred).
+   `platoon_blockage` input (analyst-supplied p_b,x). The Chapter 30 §3 derivation of p_b,x is now
+   also wired (`feat/hcm-ch20-computed-pb`): `src/hcm/chapter20/computed_pb.rs` builds p_b from
+   `upstream_signals` descriptors using the Ch 18/30 dispersion primitives and the Eq 30-13
+   blocked-period-vs-q_c logic; an explicit `platoon_blockage` takes precedence. No published
+   end-to-end p_b regression exists (the 0.170/0.260 of Exhibit 32-12 are Ch 30 EP1 engine output,
+   requiring the full Ch 19 coordinated engine + §2 O-D), so it is validated by mechanism tests
+   (square-wave hand check, dispersion monotonicity, directional mapping, both-direction union,
+   analyst precedence, computed-vs-manual `PlatoonBlockage` equivalence).
    Validated against Ch 32 TWSC Example Problem 4 (`case3.json`, `test_twsc_example_problem_4_upstream_signals`):
    conflicting flows, v_c,u,x, and platooned c_p (750/758/859/852/73/72) reproduce exactly. Two
    findings:
@@ -292,7 +299,10 @@ as `Provided` junction steps.
   (see "Chapter 18/30 computed procedures"); still deferred: the §2 O-D/volume-balance/spillback
   adjustment and the coordinated-actuated convergence loop that would drive §3 discharge profiles
   from Ch 19 timing (so EP1 computed P = 0.493 from the raw signal remains deferred).
-- Ch 20: Ch 30 upstream-signal platoon inputs (p_b,x supplied by caller); pedestrian-mode method.
+- Ch 20: Ch 30 §3 upstream-signal platoon inputs p_b,x now computed from `upstream_signals`
+  descriptors (or supplied directly by the caller); the end-to-end p_b regression against Ch 30 EP1
+  / Exhibit 32-12 stays deferred behind the Ch 19 coordinated engine + §2 O-D. Pedestrian-mode
+  method still deferred.
 - Ch 23: signalized RCUT/MUT sub-junction delays enter as provided inputs (Ch 34 worksheet
   convention); full Ch 19/18 recomputation per sub-junction deferred. Part C itself is implemented
   (feat/hcm-ch23-alternative-intersections).
