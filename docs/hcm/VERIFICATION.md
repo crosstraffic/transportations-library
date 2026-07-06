@@ -261,15 +261,19 @@ as `Provided` junction steps.
    procedure (`actuated.rs`, Eqs 31-1..31-45) is driven from the EP1 controller settings holding the
    Steps 1–5 lane-flow / permitted-green operating point fixed at the published values. It reproduces
    the equivalent maximum allowable headway (3.4 EB/WB, 3.1 minor street) and the barrier balance
-   exactly, and the minor-street through phases within ~4 s (Ph8 NB-T ≈ 51–54 vs 54.0; Ph4 SB-T ≈ 54
-   vs 57.6; SB-T g_e ≈ 9.5 vs 7.8). Two residuals remain, both documented in the module and test:
-   (a) the major-street phases 2/6 under-extend (~23 vs 34 s) because the HCM computational engine's
+   exactly. Following the Eq 31-9 denominator correction (the missing cycle-length factor `C` in the
+   queue-service-time second term, fixed on `fix/hcm-equation-sweep`), the minor-street through phases
+   now match the published durations (Ph8 NB-T 54.00 vs 54.0; Ph4 SB-T 57.79 vs 57.6; SB-T g_e 9.02 vs
+   7.8) and the estimated cycle is 100.0 s, within ~2 s of 101.8 (before the fix these were 51.3 / 53.9
+   / g_e 9.5 and cycle ~89). Two residuals remain, both documented in the module and test:
+   (a) the major-street phases 2/6 under-extend (~28 vs 34 s) because the HCM computational engine's
    combined-flow max-out model holds them at max green while the transcribed green-extension model
    (Eqs 31-29/31-30) gaps them out; (b) the leading protected left phases 3/7 are charged the full
    left-turn demand for queue service rather than only the demand not served in the following
-   permitted period. The estimated cycle is ~13 s short of 101.8 s. Closing these requires embedding
-   the full Steps 1–5 recomputation and the engine's combined-flow extension calibration inside every
-   actuated iteration (Section 7 computational-engine detail). **VERIFY-HCM.**
+   permitted period, so they over-serve (Ph3 14.30 vs 10.2; Ph7 18.09 vs 13.8) — a residual the Eq 31-9
+   correction slightly enlarges. Closing these requires embedding the full Steps 1–5 recomputation and
+   the engine's combined-flow extension calibration inside every actuated iteration (Section 7
+   computational-engine detail). **VERIFY-HCM.**
 2. **Left-turn ADP first-term partial-stop offset.** The first-term back of queue for permitted /
    protected-permitted left-turn lane groups (Eq 31-141) is computed as the largest per-busy-period
    arrival count less `q·d_a/2` (the fully-stopped departure dashed line of Section 4, Step 3 leads
