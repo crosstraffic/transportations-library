@@ -662,3 +662,249 @@ fn test_serde_roundtrip() {
         1e-9
     ));
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Computed proportion of time blocked (HCM Chapter 30, Section 3)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+use crate::hcm::chapter18::platoon_dispersion::MovementDischarge;
+use super::computed_pb::{
+    blocked_period_steps, proportion_time_blocked_from_profile, UpstreamSignal, UpstreamSignals,
+};
+
+/// A single upstream signal feeding one major-street through-lane group with a
+/// compact platoon: a `green_duration_s`-long green whose queue clears over
+/// the whole green at the saturation rate, so the discharge profile is a
+/// rectangular platoon of `green_duration_s` steps.
+fn platoon_signal(distance_ft: f64, green_start_s: f64, green_duration_s: f64) -> UpstreamSignal {
+    let sat = 1_800.0; // veh/h -> 0.5 veh/step at d_t = 1 s
+    // The queue service time spans the whole green, so every green step
+    // discharges at the saturation rate (a flat rectangular platoon) and the
+    // discharge volume only fixes the — here empty — post-queue tail.
+    UpstreamSignal {
+        distance_ft,
+        progression_speed_mph: 30.0,
+        uniform_volume_veh_h: 0.0,
+        discharges: vec![MovementDischarge {
+            discharge_volume_veh_h: 400.0,
+            saturation_flow_veh_h: sat,
+            green_start_s,
+            green_duration_s,
+            queue_service_time_s: green_duration_s,
+        }],
+    }
+}
+
+/// A two-lane major TWSC intersection used only for its critical-headway
+/// values (Equation 20-16); demand is irrelevant to p_b.
+fn two_lane_twsc() -> Twsc {
+    let geometry = TwscGeometry {
+        major_lanes_per_direction: 2,
+        ..Default::default()
+    };
+    Twsc::new(TwscDemand::default(), geometry)
+}
+
+/// HCM Equation 30-13 on a hand-constructed square-wave arrival profile: a
+/// 20-step platoon at 0.5 veh/step inside a 100-step cycle, with a threshold
+/// (q_c = 1,080 veh/h -> 0.30 veh/step at d_t = 1 s) that exactly 20 steps
+/// exceed, so p_b = 20 (1) / 100 = 0.20.
+#[test]
+fn test_proportion_time_blocked_square_wave() {
+    let mut profile = vec![0.10; 100];
+    for step in profile.iter_mut().take(35).skip(15) {
+        *step = 0.50;
+    }
+    let q_c = 1_080.0; // threshold 0.30 veh/step at d_t = 1 s
+    assert!(approx(blocked_period_steps(&profile, q_c, 1.0), 20.0, 1e-12));
+    let pb = proportion_time_blocked_from_profile(&profile, q_c, 1.0, 100.0);
+    assert!(approx(pb, 0.20, 1e-12), "p_b = {pb}, expected 0.20");
+    // A threshold above the platoon peak blocks nothing.
+    assert!(approx(
+        proportion_time_blocked_from_profile(&profile, 2_000.0, 1.0, 100.0),
+        0.0,
+        1e-12
+    ));
+}
+
+/// Directional mapping (HCM Chapter 30, Section 3): with only the eastbound
+/// upstream signal present, the eastbound-fed movements (4 = WB left, 9 = NB
+/// right) can be blocked while the westbound-fed movements (1 = EB left,
+/// 12 = SB right) are not.
+#[test]
+fn test_computed_pb_direction_mapping() {
+    let twsc = two_lane_twsc();
+    let signals = UpstreamSignals {
+        cycle_s: 100.0,
+        eastbound: Some(platoon_signal(150.0, 10.0, 20.0)),
+        westbound: None,
+        time_step_s: 1.0,
+    };
+    let pb = signals.compute_platoon_blockage(&twsc);
+    assert!(pb.pb4 > 0.0, "EB platoon should block movement 4, got {}", pb.pb4);
+    assert!(pb.pb9 > 0.0, "EB platoon should block movement 9, got {}", pb.pb9);
+    assert_eq!(pb.pb1, 0.0, "no WB signal -> movement 1 unblocked");
+    assert_eq!(pb.pb12, 0.0, "no WB signal -> movement 12 unblocked");
+}
+
+/// Dispersion-flattening monotonicity (HCM Equations 30-9 through 30-12): as
+/// the upstream signal moves farther away, the platoon disperses, its peak
+/// arrival rate drops, and the proportion of time blocked is non-increasing.
+#[test]
+fn test_computed_pb_decreases_with_distance() {
+    let twsc = two_lane_twsc();
+    let pb_at = |distance_ft: f64| {
+        UpstreamSignals {
+            cycle_s: 100.0,
+            eastbound: Some(platoon_signal(distance_ft, 10.0, 20.0)),
+            westbound: None,
+            time_step_s: 1.0,
+        }
+        .compute_platoon_blockage(&twsc)
+        .pb4
+    };
+    let near = pb_at(100.0);
+    let mid = pb_at(1_000.0);
+    let far = pb_at(4_000.0);
+    assert!(near > 0.0, "a nearby platoon should block movement 4");
+    assert!(mid <= near + 1e-12, "p_b should not grow with distance: {mid} > {near}");
+    assert!(far <= mid + 1e-12, "p_b should not grow with distance: {far} > {mid}");
+    assert!(far < near, "dispersion should reduce p_b over distance: {far} !< {near}");
+}
+
+/// The minor-street left/through movements are blocked when a platoon is
+/// present from either direction (HCM Chapter 30, Section 3), so their p_b
+/// with both upstream signals is at least the one-direction value.
+#[test]
+fn test_computed_pb_union_of_both_directions() {
+    let twsc = two_lane_twsc();
+    // Offset the two platoons so their blocked steps do not fully overlap.
+    let eb_only = UpstreamSignals {
+        cycle_s: 100.0,
+        eastbound: Some(platoon_signal(150.0, 10.0, 20.0)),
+        westbound: None,
+        time_step_s: 1.0,
+    };
+    let both = UpstreamSignals {
+        cycle_s: 100.0,
+        eastbound: Some(platoon_signal(150.0, 10.0, 20.0)),
+        westbound: Some(platoon_signal(150.0, 55.0, 20.0)),
+        time_step_s: 1.0,
+    };
+    let pb7_eb = eb_only.compute_platoon_blockage(&twsc).pb7;
+    let pb7_both = both.compute_platoon_blockage(&twsc).pb7;
+    assert!(pb7_eb > 0.0);
+    assert!(
+        pb7_both > pb7_eb,
+        "union over both directions ({pb7_both}) should exceed one direction ({pb7_eb})"
+    );
+}
+
+/// Analyst-supplied `platoon_blockage` takes precedence over `upstream_signals`
+/// (the analyst-input path is unchanged).
+#[test]
+fn test_analyst_pb_takes_precedence_over_upstream() {
+    let analyst = PlatoonBlockage {
+        pb1: 0.17,
+        pb4: 0.17,
+        ..Default::default()
+    };
+    let mut t = example_problem_3();
+    t.platoon_blockage = Some(analyst.clone());
+    t.upstream_signals = Some(UpstreamSignals {
+        cycle_s: 100.0,
+        eastbound: Some(platoon_signal(150.0, 10.0, 20.0)),
+        westbound: Some(platoon_signal(150.0, 10.0, 20.0)),
+        time_step_s: 1.0,
+    });
+    t.analyze();
+    assert_eq!(
+        t.platoon_blockage.as_ref().unwrap(),
+        &analyst,
+        "explicit platoon_blockage must not be overwritten by upstream_signals"
+    );
+}
+
+/// Wiring: running `analyze` with `upstream_signals` produces the same
+/// end-to-end results as manually setting the computed `PlatoonBlockage` and
+/// running the standard Step 5b path (no separate code path).
+#[test]
+fn test_computed_pb_matches_manual_platoon_blockage() {
+    let signals = UpstreamSignals {
+        cycle_s: 100.0,
+        eastbound: Some(platoon_signal(150.0, 10.0, 20.0)),
+        westbound: Some(platoon_signal(150.0, 40.0, 20.0)),
+        time_step_s: 1.0,
+    };
+
+    let mut computed = example_problem_3();
+    computed.upstream_signals = Some(signals.clone());
+    let derived = signals.compute_platoon_blockage(&computed);
+    computed.analyze();
+
+    let mut manual = example_problem_3();
+    manual.platoon_blockage = Some(derived);
+    manual.analyze();
+
+    for mv in ALL_MOVEMENTS {
+        assert_eq!(
+            computed.movements[mv.idx()].potential_capacity,
+            manual.movements[mv.idx()].potential_capacity,
+            "potential capacity differs for {mv:?}"
+        );
+        assert_eq!(
+            computed.movements[mv.idx()].movement_capacity,
+            manual.movements[mv.idx()].movement_capacity,
+            "movement capacity differs for {mv:?}"
+        );
+    }
+    assert_eq!(computed.intersection_delay, manual.intersection_delay);
+}
+
+/// A zero-platoon set of upstream signals (empty discharges) leaves the
+/// pipeline bit-identical to a no-platooning run: the computed p_b is all
+/// zeros, so Step 5 reduces to Equation 20-18.
+#[test]
+fn test_computed_pb_empty_signals_equivalent_to_off() {
+    let mut a = example_problem_3();
+    let mut b = example_problem_3();
+    b.upstream_signals = Some(UpstreamSignals {
+        cycle_s: 100.0,
+        eastbound: Some(UpstreamSignal {
+            distance_ft: 200.0,
+            progression_speed_mph: 30.0,
+            uniform_volume_veh_h: 0.0,
+            discharges: Vec::new(),
+        }),
+        westbound: None,
+        time_step_s: 1.0,
+    });
+    a.analyze();
+    b.analyze();
+    for mv in ALL_MOVEMENTS {
+        assert_eq!(
+            a.movements[mv.idx()].potential_capacity,
+            b.movements[mv.idx()].potential_capacity,
+            "potential capacity differs for {mv:?}"
+        );
+    }
+    assert_eq!(a.intersection_delay, b.intersection_delay);
+}
+
+/// Serde round-trip through the full `Twsc` JSON with `upstream_signals`.
+#[test]
+fn test_upstream_signals_serde_roundtrip() {
+    let mut t = two_lane_twsc();
+    t.upstream_signals = Some(UpstreamSignals {
+        cycle_s: 100.0,
+        eastbound: Some(platoon_signal(150.0, 10.0, 20.0)),
+        westbound: None,
+        time_step_s: 1.0,
+    });
+    let json = t.to_json().unwrap();
+    let back = Twsc::from_json(&json).unwrap();
+    let s = back.upstream_signals.expect("upstream_signals survives round-trip");
+    assert_eq!(s.cycle_s, 100.0);
+    assert!(s.eastbound.is_some());
+    assert!(s.westbound.is_none());
+}

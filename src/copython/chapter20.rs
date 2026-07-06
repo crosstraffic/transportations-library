@@ -54,9 +54,12 @@ impl Twsc {
     /// Args:
     ///     config_json: JSON with `demand`, `geometry`, optional `phf`,
     ///         `analysis_period_h` (default 0.25), `heavy_vehicle_pct`,
-    ///         `conflicting_flow_overrides`, and `platoon_blockage` (the
-    ///         Step 5b proportion-of-time-blocked inputs p_b,x for coordinated
-    ///         upstream signals, HCM Equations 20-19 through 20-21).
+    ///         `conflicting_flow_overrides`, `platoon_blockage` (the Step 5b
+    ///         proportion-of-time-blocked inputs p_b,x for coordinated upstream
+    ///         signals, HCM Equations 20-19 through 20-21), and
+    ///         `upstream_signals` (coordinated upstream-signal descriptors from
+    ///         which p_b,x is computed by the HCM Chapter 30, Section 3
+    ///         procedure when no explicit `platoon_blockage` is given).
     #[new]
     pub fn new(config_json: &str) -> PyResult<Self> {
         let inner = LibTwsc::from_json(config_json)
@@ -133,12 +136,43 @@ impl Twsc {
 
     /// The upstream-signal proportion-of-time-blocked inputs as
     /// `(pb1, pb4, pb7, pb8, pb9, pb10, pb11, pb12)`, or `None` if unset.
+    /// After `analyze()` with `upstream_signals` supplied, this returns the
+    /// values computed by the HCM Chapter 30, Section 3 procedure.
     #[getter]
     pub fn get_platoon_blockage(&self) -> Option<(f64, f64, f64, f64, f64, f64, f64, f64)> {
         self.inner
             .platoon_blockage
             .as_ref()
             .map(|p| (p.pb1, p.pb4, p.pb7, p.pb8, p.pb9, p.pb10, p.pb11, p.pb12))
+    }
+
+    /// Set the coordinated upstream-signal descriptors from a JSON object, so
+    /// the Step 5b proportions p_b,x are derived by the HCM Chapter 30,
+    /// Section 3 procedure (Equation 30-13) during `analyze()` instead of
+    /// being supplied directly. The JSON matches the `UpstreamSignals` schema:
+    /// `cycle_s`, optional `eastbound`/`westbound` signal objects (each with
+    /// `distance_ft`, `progression_speed_mph`, `discharges` [a list of
+    /// movement discharge profiles], and optional `uniform_volume_veh_h`), and
+    /// optional `time_step_s` (default 1.0). An explicit `platoon_blockage`
+    /// always takes precedence over the computed values.
+    pub fn set_upstream_signals(&mut self, config_json: &str) -> PyResult<()> {
+        let signals = serde_json::from_str(config_json)
+            .map_err(|e| PyValueError::new_err(format!("invalid upstream_signals JSON: {e}")))?;
+        self.inner.upstream_signals = Some(signals);
+        Ok(())
+    }
+
+    /// Clear any coordinated upstream-signal descriptors.
+    pub fn clear_upstream_signals(&mut self) {
+        self.inner.upstream_signals = None;
+    }
+
+    /// Whether coordinated upstream-signal descriptors are set (the computed
+    /// Chapter 30, Section 3 p_b path is active when no explicit
+    /// `platoon_blockage` is supplied).
+    #[getter]
+    pub fn get_has_upstream_signals(&self) -> bool {
+        self.inner.upstream_signals.is_some()
     }
 
     /// Set the major-street left-turn lane configuration on an approach

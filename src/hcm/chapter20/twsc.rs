@@ -589,6 +589,13 @@ pub struct Twsc {
     /// `None` (the default) selects the no-platooning Equation 20-18.
     #[serde(default)]
     pub platoon_blockage: Option<PlatoonBlockage>,
+    /// Optional coordinated upstream-signal descriptors. When present and
+    /// `platoon_blockage` is `None`, [`Twsc::analyze`] derives the Step 5b
+    /// proportions p_b,x from these via the HCM Chapter 30, Section 3
+    /// procedure ([`super::computed_pb`], Equation 30-13). An explicit
+    /// `platoon_blockage` always takes precedence.
+    #[serde(default)]
+    pub upstream_signals: Option<super::computed_pb::UpstreamSignals>,
 
     // ── Computed ────────────────────────────────────────────────────────────
     /// Per-movement results, indexed by [`Mv::idx`].
@@ -637,6 +644,7 @@ impl Twsc {
             heavy_vehicle_pct: 0.0,
             conflicting_flow_overrides: Vec::new(),
             platoon_blockage: None,
+            upstream_signals: None,
             movements: (0..14).map(|_| TwscMovementResult::default()).collect(),
             lanes_nb: Vec::new(),
             lanes_sb: Vec::new(),
@@ -1886,6 +1894,18 @@ impl Twsc {
     pub fn analyze(&mut self) {
         if self.movements.len() != 14 {
             self.movements = (0..14).map(|_| TwscMovementResult::default()).collect();
+        }
+        // Step 5b input: derive the proportion-of-time-blocked p_b,x from
+        // coordinated upstream signals (HCM Chapter 30, Section 3) when they
+        // are supplied and no explicit p_b was given. An analyst-supplied
+        // `platoon_blockage` always takes precedence, so the analyst-input and
+        // no-platooning paths are unaffected. Critical headways (Equation
+        // 20-16) depend only on geometry and heavy-vehicle percentage, so this
+        // can run before Step 4.
+        if self.platoon_blockage.is_none() {
+            if let Some(signals) = self.upstream_signals.clone() {
+                self.platoon_blockage = Some(signals.compute_platoon_blockage(self));
+            }
         }
         self.step1_2_demand_flow_rates();
         self.step3_conflicting_flows();
