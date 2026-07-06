@@ -10,7 +10,7 @@
 
 use std::fs;
 
-use transportations_library::hcm::chapter20::twsc::{Mv, Twsc};
+use transportations_library::hcm::twsc::twsc::{Mv, Twsc};
 
 const DELAY_TOL: f64 = 0.5;
 const CAPACITY_TOL: f64 = 5.0;

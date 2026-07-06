@@ -12,7 +12,7 @@
 use assert_approx_eq::assert_approx_eq;
 use serde::Deserialize;
 
-use transportations_library::hcm::chapter24::offstreet_pedbike::{
+use transportations_library::hcm::offstreet_pedbike::offstreet_pedbike::{
     ExclusivePedestrianFacility, OffStreetBicycleFacility, PathUserMode, SharedUsePathPedestrian,
 };
 use transportations_library::hcm::common::LevelOfService;

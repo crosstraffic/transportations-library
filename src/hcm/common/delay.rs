@@ -59,7 +59,7 @@ pub fn flow_ratio(x: f64, g_over_c: f64) -> f64 {
 /// only place PF is used) tends to 0 as `g/C -> 1` regardless of PF, so PF's
 /// value cannot affect the resulting delay. This function returns `1.0`
 /// (no adjustment) for `g_over_c >= 1.0` rather than propagate `NaN`/`inf`,
-/// matching the guard already used at the chapter23 ramp-terminal call site
+/// matching the guard already used at the ramp_terminals ramp-terminal call site
 /// (`if g_over_c < 1.0 { progression_factor(..) } else { 1.0 }`), now made
 /// intrinsic to the function so every caller gets the same behavior.
 pub fn progression_factor(p: f64, g_over_c: f64, x: f64) -> f64 {
@@ -463,7 +463,7 @@ mod tests {
     fn test_progression_factor_g_over_c_one_returns_one() {
         // g/C = 1.0: term1 and term3 would divide by 0. Guard returns 1.0
         // (no adjustment), matching the pre-existing external guard in
-        // chapter23 ramp_terminals.rs.
+        // ramp_terminals/ramp_terminals.rs.
         assert_eq!(progression_factor(0.4, 1.0, 0.8), 1.0);
         assert_eq!(progression_factor(0.4, 1.0, 1.5), 1.0);
         // g/C slightly above 1.0 (invalid input, defensive)
