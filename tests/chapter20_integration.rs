@@ -1,9 +1,12 @@
 //! Full-pipeline integration tests for HCM Chapter 20 (TWSC intersections)
-//! against the published answers of HCM Chapter 32, TWSC Example Problems 1
-//! and 3.
+//! against the published answers of HCM Chapter 32, TWSC Example Problems 1,
+//! 3, and 4.
 //!
 //! Tolerances: LOS exact; control delays within +-0.5 s/veh; capacities
-//! within +-5 veh/h of the published (rounded) values.
+//! within +-5 veh/h of the published (rounded) values. Example Problem 4
+//! reproduces the shared-major-left case; the two oversaturated minor-street
+//! left-turn delays use a wider, documented tolerance because Equation 20-61
+//! is steep near v/c = 1.7 and the book rounds c_m to an integer.
 
 use std::fs;
 
@@ -147,15 +150,23 @@ fn test_twsc_example_problem_3_full_pipeline() {
 ///   d_I = 34.1 s;
 /// * queues Q95: 0.3, 0.3, 0.4, 0.4, 7.9, 7.9 veh.
 ///
-/// Two published values are reproduced only in regime, not exactly, because
-/// Example Problem 4's major-street left turns share the through lane and the
-/// published answer uses the shared-major-lane queue-free probability
-/// p*_0 = 0.856 (Equations 20-33/34, Step 7d), while this library still uses
-/// the exclusive-lane p_0 = 0.900 (no geometry input marks a shared/short
-/// major-left pocket): c_m,7 = c_m,10 computes ~52 (published 47), and the
-/// derived NB/SB approach and intersection delays are lower. These, plus the
-/// unfolded Step 11b Rank 1 delay on the EB/WB approaches, are asserted in
-/// regime with the published deltas recorded inline.
+/// The major-street left turns share the through lane (`major_left_eb` =
+/// `major_left_wb` = `Shared`, n_L = 0), so Step 7d substitutes the
+/// shared-major-lane queue-free probability p*_0,1+1U = p*_0,4+4U = 0.856
+/// (Equations 20-33/20-34; x_2+3 = 0.304, x_5+6 = 0.307) for the exclusive-lane
+/// p_0 = 0.900 in the Rank 4 impedance products, yielding c_m,7 = c_m,10 = 47
+/// veh/h. Step 11b then charges the Rank 1 through/right movements a shared-lane
+/// delay d_2+3 = d_5+6 = 1.3 s (Equations 20-62/20-63), which enters the EB/WB
+/// approach delay in Step 12.
+///
+/// The two oversaturated minor-street left-turn delays (d_7, d_10, published
+/// 529 s) and the minor-approach delays (d_A,NB, d_A,SB, published 241 s) use a
+/// wider, documented tolerance: Equation 20-61 has slope |dd/dc| ~ 18.6 s per
+/// veh/h near v/c = 1.7, and the book rounds c_m,7 = c_m,10 to the integer 47
+/// while this library carries the full-precision 47.1 (NB) / 46.6 (SB), so the
+/// per-movement delays split around 529 s. Every other published value is
+/// asserted at +-1 s / +-1 veh/h, and d_I lands at 34.1 s because the NB
+/// under-shoot and SB over-shoot cancel.
 #[test]
 fn test_twsc_example_problem_4_upstream_signals() {
     let mut twsc = load("case3");
@@ -178,22 +189,21 @@ fn test_twsc_example_problem_4_upstream_signals() {
     assert_close(m(Mv::M7).potential_capacity.unwrap(), 73.0, CAPACITY_TOL, "c_p,7");
     assert_close(m(Mv::M10).potential_capacity.unwrap(), 72.0, CAPACITY_TOL, "c_p,10");
 
-    // Movement capacities. 1/4/9/12 match published; 7/10 land in the same
-    // oversaturated LOS-F regime (~52 vs published 47, shared-lane p* delta).
+    // Movement capacities. 1/4/9/12 match published; 7/10 reproduce the
+    // published 47 veh/h via the shared-major-lane p*_0 = 0.856 substitution
+    // (Step 7d, Equations 20-33/20-34).
     assert_close(m(Mv::M1).movement_capacity.unwrap(), 750.0, CAPACITY_TOL, "c_m,1");
     assert_close(m(Mv::M4).movement_capacity.unwrap(), 758.0, CAPACITY_TOL, "c_m,4");
     assert_close(m(Mv::M9).movement_capacity.unwrap(), 859.0, CAPACITY_TOL, "c_m,9");
     assert_close(m(Mv::M12).movement_capacity.unwrap(), 852.0, CAPACITY_TOL, "c_m,12");
-    assert!(
-        (45.0..60.0).contains(&m(Mv::M7).movement_capacity.unwrap()),
-        "c_m,7 = {:?} (published 47 with shared-lane p*)",
-        m(Mv::M7).movement_capacity
-    );
-    assert!(
-        (45.0..60.0).contains(&m(Mv::M10).movement_capacity.unwrap()),
-        "c_m,10 = {:?} (published 47 with shared-lane p*)",
-        m(Mv::M10).movement_capacity
-    );
+    assert_close(m(Mv::M7).movement_capacity.unwrap(), 47.0, 1.0, "c_m,7");
+    assert_close(m(Mv::M10).movement_capacity.unwrap(), 47.0, 1.0, "c_m,10");
+
+    // Step 11b Rank 1 delay to the shared-lane major-street through movements
+    // (Equations 20-62/20-63): published d_2+3 = d_5+6 = 1.3 s.
+    let [d23, d56] = twsc.rank1_major_delay.unwrap();
+    assert_close(d23, 1.3, 0.1, "d_2+3 (Rank 1 EB)");
+    assert_close(d56, 1.3, 0.1, "d_5+6 (Rank 1 WB)");
 
     // Delay and LOS (Equation 20-61, Exhibit 20-2). Major-street left turns
     // report at the movement level; minor-street movements report at the
@@ -221,43 +231,28 @@ fn test_twsc_example_problem_4_upstream_signals() {
     assert_close(sb_right.control_delay, 9.8, DELAY_TOL, "d_12");
     assert_eq!(nb_right.los, 'A', "movement 9 LOS");
     assert_eq!(sb_right.los, 'A', "movement 12 LOS");
-    // Oversaturated left turns: published d = 529 s; assert the LOS-F regime
-    // rather than the exact value (Equation 20-61 is highly sensitive near
-    // v/c = 1.5-1.7, and c_m,7 differs from the published 47 by the shared-lane
-    // p* delta noted above, so a wide tolerance is used).
-    assert!(nb_left.control_delay > 350.0, "d_7 = {}", nb_left.control_delay);
-    assert!(sb_left.control_delay > 350.0, "d_10 = {}", sb_left.control_delay);
+    // Oversaturated left turns: published d_7 = d_10 = 529 s (LOS F). Wide
+    // tolerance per the doc comment (Equation 20-61 steep near v/c = 1.7; book
+    // rounds c_m to 47).
+    assert_close(nb_left.control_delay, 529.0, 12.0, "d_7");
+    assert_close(sb_left.control_delay, 529.0, 12.0, "d_10");
     assert_eq!(nb_left.los, 'F', "NB left-turn lane LOS");
     assert_eq!(sb_left.los, 'F', "SB left-turn lane LOS");
 
-    // Approach delays: the minor-street approaches aggregate the LOS-F left
-    // lane and the low-delay right lane. Published d_A,NB = d_A,SB = 241 s at
-    // c_m,7 = 47; with the shared-lane p* delta above (c_m,7 ~ 52) the modeled
-    // left-turn delay is lower, so the approach delay lands near 203 s. Assert
-    // the LOS-F-dominated regime and record the published value.
+    // Approach and intersection delay (Equations 20-64/20-65). The EB/WB
+    // approaches carry the Step 11b Rank 1 delay on movements 2+3 / 5+6.
     let [d_eb, d_wb, d_nb, d_sb] = twsc.approach_delays.unwrap();
-    assert!(d_nb > 180.0, "d_A,NB = {d_nb} (published 241)");
-    assert!(d_sb > 180.0, "d_A,SB = {d_sb} (published 241)");
-    // Published d_A,EB = d_A,WB = 1.9 s include the Step 11b Rank 1
-    // shared-major-lane delay (d_2+3 = d_5+6 = 1.3 s), which this library
-    // exposes via Twsc::rank1_delay but does not yet fold into Step 12
-    // aggregation; without it the major approaches carry only the left-turn
-    // delay, so the computed values are lower.
-    assert!(d_eb < 1.0, "d_A,EB computed {d_eb} (published 1.9 with Rank 1 delay)");
-    assert!(d_wb < 1.0, "d_A,WB computed {d_wb} (published 1.9 with Rank 1 delay)");
-    // Published d_I = 34.1 s combines the Rank 1 shared-major-lane delay on the
-    // EB/WB approaches (unfolded here) with d_A,NB = d_A,SB = 241 s (shortened
-    // here by the shared-lane p* delta). The computed value stays in the same
-    // tens-of-seconds regime dominated by the minor approaches.
-    let d_i = twsc.intersection_delay.unwrap();
-    assert!((24.0..35.0).contains(&d_i), "d_I computed {d_i} (published 34.1)");
+    assert_close(d_eb, 1.9, DELAY_TOL, "d_A,EB");
+    assert_close(d_wb, 1.9, DELAY_TOL, "d_A,WB");
+    // Published d_A,NB = d_A,SB = 241 s; wider tolerance per the doc comment.
+    assert_close(d_nb, 241.0, 5.0, "d_A,NB");
+    assert_close(d_sb, 241.0, 5.0, "d_A,SB");
+    assert_close(twsc.intersection_delay.unwrap(), 34.1, DELAY_TOL, "d_I");
 
     // Step 13 queues (Equation 20-66).
     assert_close(m(Mv::M1).queue_95.unwrap(), 0.3, 0.2, "Q95,1");
     assert_close(nb_right.queue_95, 0.4, 0.2, "Q95,9");
-    // Published Q95,7 = 7.9 veh at c_m,7 = 47; the shared-lane p* delta above
-    // raises c_m,7 to ~52 and shortens the modeled queue accordingly.
-    assert!(nb_left.queue_95 > 5.0, "Q95,7 = {}", nb_left.queue_95);
+    assert_close(nb_left.queue_95, 7.9, 0.5, "Q95,7");
 }
 
 /// Serde round-trip of a fully analyzed fixture (binding-layer contract).

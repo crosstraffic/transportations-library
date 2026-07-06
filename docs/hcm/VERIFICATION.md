@@ -61,12 +61,17 @@ published QAP interval detail; SB-left back-of-queue needs milestone-2 ADP proce
    - **EP4 Stage II conflicting flow drops the major-street right-turn term** (0.5 v_6 for movement 7,
      0.5 v_3 for movement 10), same class as finding 1: published v_c,7 = 1,827, v_c,10 = 1,832 vs.
      Exhibit 20-16 values 1,874/1,879. Fixture uses `conflicting_flow_overrides`.
-   - **EP4 shared major-street left turn not fully modeled.** EP4's major left turns share the through
-     lane, so its published c_m,7 = c_m,10 = 47 uses the shared-lane queue-free probability
-     p*_0 = 0.856 (Eqs 20-33/34). This library has no `TwscGeometry` input marking a shared/short
-     major-left pocket, so it uses the exclusive-lane p_0 = 0.900 and computes ~52 veh/h; the derived
-     d_A,NB/SB = 241 s, d_A,EB/WB = 1.9 s, d_I = 34.1 s are matched in regime only. Same deferred gap
-     as the un-wired `shared_major_lane_capacity`/`rank1_delay` helpers.
+   - **EP4 shared major-street left turn now modeled** (feat/hcm-ch20-shared-major-left). The
+     `MajorLeftLaneConfig` input (`major_left_eb`/`major_left_wb`; case3.json sets both to `Shared`)
+     drives the Step 7d p\*_0,j substitution (Eqs 20-29..20-34, `prob_queue_free_shared_major`) into
+     the Rank 3/4 impedance chain and the Step 11b Rank 1 delay (Eqs 20-62/63, `rank1_delay`) into
+     Step 12. With x_2+3 = 0.304, p\*_0 = 0.856, the test now asserts the published c_m,7 = c_m,10 = 47
+     veh/h, d_2+3 = d_5+6 = 1.3 s, d_A,EB/WB = 1.9 s, and d_I = 34.1 s (all +-0.5 s / +-1 veh/h). The
+     two oversaturated minor-left delays d_7 = d_10 = 529 s and d_A,NB/SB = 241 s use +-12 s / +-5 s
+     tolerances because Eq 20-61 slopes ~18.6 s per veh/h near v/c = 1.7 and the book rounds c_m to 47
+     while this library carries 46.6-47.1 (the over/under-shoots cancel in d_I). **Remaining:** the
+     Step 10c through-lane capacity helper `shared_major_lane_capacity` (Eqs 20-51..20-60, c_SS) is
+     still standalone/unwired — it does not affect the minor-street or intersection-delay outputs.
 
 ## Chapter 24 (feat/hcm-ch24-offstreet-pedbike)
 1. Eq 24-17 modal-pair passing distance ambiguity: implementation reproduces the worked example

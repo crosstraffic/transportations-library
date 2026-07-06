@@ -1,9 +1,34 @@
 //! Python bindings for HCM Chapter 20 (Two-Way STOP-Controlled
 //! Intersections).
 
-use crate::hcm::chapter20::twsc::{Mv, PlatoonBlockage, Twsc as LibTwsc};
+use crate::hcm::chapter20::twsc::{MajorLeftLaneConfig, Mv, PlatoonBlockage, Twsc as LibTwsc};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+
+fn parse_major_left(config: &str, storage_veh: Option<u32>) -> PyResult<MajorLeftLaneConfig> {
+    match config.to_ascii_lowercase().as_str() {
+        "exclusive" => Ok(MajorLeftLaneConfig::Exclusive),
+        "shared" => Ok(MajorLeftLaneConfig::Shared),
+        "short_pocket" | "sharedshortpocket" => Ok(MajorLeftLaneConfig::SharedShortPocket {
+            storage_veh: storage_veh.ok_or_else(|| {
+                PyValueError::new_err("short_pocket major-left config requires storage_veh")
+            })?,
+        }),
+        other => Err(PyValueError::new_err(format!(
+            "unknown major-left lane config: {other} (expected exclusive|shared|short_pocket)"
+        ))),
+    }
+}
+
+fn major_left_to_py(cfg: MajorLeftLaneConfig) -> (String, Option<u32>) {
+    match cfg {
+        MajorLeftLaneConfig::Exclusive => ("exclusive".to_string(), None),
+        MajorLeftLaneConfig::Shared => ("shared".to_string(), None),
+        MajorLeftLaneConfig::SharedShortPocket { storage_veh } => {
+            ("short_pocket".to_string(), Some(storage_veh))
+        }
+    }
+}
 
 /// HCM Chapter 20 TWSC intersection analysis.
 ///
@@ -114,6 +139,56 @@ impl Twsc {
             .platoon_blockage
             .as_ref()
             .map(|p| (p.pb1, p.pb4, p.pb7, p.pb8, p.pb9, p.pb10, p.pb11, p.pb12))
+    }
+
+    /// Set the major-street left-turn lane configuration on an approach
+    /// ("EB" for movements 1+1U, "WB" for 4+4U), HCM Step 7d. `config` is one
+    /// of "exclusive" (default), "shared" (shares the through lane, n_L = 0),
+    /// or "short_pocket" (requires `storage_veh` = n_L). A shared or short
+    /// pocket triggers the p*_0,j substitution of Equations 20-29 through
+    /// 20-34 and the Step 11b Rank 1 delay.
+    #[pyo3(signature = (approach, config, storage_veh=None))]
+    pub fn set_major_left_config(
+        &mut self,
+        approach: &str,
+        config: &str,
+        storage_veh: Option<u32>,
+    ) -> PyResult<()> {
+        let cfg = parse_major_left(config, storage_veh)?;
+        match approach.to_ascii_uppercase().as_str() {
+            "EB" => self.inner.geometry.major_left_eb = cfg,
+            "WB" => self.inner.geometry.major_left_wb = cfg,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown major approach: {other} (expected EB or WB)"
+                )))
+            }
+        }
+        Ok(())
+    }
+
+    /// The major-street left-turn lane configuration of an approach ("EB" or
+    /// "WB") as `(config, storage_veh)`, where `config` is "exclusive",
+    /// "shared", or "short_pocket".
+    pub fn get_major_left_config(&self, approach: &str) -> PyResult<(String, Option<u32>)> {
+        let cfg = match approach.to_ascii_uppercase().as_str() {
+            "EB" => self.inner.geometry.major_left_eb,
+            "WB" => self.inner.geometry.major_left_wb,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown major approach: {other} (expected EB or WB)"
+                )))
+            }
+        };
+        Ok(major_left_to_py(cfg))
+    }
+
+    /// HCM Step 11b Rank 1 delay `(d_2+3, d_5+6)` to major-street through
+    /// vehicles sharing a lane with a blocked left turn, s/veh (Equations
+    /// 20-62/20-63), or `None` when both major lefts have exclusive lanes.
+    #[getter]
+    pub fn get_rank1_major_delay(&self) -> Option<(f64, f64)> {
+        self.inner.rank1_major_delay.map(|a| (a[0], a[1]))
     }
 
     /// Demand flow rate of a movement ("1", "1U", ..., "12"), veh/h.
