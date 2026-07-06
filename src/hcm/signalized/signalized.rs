@@ -2289,7 +2289,19 @@ impl SignalizedIntersection {
                         let ssl4 = s.s_th_curb / (1.0 + p_l * (E_L_PROTECTED_LEFT - 1.0));
                         cap += s.g_left * ssl4 / c_len;
                     }
-                    (cap, cap)
+                    // Available capacity, Eq. 31-123 (permitted) / Eq. 31-127
+                    // (protected-permitted): add the extension the movement
+                    // could serve if the through phase ran to its maximum
+                    // green, at the end-of-green shared-lane saturation flow
+                    // s_sl3 (Eq. 31-109). Mirrors the exclusive-lane arms above;
+                    // available capacity feeds the actuated k in step_8 and is
+                    // inert under pretimed control (k = K_PRETIMED there).
+                    let ssl3 = s.s_th_curb / (1.0 + p_l * (s.el1 / s.f_lpb - 1.0));
+                    let gmax = ap.through_phase.max_green_s.unwrap_or(
+                        ap.through_phase.duration_s - ap.through_phase.change_period_s(),
+                    );
+                    let ca = cap + (gmax - s.g_p).max(0.0) * ssl3 / c_len;
+                    (cap, ca.max(cap))
                 }
                 _ => {
                     // Eq. 19-16: c = N s g / C, with the available capacity

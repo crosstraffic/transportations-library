@@ -682,10 +682,11 @@ impl TwoLaneHighways {
             if phv < 5.0 {
                 capacity = 1500;
             } else if phv >= 5.0 && phv < 10.0 {
-                if vc == 1 || vc == 2 || vc == 3 {
+                if vc == 1 || vc == 2 || vc == 3 || vc == 4 {
                     capacity = 1500;
                 } else {
-                    capacity = 1500;
+                    // Exhibit 15-5: vertical class 5 caps at 1,400 veh/h.
+                    capacity = 1400;
                 }
             } else if phv >= 10.0 && phv < 15.0 {
                 if vc == 1 || vc == 2 || vc == 3 {
@@ -1318,7 +1319,7 @@ impl TwoLaneHighways {
                 f5 = 0.00611;
                 f7 = -0.00419;
             } else if vc == 2 {
-                b0 = -2.0668;
+                b0 = -2.0688;
                 b1 = 0.1053;
                 c1 = 0.4479;
                 d1 = 0.1631;
@@ -1558,7 +1559,7 @@ impl TwoLaneHighways {
                 b4 = 13.64266;
                 b5 = -0.00050;
                 b6 = -0.05500;
-                b7 = 7.13760;
+                b7 = 7.13758;
                 c0 = 18.01780;
                 c1 = 10.00000;
                 c2 = -21.60000;
@@ -1566,7 +1567,7 @@ impl TwoLaneHighways {
                 c4 = 12.05214;
                 c5 = -0.00750;
                 c6 = -0.06700;
-                c7 = 11.60410;
+                c7 = 11.60405;
             } else if vc == 2 {
                 b0 = 58.21104;
                 b1 = 5.73387;
@@ -1693,7 +1694,7 @@ impl TwoLaneHighways {
                 c3 = -1.43373;
                 c4 = 18.32040;
                 c5 = -0.13226;
-                c6 = 0.77127;
+                c6 = 0.77217;
                 c7 = -0.00778;
             } else if vc == 3 {
                 b0 = 206.07369;

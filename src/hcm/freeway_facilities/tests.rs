@@ -464,6 +464,55 @@ fn test_planning_equation_25_47_delay_rate() {
 }
 
 #[test]
+fn test_planning_equation_25_41_heavy_vehicle_conversion() {
+    // Equation 25-41 converts the veh/h boundary demand to pc/h via q = V /
+    // f_HV, so a nonzero truck percentage (f_HV < 1) inflates the demand and
+    // therefore d/c relative to the 0%-truck baseline. Single 3-lane basic
+    // section, FFS 60 (capacity 2,300 pc/h/ln = 6,900 pc/h), k = 0.09,
+    // growth = 1, inflow AADT 50,000, analysis period 0 (multiplier 1.0).
+    let base = || PlanningFacility {
+        sections: vec![PlanningSection {
+            sec_type: PlanningSectionType::Basic,
+            length_mi: 1.0,
+            lanes: 3,
+            inflow_aadt: 50_000.0,
+            ..Default::default()
+        }],
+        ffs: 60.0,
+        k_factor: 0.09,
+        growth_factor: 1.0,
+        phf: 0.9,
+        ..Default::default()
+    };
+
+    // 0% trucks: f_HV = 1.0, demand = 50,000*0.09 = 4,500 pc/h,
+    // d/c = 4,500 / 6,900 = 0.65217.
+    let mut no_trucks = base();
+    no_trucks.terrain = Terrain::Level;
+    no_trucks.pct_sut = 0.0;
+    no_trucks.pct_tt = 0.0;
+    no_trucks.run_analysis().unwrap();
+    let dc_no_trucks = no_trucks.dc_ratio(0, 0);
+    approx(dc_no_trucks, 0.652_174, 1e-4, "d/c 0% trucks");
+
+    // 10% SUT, level terrain (E_T = 2.0): f_HV = 1/(1 + 0.10*(2.0-1.0)) =
+    // 0.909_09. demand = 50,000*0.09/0.909_09 = 4,950 pc/h,
+    // d/c = 4,950 / 6,900 = 0.717_39 = 0.652_174 / f_HV.
+    let mut with_trucks = base();
+    with_trucks.terrain = Terrain::Level;
+    with_trucks.pct_sut = 0.10;
+    with_trucks.pct_tt = 0.0;
+    with_trucks.run_analysis().unwrap();
+    let dc_with_trucks = with_trucks.dc_ratio(0, 0);
+    approx(dc_with_trucks, 0.717_391, 1e-4, "d/c 10% trucks");
+
+    assert!(
+        dc_with_trucks > dc_no_trucks,
+        "heavy vehicles must raise d/c: {dc_with_trucks} !> {dc_no_trucks}"
+    );
+}
+
+#[test]
 fn test_planning_carryover_propagates_downstream() {
     // Two ramp sections in series; the upstream one is oversaturated, and its
     // released vertical queue raises the downstream section demand in the
