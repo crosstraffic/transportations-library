@@ -279,7 +279,11 @@ impl PlanningFacility {
         }
         let n = self.num_sections();
         let f_hv = self.f_hv();
-        let base_factor = self.k_factor * self.growth_factor * f_hv;
+        // Equation 25-40 builds the veh/h boundary demand from AADT, k, and
+        // f_tg; Equation 25-41 then converts veh/h to the pc/h used by the
+        // capacity comparison via q = V / f_HV. Since f_HV = 1/(1 + P_T(E_T−1))
+        // ≤ 1, dividing inflates the count when heavy vehicles are present.
+        let base_factor = self.k_factor * self.growth_factor / f_hv;
         let mult = self.period_multipliers();
 
         // Net boundary flow (pc/h) added at each section's upstream boundary,
