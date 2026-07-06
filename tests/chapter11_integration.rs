@@ -20,7 +20,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 
-use transportations_library::hcm::chapter11::ReliabilityAnalysis;
+use transportations_library::hcm::freeway_reliability::ReliabilityAnalysis;
 
 fn load_case(name: &str) -> ReliabilityAnalysis {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -76,7 +76,7 @@ fn ep7_scenario_count_and_probabilities() {
             s.month == 11
                 && matches!(
                     s.weekday,
-                    transportations_library::hcm::chapter11::Weekday::Tuesday
+                    transportations_library::hcm::freeway_reliability::Weekday::Tuesday
                 )
         })
         .unwrap();
@@ -88,7 +88,7 @@ fn ep7_scenario_count_and_probabilities() {
             s.month == 7
                 && matches!(
                     s.weekday,
-                    transportations_library::hcm::chapter11::Weekday::Friday
+                    transportations_library::hcm::freeway_reliability::Weekday::Friday
                 )
         })
         .unwrap();
@@ -212,7 +212,7 @@ fn ep7_base_scenario_matches_chapter10() {
         s.month == 11
             && matches!(
                 s.weekday,
-                transportations_library::hcm::chapter11::Weekday::Tuesday
+                transportations_library::hcm::freeway_reliability::Weekday::Tuesday
             )
             && s.weather_events.is_empty()
             && s.incidents.is_empty()
@@ -364,7 +364,7 @@ fn ep7_scenario_results_consistency() {
 /// example problem to reproduce exactly here).
 #[test]
 fn ep7_atdm_shoulder_lane_strategy_improves_or_holds_reliability() {
-    use transportations_library::hcm::chapter11::scenario_generation::{WorkZoneEvent, WEEKDAYS};
+    use transportations_library::hcm::freeway_reliability::scenario_generation::{WorkZoneEvent, WEEKDAYS};
     use transportations_library::hcm::common::atdm::ShoulderLaneUse;
 
     let mut base = load_case("case1.json");
@@ -421,8 +421,8 @@ fn ep7_atdm_shoulder_lane_strategy_improves_or_holds_reliability() {
 /// merge segments rather than one in isolation.
 #[test]
 fn ep7_atdm_ramp_metering_strategy_improves_or_holds_reliability() {
-    use transportations_library::hcm::chapter10::freeway_facilities::SegmentType;
-    use transportations_library::hcm::chapter11::scenario_generation::{WorkZoneEvent, WEEKDAYS};
+    use transportations_library::hcm::freeway_facilities::freeway_facilities::SegmentType;
+    use transportations_library::hcm::freeway_reliability::scenario_generation::{WorkZoneEvent, WEEKDAYS};
 
     let mut base = load_case("case1.json");
     base.run().unwrap();

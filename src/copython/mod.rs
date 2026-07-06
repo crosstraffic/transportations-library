@@ -2,35 +2,35 @@
 //! One module per HCM chapter plus `support` for constraint helpers.
 
 #[cfg(feature = "with-python")]
-pub mod chapter10;
+pub mod freeway_facilities; // HCM Chapter 10
 #[cfg(feature = "with-python")]
-pub mod chapter11;
+pub mod freeway_reliability; // HCM Chapter 11
 #[cfg(feature = "with-python")]
-pub mod chapter12;
+pub mod basicfreeways; // HCM Chapter 12
 #[cfg(feature = "with-python")]
-pub mod chapter13;
+pub mod weaving; // HCM Chapter 13
 #[cfg(feature = "with-python")]
-pub mod chapter14;
+pub mod merge_diverge; // HCM Chapter 14
 #[cfg(feature = "with-python")]
-pub mod chapter15;
+pub mod twolanehighways; // HCM Chapter 15
 #[cfg(feature = "with-python")]
-pub mod chapter16;
+pub mod urban_facilities; // HCM Chapter 16
 #[cfg(feature = "with-python")]
-pub mod chapter17;
+pub mod urban_reliability; // HCM Chapter 17
 #[cfg(feature = "with-python")]
-pub mod chapter18;
+pub mod urban_segments; // HCM Chapter 18
 #[cfg(feature = "with-python")]
-pub mod chapter19;
+pub mod signalized; // HCM Chapter 19
 #[cfg(feature = "with-python")]
-pub mod chapter20;
+pub mod twsc; // HCM Chapter 20
 #[cfg(feature = "with-python")]
-pub mod chapter21;
+pub mod awsc; // HCM Chapter 21
 #[cfg(feature = "with-python")]
-pub mod chapter22;
+pub mod roundabouts; // HCM Chapter 22
 #[cfg(feature = "with-python")]
-pub mod chapter23;
+pub mod ramp_terminals; // HCM Chapter 23
 #[cfg(feature = "with-python")]
-pub mod chapter24;
+pub mod offstreet_pedbike; // HCM Chapter 24
 #[cfg(feature = "with-python")]
 pub mod support;
 #[cfg(feature = "with-python")]

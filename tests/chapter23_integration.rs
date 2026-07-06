@@ -27,7 +27,7 @@
 //!   The demand-weighted interchange ETT lands within 0.2 s/veh of the
 //!   published value (34.8 vs. 34.9 s/veh) with the same LOS C.
 
-use transportations_library::hcm::chapter23::{
+use transportations_library::hcm::ramp_terminals::{
     Interchange, InterchangeMovement, OdMovement,
 };
 use transportations_library::hcm::common::LevelOfService;
@@ -54,7 +54,7 @@ macro_rules! assert_near {
     };
 }
 
-fn od<'a>(ix: &'a Interchange, m: OdMovement) -> &'a transportations_library::hcm::chapter23::OdResult {
+fn od<'a>(ix: &'a Interchange, m: OdMovement) -> &'a transportations_library::hcm::ramp_terminals::OdResult {
     ix.od_results
         .iter()
         .find(|r| r.movement == m)
@@ -64,7 +64,7 @@ fn od<'a>(ix: &'a Interchange, m: OdMovement) -> &'a transportations_library::hc
 fn group<'a>(
     ix: &'a Interchange,
     m: InterchangeMovement,
-) -> &'a transportations_library::hcm::chapter23::LaneGroupResult {
+) -> &'a transportations_library::hcm::ramp_terminals::LaneGroupResult {
     ix.results
         .iter()
         .find(|r| r.movement == m)

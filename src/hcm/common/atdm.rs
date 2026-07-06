@@ -7,11 +7,11 @@
 //! Management": "the strategy or plan is ultimately translated into a
 //! series of HCM inputs and adjustment factors to demand, capacity, and
 //! speed") is to supply the CAF/SAF/DAF-shaped adjustments that feed the
-//! freeway reliability engine ([`crate::hcm::chapter11`]) and the urban
-//! street reliability engine ([`crate::hcm::chapter17`]), both of which
+//! freeway reliability engine ([`crate::hcm::freeway_reliability`]) and the urban
+//! street reliability engine ([`crate::hcm::urban_reliability`]), both of which
 //! already expose scenario-level adjustment hooks
-//! ([`crate::hcm::chapter11::scenario_generation::WorkZoneEvent`] /
-//! `SpecialEvent`, and [`crate::hcm::chapter17::AtdmStrategy`]). This
+//! ([`crate::hcm::freeway_reliability::scenario_generation::WorkZoneEvent`] /
+//! `SpecialEvent`, and [`crate::hcm::urban_reliability::AtdmStrategy`]). This
 //! module is therefore placed under `common/` alongside
 //! [`crate::hcm::common::delay`] and [`crate::hcm::common::reliability`]
 //! — chapter-agnostic shared primitives — rather than as a `chapter37/`
@@ -20,7 +20,7 @@
 //! the reverse), this module exposes pure equation/constant
 //! transcriptions only; the convenience constructors that build a
 //! `WorkZoneEvent` or `AtdmStrategy` from these values live in
-//! `chapter11::scenario_generation` and `chapter17::urban_reliability`
+//! `freeway_reliability::scenario_generation` and `urban_reliability::urban_reliability`
 //! respectively, so they can depend on this module without creating a
 //! cycle.
 //!
@@ -259,7 +259,7 @@ pub const ADAPTIVE_SIGNAL_TTI_REDUCTION_PCT_RANGE: (f64, f64) = (3.0, 13.0);
 /// recommended analysis approach is a proprietary-API simulation tool,
 /// not an HCM closed-form method. This function is a documented modeling
 /// simplification (not an HCM-derived equation) for use with the Chapter
-/// 17 [`crate::hcm::chapter17::AtdmStrategy::sat_flow_adjustment`] hook:
+/// 17 [`crate::hcm::urban_reliability::AtdmStrategy::sat_flow_adjustment`] hook:
 /// it treats the delay reduction as achieved through better green-time
 /// utilization at capacity, i.e., `sat_flow_adjustment = 1 / (1 -
 /// target_delay_reduction_pct / 100)`, so demand held at capacity yields

@@ -76,7 +76,7 @@ pub enum ControlType {
 /// numbering scheme for two-way STOP-controlled (TWSC) intersections and
 /// does assign the major-street U-turns adjunct labels 1U and 4U there; see
 /// [`ch20_uturn_label`] for that separate, chapter-specific convention (and
-/// `chapter20::twsc::Mv::M1U`/`M4U` for the TWSC-native representation).
+/// `twsc::twsc::Mv::M1U`/`M4U` for the TWSC-native representation).
 /// Downstream Chapter 19 code relies on `None` here for `UTurn`, so this
 /// function's return value for `TurnType::UTurn` must not change.
 pub fn nema_movement_number(direction: Direction, turn_type: TurnType) -> Option<u8> {
@@ -113,10 +113,10 @@ pub fn nema_movement_number(direction: Direction, turn_type: TurnType) -> Option
 /// [`nema_movement_number`]: the two exhibits assign different numeric
 /// slots to the same cardinal directions (e.g., movement 1 is a WB left
 /// turn under Exhibit 19-1's NEMA scheme but an EB left turn under Exhibit
-/// 20-1) and are not interchangeable. `chapter20::twsc::Mv::M1U`/`M4U` is
+/// 20-1) and are not interchangeable. `twsc::twsc::Mv::M1U`/`M4U` is
 /// the TWSC module's own native representation of the same two movements;
 /// this function exists so callers working with the common `Direction`
-/// type can look up the label without depending on `chapter20::twsc`.
+/// type can look up the label without depending on `twsc::twsc`.
 pub fn ch20_uturn_label(direction: Direction) -> Option<&'static str> {
     match direction {
         Direction::EB => Some("1U"),

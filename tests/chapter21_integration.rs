@@ -7,7 +7,7 @@
 
 use std::fs;
 
-use transportations_library::hcm::chapter21::awsc::{ApproachDir, Awsc, GeometryGroup};
+use transportations_library::hcm::awsc::awsc::{ApproachDir, Awsc, GeometryGroup};
 
 const DELAY_TOL: f64 = 0.5;
 
@@ -58,7 +58,7 @@ fn test_awsc_example_problem_1_full_pipeline() {
 
 /// HCM Chapter 32, AWSC Example Problem 1, Step 12: eastbound lane capacity
 /// approximately 720 veh/h (below the naive 748 veh/h estimate because of
-/// approach interactions). See chapter21/tests.rs for the tolerance note.
+/// approach interactions). See awsc/tests.rs for the tolerance note.
 #[test]
 fn test_awsc_example_problem_1_capacity() {
     let mut awsc = load("case1");
