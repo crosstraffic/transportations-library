@@ -23,7 +23,7 @@ impl BasicFreeways {
         bffs=None, lane_width=None, lane_count=None, lc_r=None, lc_l=None,
         trd=None, apd=None, grade=None, terrain_type=None, speed_limit=None,
         phf=None, p_t=None, demand_flow_i=None, length=None,
-        highway_type=None, city_type=None
+        highway_type=None, city_type=None, sut_percentage=None
     ))]
     pub fn new(
         bffs: Option<f64>,
@@ -42,6 +42,7 @@ impl BasicFreeways {
         length: Option<f64>,
         highway_type: Option<String>,
         city_type: Option<String>,
+        sut_percentage: Option<u32>,
     ) -> Self {
         let mut inner = LibBasicFreeways::new();
         if let Some(v) = bffs {
@@ -89,6 +90,9 @@ impl BasicFreeways {
         if let Some(v) = highway_type {
             inner.highway_type = v;
         }
+        if let Some(v) = sut_percentage {
+            inner.sut_percentage = v;
+        }
         if let Some(ct) = city_type {
             inner.city_type = match ct.to_lowercase().as_str() {
                 "rural" => CityType::Rural,
@@ -100,9 +104,38 @@ impl BasicFreeways {
 
     /// Run the full HCM Ch.12 operational analysis; returns the LOS letter.
     /// Populates ffs, capacity, speed, density, and v/c ratio.
-    pub fn run_operational_analysis(&mut self) -> String {
-        let los: char = self.inner.run_operational_analysis().into();
-        los.to_string()
+    pub fn run_operational_analysis(&mut self) -> PyResult<String> {
+        let los = self.inner
+            .run_operational_analysis()
+            .map_err(pyo3::exceptions::PyValueError::new_err)?;
+        let los: char = los.into();
+        Ok(los.to_string())
+    }
+
+    /// Set the target LOS used by design analysis (Exhibit 12-37/12-38 lookup).
+    pub fn set_target_los(&mut self, los: &str) -> PyResult<()> {
+        let letter = los.trim().to_ascii_uppercase();
+        let letter = letter.chars().next().ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("target LOS must be one of A-F")
+        })?;
+        if !('A'..='F').contains(&letter) {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "target LOS must be one of A-F, got {los:?}"
+            )));
+        }
+        self.inner.los = Some(letter.into());
+        Ok(())
+    }
+
+    /// The passenger-car equivalent E_T selected for the current inputs, once demand has been
+    /// adjusted (Exhibit 12-25 for general terrain, 12-26/27/28 for a specific upgrade).
+    pub fn e_t(&self) -> Option<f64> {
+        self.inner.e_t
+    }
+
+    /// The heavy-vehicle adjustment factor f_HV (Equation 12-10).
+    pub fn f_hv(&self) -> f64 {
+        self.inner.phv
     }
 
     pub fn determine_free_flow_speed(&mut self) -> f64 {
@@ -148,8 +181,19 @@ impl BasicFreeways {
     }
 
     /// Step 4: convert demand to per-lane flow rate v_p (pc/h/ln).
-    pub fn estimate_demand_volume(&mut self) -> f64 {
-        self.inner.estimate_demand_volume()
+    /// Errors when the heavy-vehicle inputs fall outside the Exhibit 12-25/12-26/12-27/12-28 domain.
+    pub fn estimate_demand_volume(&mut self) -> PyResult<f64> {
+        self.inner
+            .estimate_demand_volume()
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+    }
+
+    /// Design analysis: lanes required for the target LOS (Equations 12-21 through 12-23).
+    /// Returns the rounded-up lane count and the unrounded value it came from.
+    pub fn estimate_number_of_lanes(&mut self) -> PyResult<(u32, f64)> {
+        self.inner
+            .estimate_number_of_lanes()
+            .map_err(pyo3::exceptions::PyValueError::new_err)
     }
 
     /// Step 5a: space mean speed via the speed-flow curve (mi/h).
