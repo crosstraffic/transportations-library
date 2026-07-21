@@ -263,65 +263,37 @@ impl BasicFreeways {
     /// Create a new BasicFreeways with default values for urban freeways
     /// Uses defaults from Exhibit 12-18
     pub fn with_urban_freeway_defaults() -> Self {
-        let defaults = DefaultValues::urban_freeway();
         let mut instance = Self::new();
-        instance.lw = Some(defaults.lane_width);
-        instance.lc_r = defaults.right_lateral_clearance as u32;
-        instance.p_t = Some(defaults.heavy_vehicle_pct);
-        instance.phf = defaults.phf;
-        instance.k_factor = defaults.k_factor;
-        instance.d_factor = defaults.d_factor;
         instance.highway_type = "basic".to_string();
         instance.city_type = CityType::Urban;
+        instance.apply_defaults(&DefaultValues::urban_freeway());
         instance
     }
 
     /// Create a new BasicFreeways with default values for rural freeways
     pub fn with_rural_freeway_defaults() -> Self {
-        let defaults = DefaultValues::rural_freeway();
         let mut instance = Self::new();
-        instance.lw = Some(defaults.lane_width);
-        instance.lc_r = defaults.right_lateral_clearance as u32;
-        instance.p_t = Some(defaults.heavy_vehicle_pct);
-        instance.phf = defaults.phf;
-        instance.k_factor = defaults.k_factor;
-        instance.d_factor = defaults.d_factor;
         instance.highway_type = "basic".to_string();
         instance.city_type = CityType::Rural;
+        instance.apply_defaults(&DefaultValues::rural_freeway());
         instance
     }
 
     /// Create a new BasicFreeways with default values for urban multilane highways
     pub fn with_urban_multilane_defaults() -> Self {
-        let defaults = DefaultValues::urban_multilane();
         let mut instance = Self::new();
-        instance.lw = Some(defaults.lane_width);
-        instance.lc_r = defaults.right_lateral_clearance as u32;
-        instance.lc_l = defaults.left_lateral_clearance as u32;
-        instance.p_t = Some(defaults.heavy_vehicle_pct);
-        instance.phf = defaults.phf;
-        instance.apd = defaults.access_point_density;
-        instance.k_factor = defaults.k_factor;
-        instance.d_factor = defaults.d_factor;
         instance.highway_type = "multilane".to_string();
         instance.city_type = CityType::Urban;
+        instance.apply_defaults(&DefaultValues::urban_multilane());
         instance
     }
 
     /// Create a new BasicFreeways with default values for rural multilane highways
     pub fn with_rural_multilane_defaults() -> Self {
-        let defaults = DefaultValues::rural_multilane();
         let mut instance = Self::new();
-        instance.lw = Some(defaults.lane_width);
-        instance.lc_r = defaults.right_lateral_clearance as u32;
-        instance.lc_l = defaults.left_lateral_clearance as u32;
-        instance.p_t = Some(defaults.heavy_vehicle_pct);
-        instance.phf = defaults.phf;
-        instance.apd = defaults.access_point_density;
-        instance.k_factor = defaults.k_factor;
-        instance.d_factor = defaults.d_factor;
         instance.highway_type = "multilane".to_string();
         instance.city_type = CityType::Rural;
+        instance.apply_defaults(&DefaultValues::rural_multilane());
         instance
     }
 
@@ -830,7 +802,10 @@ impl BasicFreeways {
 
         // Equation 12-21: v = V / (PHF × f_HV)
         // This gives demand flow rate in pc/h (not per lane)
-        let demand_flow_rate = self.demand_flow_i / (self.phf * self.phv);
+        // f_HV is rounded to three decimals here to match estimate_demand_volume, so the design
+        // and operational paths cannot disagree about the same segment's demand.
+        let demand_flow_rate =
+            self.demand_flow_i / (self.phf * math::round_up_to_n_decimal(self.phv, 3));
 
         // Equation 12-22: N = v / MSF_i
         let required_lanes = demand_flow_rate / msf;

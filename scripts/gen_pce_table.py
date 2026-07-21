@@ -116,6 +116,12 @@ impl PceTable {
     /// proportion of heavy vehicles. Returns an error rather than a plausible-looking default
     /// when the inputs fall outside the exhibit's domain.
     pub fn lookup(&self, grade: f64, length: f64, p_t: f64) -> Result<f64, String> {
+        if !grade.is_finite() || !length.is_finite() || !p_t.is_finite() {
+            return Err(format!(
+                "grade, length, and truck proportion must all be finite, got \
+                 grade {grade}, length {length}, p_t {p_t}"
+            ));
+        }
         let max_grade = *self.grades.last().unwrap();
         if grade > max_grade {
             return Err(format!(
@@ -134,7 +140,9 @@ impl PceTable {
         // exhibits (PCE shows no downgrade sensitivity), so clamping to the -2% row is the reading
         // that keeps the method usable; VERIFY-HCM.
         let grade = grade.max(self.grades[0]);
-        // The ">25%" column is a bucket, not a point: any mix above 25% trucks reads it directly.
+        // Below the 2% column the exhibits say nothing, and the lower clamp is symmetric with the
+        // upper one: a 1% truck stream reads the 2% column. The ">25%" column is a bucket, not a
+        // point, so any mix at or above 25% trucks reads it directly.
         let pct = (p_t * 100.0).min(*self.truck_pcts.last().unwrap());
 
         let (gi, gf) = bracket(self.grades, grade);
@@ -151,6 +159,7 @@ impl PceTable {
         let lengths = self.lengths[gi];
         // Beyond the longest tabulated length the PCE has effectively converged (the 1.25 and
         // 1.5 mi rows differ by at most 0.01), so the last row is carried forward; VERIFY-HCM.
+        // Below the shortest, the 0.125 mi row is carried back the same way.
         let length = length.min(*lengths.last().unwrap()).max(lengths[0]);
         let (li, lf) = bracket(lengths, length);
 

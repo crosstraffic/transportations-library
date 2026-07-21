@@ -296,3 +296,74 @@ fn estimate_speed_test() {
         );
     }
 }
+
+/// Step 2 default base FFS: 75.4 mi/h for freeways (the book's stated default), and for multilane
+/// highways the speed-limit rule, since Chapter 12 gives them no single default.
+#[test]
+fn default_base_ffs_reaches_the_constructors() {
+    use transportations_library::basicfreeways::{bffs_from_speed_limit, DEFAULT_BFFS_FREEWAY};
+
+    assert_eq!(DEFAULT_BFFS_FREEWAY, BasicFreeways::with_urban_freeway_defaults().bffs);
+    assert_eq!(DEFAULT_BFFS_FREEWAY, BasicFreeways::with_rural_freeway_defaults().bffs);
+
+    // "speed limit plus 5 mi/h for speed limits 50 mi/h and higher and ... plus 7 mi/h for speed
+    // limits less than 50 mi/h"
+    assert_eq!(70.0, bffs_from_speed_limit(65.0));
+    assert_eq!(55.0, bffs_from_speed_limit(50.0));
+    assert_eq!(52.0, bffs_from_speed_limit(45.0));
+
+    let multilane = BasicFreeways::with_urban_multilane_defaults();
+    assert_eq!(bffs_from_speed_limit(multilane.speed_limit as f64), multilane.bffs);
+}
+
+/// Exhibit 12-38 rows, and the fact that multilane design analysis has no row above FFS 60.
+#[test]
+fn multilane_max_service_flow_rate() {
+    let mut bf = BasicFreeways::new();
+    bf.highway_type = "multilane".to_string();
+
+    for (ffs_adj, los, expected) in [
+        (45.0, LevelOfService::A, 490.0),
+        (50.0, LevelOfService::C, 1300.0),
+        (55.0, LevelOfService::D, 1790.0),
+        (60.0, LevelOfService::E, 2200.0),
+        (58.0, LevelOfService::E, 2200.0), // rounds to the 60 row, not up past the exhibit
+    ] {
+        bf.ffs_adj = ffs_adj;
+        bf.los = Some(los);
+        assert_eq!(expected, bf.determine_multilane_max_service_flow_rate().unwrap());
+    }
+
+    // Exhibit 12-38 stops at 60 mi/h even though the methodology covers multilane FFS up to 70.
+    bf.ffs_adj = 65.0;
+    bf.los = Some(LevelOfService::D);
+    assert!(bf.determine_multilane_max_service_flow_rate().is_err());
+}
+
+/// Exhibits 12-37/12-38 round FFS to the nearest 5 mi/h, which is not rounding up.
+#[test]
+fn round_to_nearest_5_is_not_round_up() {
+    use transportations_library::math;
+
+    assert_eq!(60, math::round_to_nearest_5(60.0));
+    assert_eq!(60, math::round_to_nearest_5(61.0));
+    assert_eq!(60, math::round_to_nearest_5(62.4));
+    assert_eq!(65, math::round_to_nearest_5(62.5));
+    assert_eq!(65, math::round_to_nearest_5(67.3));
+    // The old helper rounded every non-multiple up, which read the wrong exhibit row.
+    assert_eq!(65, math::round_up_to_nearest_5(61.0));
+}
+
+/// Non-finite PCE inputs error rather than clamping into a table row.
+#[test]
+fn pce_lookup_rejects_non_finite_inputs() {
+    use transportations_library::common::pce_table::PceTable;
+
+    let table = PceTable::for_sut_percentage(50).unwrap();
+    assert!(table.lookup(f64::NAN, 0.5, 0.06).is_err());
+    assert!(table.lookup(2.5, f64::NAN, 0.06).is_err());
+    assert!(table.lookup(2.5, 0.5, f64::NAN).is_err());
+    assert!(table.lookup(2.5, f64::INFINITY, 0.06).is_err());
+    // A well-formed lookup still works: Exhibit 12-27, 2.5% grade, 0.625 mi, 6% trucks.
+    assert_eq!(3.03, table.lookup(2.5, 0.625, 0.06).unwrap());
+}
