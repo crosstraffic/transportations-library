@@ -1,7 +1,7 @@
 use crate::utils::math;
 use crate::hcm::common::{CommonSegment, LevelOfService, FacilityCalculation, CityType};
 use serde::{Deserialize, Serialize};
-use crate::hcm::common::pce_table::{ET_TABLE_30SUT, ET_TABLE_50SUT, ET_TABLE_70SUT};
+use crate::hcm::common::pce_table::PceTable;
 
 /// Constants from HCM Chapter 12
 /// Density at capacity (pc/mi/ln) - Exhibit 12-6
@@ -17,12 +17,30 @@ pub const EXPONENT_MULTILANE: f64 = 1.31;
 pub const BREAKPOINT_MULTILANE: f64 = 1400.0;
 
 /// Default base free-flow speed for basic freeway segments - Step 2
+///
+/// "The predictive algorithm for FFS therefore starts with a value greater than 75 mi/h,
+/// specifically a default base FFS of 75.4 mi/h, which resulted in the most accurate predictions
+/// in the underlying research."
 pub const DEFAULT_BFFS_FREEWAY: f64 = 75.4;
+
+/// Base free-flow speed for a multilane highway segment estimated from its speed limit - Step 2.
+///
+/// Chapter 12 gives no single default BFFS for multilane highways: "BFFS for multilane highways
+/// may be estimated, if necessary, as the posted or statutory speed limit plus 5 mi/h for speed
+/// limits 50 mi/h and higher and as the speed limit plus 7 mi/h for speed limits less than
+/// 50 mi/h." Design speed is preferred where it is known.
+pub fn bffs_from_speed_limit(speed_limit: f64) -> f64 {
+    speed_limit + if speed_limit >= 50.0 { 5.0 } else { 7.0 }
+}
 
 /// Default values from Exhibit 12-18
 /// Required Input Data, Potential Data Sources, and Default Values
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DefaultValues {
+    /// Base free-flow speed (mi/h) - Step 2 default when FFS is not field-measured.
+    /// `None` for multilane highways, which have no single default BFFS in Chapter 12 and
+    /// instead derive it from the speed limit via [`bffs_from_speed_limit`].
+    pub base_ffs: Option<f64>,
     /// Lane width (ft) - default 12 ft, range 10-12 ft
     pub lane_width: f64,
     /// Right-side lateral clearance (ft) - default 10 ft for freeway, 6 ft for multilane
@@ -45,6 +63,7 @@ impl DefaultValues {
     /// Get default values for urban basic freeway segments
     pub fn urban_freeway() -> Self {
         Self {
+            base_ffs: Some(DEFAULT_BFFS_FREEWAY),
             lane_width: 12.0,
             right_lateral_clearance: 10.0,
             left_lateral_clearance: 6.0,
@@ -59,6 +78,7 @@ impl DefaultValues {
     /// Get default values for rural basic freeway segments
     pub fn rural_freeway() -> Self {
         Self {
+            base_ffs: Some(DEFAULT_BFFS_FREEWAY),
             lane_width: 12.0,
             right_lateral_clearance: 10.0,
             left_lateral_clearance: 6.0,
@@ -73,6 +93,7 @@ impl DefaultValues {
     /// Get default values for urban multilane highways
     pub fn urban_multilane() -> Self {
         Self {
+            base_ffs: None,
             lane_width: 12.0,
             right_lateral_clearance: 6.0,
             left_lateral_clearance: 6.0,
@@ -87,6 +108,7 @@ impl DefaultValues {
     /// Get default values for rural multilane highways
     pub fn rural_multilane() -> Self {
         Self {
+            base_ffs: None,
             lane_width: 12.0,
             right_lateral_clearance: 6.0,
             left_lateral_clearance: 6.0,
@@ -101,6 +123,7 @@ impl DefaultValues {
     /// Get default values for high-density suburban multilane highways
     pub fn suburban_multilane_high_density() -> Self {
         Self {
+            base_ffs: None,
             lane_width: 12.0,
             right_lateral_clearance: 6.0,
             left_lateral_clearance: 6.0,
@@ -208,7 +231,10 @@ impl BasicFreeways {
             apd: 0,
             grade: 0.0,
             terrain_type: None,
-            sut_percentage: 50,
+            // 0 selects the Exhibit 12-25 general-terrain PCE. Defaulting to 50 sent every
+            // default-constructed segment down the specific-upgrade tables instead, which need
+            // a grade and length the caller has not necessarily supplied.
+            sut_percentage: 0,
             city_type: CityType::Urban,
             highway_type: "basic".to_string(),
             median_type: "divided".to_string(),
@@ -237,70 +263,44 @@ impl BasicFreeways {
     /// Create a new BasicFreeways with default values for urban freeways
     /// Uses defaults from Exhibit 12-18
     pub fn with_urban_freeway_defaults() -> Self {
-        let defaults = DefaultValues::urban_freeway();
         let mut instance = Self::new();
-        instance.lw = Some(defaults.lane_width);
-        instance.lc_r = defaults.right_lateral_clearance as u32;
-        instance.p_t = Some(defaults.heavy_vehicle_pct);
-        instance.phf = defaults.phf;
-        instance.k_factor = defaults.k_factor;
-        instance.d_factor = defaults.d_factor;
         instance.highway_type = "basic".to_string();
         instance.city_type = CityType::Urban;
+        instance.apply_defaults(&DefaultValues::urban_freeway());
         instance
     }
 
     /// Create a new BasicFreeways with default values for rural freeways
     pub fn with_rural_freeway_defaults() -> Self {
-        let defaults = DefaultValues::rural_freeway();
         let mut instance = Self::new();
-        instance.lw = Some(defaults.lane_width);
-        instance.lc_r = defaults.right_lateral_clearance as u32;
-        instance.p_t = Some(defaults.heavy_vehicle_pct);
-        instance.phf = defaults.phf;
-        instance.k_factor = defaults.k_factor;
-        instance.d_factor = defaults.d_factor;
         instance.highway_type = "basic".to_string();
         instance.city_type = CityType::Rural;
+        instance.apply_defaults(&DefaultValues::rural_freeway());
         instance
     }
 
     /// Create a new BasicFreeways with default values for urban multilane highways
     pub fn with_urban_multilane_defaults() -> Self {
-        let defaults = DefaultValues::urban_multilane();
         let mut instance = Self::new();
-        instance.lw = Some(defaults.lane_width);
-        instance.lc_r = defaults.right_lateral_clearance as u32;
-        instance.lc_l = defaults.left_lateral_clearance as u32;
-        instance.p_t = Some(defaults.heavy_vehicle_pct);
-        instance.phf = defaults.phf;
-        instance.apd = defaults.access_point_density;
-        instance.k_factor = defaults.k_factor;
-        instance.d_factor = defaults.d_factor;
         instance.highway_type = "multilane".to_string();
         instance.city_type = CityType::Urban;
+        instance.apply_defaults(&DefaultValues::urban_multilane());
         instance
     }
 
     /// Create a new BasicFreeways with default values for rural multilane highways
     pub fn with_rural_multilane_defaults() -> Self {
-        let defaults = DefaultValues::rural_multilane();
         let mut instance = Self::new();
-        instance.lw = Some(defaults.lane_width);
-        instance.lc_r = defaults.right_lateral_clearance as u32;
-        instance.lc_l = defaults.left_lateral_clearance as u32;
-        instance.p_t = Some(defaults.heavy_vehicle_pct);
-        instance.phf = defaults.phf;
-        instance.apd = defaults.access_point_density;
-        instance.k_factor = defaults.k_factor;
-        instance.d_factor = defaults.d_factor;
         instance.highway_type = "multilane".to_string();
         instance.city_type = CityType::Rural;
+        instance.apply_defaults(&DefaultValues::rural_multilane());
         instance
     }
 
     /// Apply defaults from a DefaultValues struct
     pub fn apply_defaults(&mut self, defaults: &DefaultValues) {
+        self.bffs = defaults.base_ffs
+            .unwrap_or_else(|| bffs_from_speed_limit(self.speed_limit as f64));
         self.lw = Some(defaults.lane_width);
         self.lc_r = defaults.right_lateral_clearance as u32;
         self.lc_l = defaults.left_lateral_clearance as u32;
@@ -739,185 +739,50 @@ impl BasicFreeways {
         Ok(self.capacity_adj as u32)
     }
 
-    fn adjustment_heavy_vehicle_factor(&mut self) -> f64 {
-        match self.terrain_type.as_deref() {
-            Some("level") => {
-                self.e_t = Some(2.0);
-            }
-            Some("rolling") => {
-                self.e_t = Some(3.0);
-            }
-            // VERIFY-HCM: Exhibit 12-25 provides no PCE for mountainous terrain;
-            // HCM directs analysts to the Chapter 25/26 mixed-flow model instead.
-            // The 2.5 here is a non-HCM approximation retained for API stability.
-            Some("mountainous") => {
-                self.e_t = Some(2.5);
-            }
-            _ => {
-                self.e_t = Some(2.0);
-            }
-        }
- 
-        // HashMap lookup
-        if self.sut_percentage == 30 {
-            if self.p_t >= Some(0.25) {
-                self.e_t = match (self.grade, self.length) {
-                    (-2.0, 0.125) => Some(1.97),
-                    (-2.0, 0.375) => Some(1.97),
-                    (-2.0, 0.625) => Some(1.97),
-                    (-2.0, 0.875) => Some(1.97),
-                    (-2.0, 1.25) => Some(1.97),
-                    (-2.0, 1.5) => Some(1.97),
+    /// Heavy vehicle adjustment factor f_HV (Equation 12-10), setting `e_t` and `phv`.
+    ///
+    /// E_T comes from the general terrain exhibit (12-25) when `sut_percentage` is 0, and from
+    /// the specific-upgrade exhibits (12-26/12-27/12-28, via [`PceTable::lookup`]) when it names
+    /// a tabulated 30/50/70 SUT mix. Inputs outside either exhibit's domain are an error rather
+    /// than a silent default, since a wrong E_T is invisible in the downstream density and LOS.
+    fn adjustment_heavy_vehicle_factor(&mut self) -> Result<f64, String> {
+        let p_t = self.p_t.unwrap_or(0.0);
 
-                    (0.0, 0.125) => Some(1.97),
-                    (0.0, 0.375) => Some(1.97),
-                    (0.0, 0.625) => Some(1.97),
-                    (0.0, 0.875) => Some(1.97),
-                    (0.0, 1.25) => Some(1.97),
-                    (0.0, 1.5) => Some(1.97),
-
-                    (2.0, 0.125) => Some(1.97),
-                    (2.0, 0.375) => Some(2.09),
-                    (2.0, 0.625) => Some(2.17),
-                    (2.0, 0.875) => Some(2.21),
-                    (2.0, 1.25) => Some(2.23),
-                    (2.0, 1.5) => Some(2.23),
-
-                    (2.5, 0.125) => Some(1.97),
-                    (2.5, 0.375) => Some(2.13),
-                    (2.5, 0.625) => Some(2.23),
-                    (2.5, 0.875) => Some(2.28),
-                    (2.5, 1.25) => Some(2.31),
-                    (2.5, 1.5) => Some(2.32),
-
-                    (_, _) => todo!("Unhandled grade/length combination"),
+        self.e_t = Some(if self.sut_percentage == 0 {
+            // Exhibit 12-25, general terrain. Matched case-insensitively: a caller passing
+            // "Rolling" used to fall through to the level-terrain value silently.
+            match self.terrain_type.as_deref().map(str::to_ascii_lowercase).as_deref() {
+                Some("level") | None => 2.0,
+                Some("rolling") => 3.0,
+                // VERIFY-HCM: Exhibit 12-25 provides no PCE for mountainous terrain;
+                // HCM directs analysts to the Chapter 25/26 mixed-flow model instead.
+                // The 2.5 here is a non-HCM approximation retained for API stability.
+                Some("mountainous") => 2.5,
+                Some(other) => {
+                    return Err(format!(
+                        "unknown terrain type {other:?}; HCM Exhibit 12-25 defines level and rolling \
+                         (mountainous requires the Chapter 25/26 mixed-flow model)"
+                    ))
                 }
-            } else {
-                let key = (
-                    (self.p_t.unwrap() * 100.0) as i32,
-                    (self.length * 1000.0) as i32,
-                    (self.grade * 100.0) as i32,
-                );
-                self.e_t = ET_TABLE_30SUT.get(&key).copied();
-                // Some(self.e_t) = ET_TABLE30.get(&(self.p_t, self.length, self.grade));
             }
-        }
+        } else {
+            PceTable::for_sut_percentage(self.sut_percentage)?
+                .lookup(self.grade, self.length, p_t)?
+        });
 
-        if self.sut_percentage == 50 {
-            if self.p_t >= Some(0.25) {
-                self.e_t = match (self.grade, self.length) {
-                    (-2.0, 0.125) => Some(1.93),
-                    (-2.0, 0.375) => Some(1.93),
-                    (-2.0, 0.625) => Some(1.93),
-                    (-2.0, 0.875) => Some(1.93),
-                    (-2.0, 1.25) => Some(1.93),
-                    (-2.0, 1.5) => Some(1.93),
+        // Equation 12-10: f_HV = 1 / (1 + P_T(E_T - 1))
+        self.phv = 1.0 / (1.0 + p_t * (self.e_t.unwrap() - 1.0));
 
-                    (0.0, 0.125) => Some(1.93),
-                    (0.0, 0.375) => Some(1.93),
-                    (0.0, 0.625) => Some(1.93),
-                    (0.0, 0.875) => Some(1.93),
-                    (0.0, 1.25) => Some(1.93),
-                    (0.0, 1.5) => Some(1.93),
-
-                    (2.0, 0.125) => Some(1.97),
-                    (2.0, 0.375) => Some(2.13),
-                    (2.0, 0.625) => Some(2.17),
-                    (2.0, 0.875) => Some(2.21),
-                    (2.0, 1.25) => Some(2.23),
-                    (2.0, 1.5) => Some(2.23),
-
-                    (2.5, 0.125) => Some(1.97),
-                    (2.5, 0.375) => Some(2.13),
-                    (2.5, 0.625) => Some(2.23),
-                    (2.5, 0.875) => Some(2.28),
-                    (2.5, 1.25) => Some(2.31),
-                    (2.5, 1.5) => Some(2.32),
-
-                    (_, _) => todo!("Unhandled grade/length combination"),
-                }
-            } else {
-                let key = (
-                    (self.p_t.unwrap() * 100.0) as i32,
-                    (self.length * 1000.0) as i32,
-                    (self.grade * 100.0) as i32,
-                );
-                self.e_t = ET_TABLE_50SUT.get(&key).copied();
-            }
-        }
-
-        if self.sut_percentage == 70 {
-            if self.p_t >= Some(0.25) {
-                self.e_t = match (self.grade, self.length) {
-                    (-2.0, 0.125) => Some(1.83),
-                    (-2.0, 0.375) => Some(1.83),
-                    (-2.0, 0.625) => Some(1.83),
-                    (-2.0, 0.875) => Some(1.83),
-                    (-2.0, 1.25) => Some(1.83),
-                    (-2.0, 1.5) => Some(1.83),
-
-                    (0.0, 0.125) => Some(1.83),
-                    (0.0, 0.375) => Some(1.83),
-                    (0.0, 0.625) => Some(1.83),
-                    (0.0, 0.875) => Some(1.83),
-                    (0.0, 1.25) => Some(1.83),
-                    (0.0, 1.5) => Some(1.83),
-
-                    (2.0, 0.125) => Some(1.93),
-                    (2.0, 0.375) => Some(2.06),
-                    (2.0, 0.625) => Some(2.12),
-                    (2.0, 0.875) => Some(2.15),
-                    (2.0, 1.25) => Some(2.17),
-                    (2.0, 1.5) => Some(2.17),
-
-                    (2.5, 0.125) => Some(1.87),
-                    (2.5, 0.375) => Some(2.01),
-                    (2.5, 0.625) => Some(2.08),
-                    (2.5, 0.875) => Some(2.12),
-                    (2.5, 1.25) => Some(2.14),
-                    (2.5, 1.5) => Some(2.15),
-
-                    (_, _) => todo!("Unhandled grade/length combination"),
-                }
-            } else {
-                let key = (
-                    (self.p_t.unwrap() * 100.0) as i32,
-                    (self.length * 1000.0) as i32,
-                    (self.grade * 100.0) as i32,
-                );
-                self.e_t = ET_TABLE_70SUT.get(&key).copied();
-            }
-        }
-
-
-        // Default fallback rules
-        if self.length == 0.125 {
-            self.e_t = match self.p_t {
-                Some(0.02) => Some(2.62),
-                Some(0.04) => Some(2.37),
-                Some(0.05) => Some(2.30),
-                Some(0.06) => Some(2.24),
-                Some(0.08) => Some(2.17),
-                Some(0.10) => Some(2.12),
-                Some(0.15) => Some(2.04),
-                Some(0.20) => Some(1.99),
-                Some(x) if x >= 0.25 => Some(1.97),
-                _ => None,
-            }
-        }
-
-        self.phv = 1.0 / (1.0 + self.p_t.unwrap_or(0.0) * (self.e_t.unwrap_or(0.0) - 1.0));
-
-        math::round_up_to_n_decimal(self.phv, 3)
+        Ok(math::round_up_to_n_decimal(self.phv, 3))
     }
 
     // Adjusted demand volume
-    pub fn estimate_demand_volume(&mut self) -> f64 {
-        self.adjustment_heavy_vehicle_factor();
+    pub fn estimate_demand_volume(&mut self) -> Result<f64, String> {
+        self.adjustment_heavy_vehicle_factor()?;
         let _lane_count = self.get_lane_count();
         self.v_p = self.demand_flow_i / (self.phf * self.lane_count as f64 * math::round_up_to_n_decimal(self.phv, 3));
 
-        self.v_p
+        Ok(self.v_p)
     }
 
     /// Estimate the number of lanes for design analysis
@@ -925,19 +790,22 @@ impl BasicFreeways {
     /// Equation 12-23: N = V / (PHF × f_HV × MSF_i)
     /// where N = number of lanes, v = demand flow rate (pc/h),
     /// V = demand volume (veh/h), MSF = max service flow rate (pc/h/ln)
-    pub fn estimate_number_of_lanes(&mut self) -> (u32, f64) {
-        self.adjustment_heavy_vehicle_factor();
+    pub fn estimate_number_of_lanes(&mut self) -> Result<(u32, f64), String> {
+        self.adjustment_heavy_vehicle_factor()?;
 
         // Determine maximum service flow rate based on highway type and target LOS
         let msf: f64 = if self.highway_type == "basic" {
-            self.determine_basic_max_service_flow_rate()
+            self.determine_basic_max_service_flow_rate()?
         } else {
-            self.determine_multilane_max_service_flow_rate()
+            self.determine_multilane_max_service_flow_rate()?
         };
 
         // Equation 12-21: v = V / (PHF × f_HV)
         // This gives demand flow rate in pc/h (not per lane)
-        let demand_flow_rate = self.demand_flow_i / (self.phf * self.phv);
+        // f_HV is rounded to three decimals here to match estimate_demand_volume, so the design
+        // and operational paths cannot disagree about the same segment's demand.
+        let demand_flow_rate =
+            self.demand_flow_i / (self.phf * math::round_up_to_n_decimal(self.phv, 3));
 
         // Equation 12-22: N = v / MSF_i
         let required_lanes = demand_flow_rate / msf;
@@ -948,24 +816,32 @@ impl BasicFreeways {
         self.set_lane_count(required_lanes_res);
 
         // In case more investigation is needed, it returns intermediate results too
-        (required_lanes_res, required_lanes)
+        Ok((required_lanes_res, required_lanes))
     }
 
     /// Planning analysis: Estimate number of lanes from AADT
     /// Combines Equation 12-20 (DDHV) with Equation 12-23
-    pub fn estimate_lanes_from_aadt(&mut self) -> Option<(u32, f64)> {
+    pub fn estimate_lanes_from_aadt(&mut self) -> Result<Option<(u32, f64)>, String> {
         // First calculate DDHV from AADT
-        let ddhv = self.estimate_ddhv()?;
+        let Some(ddhv) = self.estimate_ddhv() else {
+            return Ok(None);
+        };
 
         // Set the demand volume
         self.demand_flow_i = ddhv;
 
         // Use existing method to calculate lanes
-        Some(self.estimate_number_of_lanes())
+        Ok(Some(self.estimate_number_of_lanes()?))
     }
 
-    pub fn determine_basic_max_service_flow_rate(&mut self) -> f64 {
-        let _ffs = math::round_up_to_nearest_5(self.ffs_adj);
+    /// Maximum service flow rate for the target LOS, Exhibit 12-37 (basic freeway segments).
+    ///
+    /// The exhibit's instructions are "the FFS should be rounded to the nearest 5 mi/h, and no
+    /// interpolation is permitted", so the FFS is snapped to the nearest tabulated row rather
+    /// than rounded up. An untabulated (FFS, LOS) pair is an error: the previous silent 2,000
+    /// pc/h/ln default produced a plausible lane count from an out-of-range analysis.
+    pub fn determine_basic_max_service_flow_rate(&mut self) -> Result<f64, String> {
+        let _ffs = math::round_to_nearest_5(self.ffs_adj);
         let msf = match (_ffs, self.los) {
             (55, Some(LevelOfService::A)) => 600.0,
             (55, Some(LevelOfService::B)) => 990.0,
@@ -998,14 +874,16 @@ impl BasicFreeways {
             (75, Some(LevelOfService::D)) => 2130.0,
             (75, Some(LevelOfService::E)) => 2400.0,
 
-            _ =>  2000.0,
+            _ => return Err(msf_domain_error("12-37", "basic freeway", _ffs, self.los, 55, 75)),
         };
 
-        msf
+        Ok(msf)
     }
 
-    pub fn determine_multilane_max_service_flow_rate(&mut self) -> f64 {
-        let _ffs = math::round_up_to_nearest_5(self.ffs_adj);
+    /// Maximum service flow rate for the target LOS, Exhibit 12-38 (multilane highway segments).
+    /// Same rounding and domain rules as [`Self::determine_basic_max_service_flow_rate`].
+    pub fn determine_multilane_max_service_flow_rate(&mut self) -> Result<f64, String> {
+        let _ffs = math::round_to_nearest_5(self.ffs_adj);
         let msf = match (_ffs, self.los) {
             (45, Some(LevelOfService::A)) => 490.0,
             (45, Some(LevelOfService::B)) => 810.0,
@@ -1031,10 +909,10 @@ impl BasicFreeways {
             (60, Some(LevelOfService::D)) => 1890.0,
             (60, Some(LevelOfService::E)) => 2200.0,
 
-            _ =>  2000.0,
+            _ => return Err(msf_domain_error("12-38", "multilane highway", _ffs, self.los, 45, 60)),
         };
 
-        msf
+        Ok(msf)
     }
 
     /// Estimate density in the segment per lane, pc/mi/ln
@@ -1139,7 +1017,7 @@ impl BasicFreeways {
     /// Step 4: Adjust Demand Volume
     /// Step 5: Estimate Speed and Density
     /// Step 6: Determine LOS
-    pub fn run_operational_analysis(&mut self) -> LevelOfService {
+    pub fn run_operational_analysis(&mut self) -> Result<LevelOfService, String> {
         // Step 2: Estimate and Adjust FFS
         self.determine_free_flow_speed();
 
@@ -1147,13 +1025,13 @@ impl BasicFreeways {
         let _ = self.estimate_capacity();
 
         // Step 4: Adjust Demand Volume (convert to pc/h/ln)
-        self.estimate_demand_volume();
+        self.estimate_demand_volume()?;
 
         // Check for LOS F (demand > capacity) before continuing
         self.calculate_vc_ratio();
         if self.vc_ratio > 1.0 {
             self.los = Some(LevelOfService::F);
-            return LevelOfService::F;
+            return Ok(LevelOfService::F);
         }
 
         // Step 5: Estimate Speed and Density
@@ -1161,7 +1039,7 @@ impl BasicFreeways {
         self.estimate_density();
 
         // Step 6: Determine LOS
-        self.determine_segment_los()
+        Ok(self.determine_segment_los())
     }
 
     /// Get summary of analysis results
@@ -1204,4 +1082,28 @@ pub struct AnalysisSummary {
     pub los: Option<LevelOfService>,
     /// Breakpoint (pc/h/ln)
     pub breakpoint: f64,
+}
+
+/// Error for an (FFS, LOS) pair outside a maximum-service-flow-rate exhibit.
+fn msf_domain_error(
+    exhibit: &str,
+    segment: &str,
+    ffs: i32,
+    los: Option<LevelOfService>,
+    ffs_min: i32,
+    ffs_max: i32,
+) -> String {
+    match los {
+        None => format!(
+            "no target LOS set; Exhibit {exhibit} is keyed on the target LOS (A-E) for {segment} segments"
+        ),
+        Some(LevelOfService::F) => format!(
+            "LOS F has no maximum service flow rate in Exhibit {exhibit}; demand exceeding capacity \
+             requires the Chapter 10 methodology"
+        ),
+        Some(los) => format!(
+            "FFS {ffs} mi/h (rounded to the nearest 5) is outside the {ffs_min}-{ffs_max} mi/h range \
+             tabulated in Exhibit {exhibit} for {segment} segments at LOS {los:?}"
+        ),
+    }
 }

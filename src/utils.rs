@@ -14,7 +14,7 @@ pub mod math {
         (num * f64::powf(10.0, n as f64)).round() / f64::powf(10.0, n as f64)
     }
 
-    pub fn round_up_to_nearest_5<T>(n: T) -> i32 
+    pub fn round_up_to_nearest_5<T>(n: T) -> i32
     where T: Into<f64>,
     {
         let n = n.into();
@@ -24,6 +24,17 @@ pub mod math {
         } else {
             (n - remainder + 5.0) as i32
         }
+    }
+
+    /// Round to the nearest multiple of 5, halves away from zero.
+    ///
+    /// Several HCM service-flow-rate exhibits (12-37, 12-38) instruct the analyst to round FFS
+    /// to the *nearest* 5 mi/h before reading a row, which is not the same as rounding up.
+    pub fn round_to_nearest_5<T>(n: T) -> i32
+    where T: Into<f64>,
+    {
+        let n = n.into();
+        ((n / 5.0).round() * 5.0) as i32
     }
 
 }
