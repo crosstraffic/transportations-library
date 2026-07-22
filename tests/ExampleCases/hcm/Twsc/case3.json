@@ -1,0 +1,40 @@
+{
+  "_source": "HCM 7th Edition, Chapter 32, TWSC Example Problem 4: four-leg TWSC intersection on a four-lane major street (N = 2 through lanes per direction, no left-turn lanes, so the major-street left turn shares the through lane), no minor-street through movements, no median storage (one stage). The intersection lies between two coordinated upstream signals, so Step 5b (Equations 20-19 through 20-21) applies. Demand values are the published peak 15-min flow rates from Exhibit 32-13 (image), so phf = null. Heavy-vehicle percentage is 1% (from the published t_c,1 = 4.1 + 2.0(0.01) = 4.12 s). Proportion-of-time-blocked inputs p_b,x are the Chapter 30 movement-based access-point output published in Exhibit 32-12 (image): p_b for the major-street left turns and minor-street right turns = 0.170; p_b for the minor-street left turns = 0.260. Conflicting-flow overrides reproduce the published v_c,7 = 1,827 and v_c,10 = 1,832 veh/h; the 7th Edition Exhibit 20-16 factors used by this library give 1,874 and 1,879 because the worked example drops the major-street right-turn term (0.5 v_6 for movement 7, 0.5 v_3 for movement 10) in Stage II (see VERIFY-HCM note in src/hcm/chapter20/twsc.rs). Minor-street approaches have an exclusive left lane and an exclusive right lane (Exhibit 32-12 lane data: L = 1, T = 0, R = 1), modeled as 'Separate'.",
+  "demand": {
+    "v1": 75.0,
+    "v2": 982.0,
+    "v3": 94.0,
+    "v4": 76.0,
+    "v5": 992.0,
+    "v6": 94.0,
+    "v7": 80.0,
+    "v9": 100.0,
+    "v10": 80.0,
+    "v12": 100.0
+  },
+  "geometry": {
+    "is_three_leg": false,
+    "major_lanes_per_direction": 2,
+    "major_right_turn_eb": "Shared",
+    "major_right_turn_wb": "Shared",
+    "major_left_eb": "Shared",
+    "major_left_wb": "Shared",
+    "minor_lanes_nb": "Separate",
+    "minor_lanes_sb": "Separate"
+  },
+  "phf": null,
+  "analysis_period_h": 0.25,
+  "heavy_vehicle_pct": 1.0,
+  "conflicting_flow_overrides": [
+    { "movement": "7", "stage": "total", "value": 1827.0 },
+    { "movement": "10", "stage": "total", "value": 1832.0 }
+  ],
+  "platoon_blockage": {
+    "pb1": 0.170,
+    "pb4": 0.170,
+    "pb7": 0.260,
+    "pb9": 0.170,
+    "pb10": 0.260,
+    "pb12": 0.170
+  }
+}

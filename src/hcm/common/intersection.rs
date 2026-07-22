@@ -66,9 +66,19 @@ pub enum ControlType {
 ///
 /// Right turns are numbered as the approach through-movement number plus 10
 /// (12, 14, 16, 18). Pedestrian crossings are denoted 2P, 4P, 6P, and 8P,
-/// matching the concurrent vehicular through phase. U-turns are not assigned
-/// a distinct number in Exhibit 19-1 (Chapter 20 denotes them 1U and 4U for
-/// the major street), so `None` is returned for `TurnType::UTurn`.
+/// matching the concurrent vehicular through phase.
+///
+/// U-turns have no NEMA phase number: Exhibit 19-1 depicts only left,
+/// through, and right movements per approach, so there is no phase slot to
+/// assign a U-turn to, and `None` is returned for every `TurnType::UTurn`
+/// regardless of `direction`. This is unrelated to (and not fixed by) HCM
+/// Chapter 20's Exhibit 20-1, which uses its own, non-NEMA movement
+/// numbering scheme for two-way STOP-controlled (TWSC) intersections and
+/// does assign the major-street U-turns adjunct labels 1U and 4U there; see
+/// [`ch20_uturn_label`] for that separate, chapter-specific convention (and
+/// `twsc::twsc::Mv::M1U`/`M4U` for the TWSC-native representation).
+/// Downstream Chapter 19 code relies on `None` here for `UTurn`, so this
+/// function's return value for `TurnType::UTurn` must not change.
 pub fn nema_movement_number(direction: Direction, turn_type: TurnType) -> Option<u8> {
     match (direction, turn_type) {
         (Direction::EB, TurnType::Left) => Some(5),
@@ -84,6 +94,34 @@ pub fn nema_movement_number(direction: Direction, turn_type: TurnType) -> Option
         (Direction::SB, TurnType::Through) => Some(4),
         (Direction::SB, TurnType::Right) => Some(14),
         (_, TurnType::UTurn) => None,
+    }
+}
+
+/// HCM Chapter 20 Exhibit 20-1: adjunct U-turn movement label ("1U"/"4U")
+/// for two-way STOP-controlled (TWSC) intersections.
+///
+/// Unlike Exhibit 19-1's NEMA phase numbers (see [`nema_movement_number`],
+/// which always returns `None` for `TurnType::UTurn`), Chapter 20 defines
+/// its own consecutive 1-12 movement numbering for TWSC intersections and
+/// gives the two major-street U-turns adjunct labels: 1U (paired with the
+/// major-street EB movements 1/2/3) and 4U (paired with the major-street WB
+/// movements 4/5/6). Minor-street U-turns (NB, SB) are not assigned a label
+/// in Exhibit 20-1 (shown as "—"), so this returns `None` for those
+/// directions.
+///
+/// This is a separate, chapter-specific convention from
+/// [`nema_movement_number`]: the two exhibits assign different numeric
+/// slots to the same cardinal directions (e.g., movement 1 is a WB left
+/// turn under Exhibit 19-1's NEMA scheme but an EB left turn under Exhibit
+/// 20-1) and are not interchangeable. `twsc::twsc::Mv::M1U`/`M4U` is
+/// the TWSC module's own native representation of the same two movements;
+/// this function exists so callers working with the common `Direction`
+/// type can look up the label without depending on `twsc::twsc`.
+pub fn ch20_uturn_label(direction: Direction) -> Option<&'static str> {
+    match direction {
+        Direction::EB => Some("1U"),
+        Direction::WB => Some("4U"),
+        Direction::NB | Direction::SB => None,
     }
 }
 
@@ -214,6 +252,26 @@ mod tests {
         assert_eq!(nema_movement_number(Direction::SB, TurnType::Through), Some(4));
         assert_eq!(nema_movement_number(Direction::SB, TurnType::Right), Some(14));
         assert_eq!(nema_movement_number(Direction::EB, TurnType::UTurn), None);
+    }
+
+    /// `nema_movement_number` returns `None` for `TurnType::UTurn`
+    /// regardless of direction, since Exhibit 19-1 has no NEMA phase slot
+    /// for U-turns at all (not just for one approach).
+    #[test]
+    fn test_nema_movement_number_uturn_always_none() {
+        for dir in [Direction::NB, Direction::SB, Direction::EB, Direction::WB] {
+            assert_eq!(nema_movement_number(dir, TurnType::UTurn), None);
+        }
+    }
+
+    /// HCM Chapter 20 Exhibit 20-1: major-street U-turns get adjunct labels
+    /// 1U (EB) / 4U (WB); minor-street U-turns (NB/SB) are unlabeled.
+    #[test]
+    fn test_ch20_uturn_label() {
+        assert_eq!(ch20_uturn_label(Direction::EB), Some("1U"));
+        assert_eq!(ch20_uturn_label(Direction::WB), Some("4U"));
+        assert_eq!(ch20_uturn_label(Direction::NB), None);
+        assert_eq!(ch20_uturn_label(Direction::SB), None);
     }
 
     #[test]

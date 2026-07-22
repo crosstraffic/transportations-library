@@ -53,7 +53,19 @@ pub fn flow_ratio(x: f64, g_over_c: f64) -> f64 {
 ///
 /// For random arrivals (P = g/C) the factor equals 1.0 at low degrees of
 /// saturation.
+///
+/// At `g/C = 1.0` (no red interval) `term1` and `term3` divide by
+/// `1 - g/C = 0`. Physically this limit is moot: [`uniform_delay`] (the
+/// only place PF is used) tends to 0 as `g/C -> 1` regardless of PF, so PF's
+/// value cannot affect the resulting delay. This function returns `1.0`
+/// (no adjustment) for `g_over_c >= 1.0` rather than propagate `NaN`/`inf`,
+/// matching the guard already used at the ramp_terminals ramp-terminal call site
+/// (`if g_over_c < 1.0 { progression_factor(..) } else { 1.0 }`), now made
+/// intrinsic to the function so every caller gets the same behavior.
 pub fn progression_factor(p: f64, g_over_c: f64, x: f64) -> f64 {
+    if g_over_c >= 1.0 {
+        return 1.0;
+    }
     let y = flow_ratio(x, g_over_c);
     let term1 = (1.0 - p) / (1.0 - g_over_c);
     let term2 = (1.0 - y) / (1.0 - x.min(1.0) * p);
@@ -74,8 +86,23 @@ pub fn progression_factor(p: f64, g_over_c: f64, x: f64) -> f64 {
 /// Returns uniform delay d1, s/veh. Valid for a lane group serving one
 /// traffic movement with no permitted movements (see HCM Chapter 19, Step 8,
 /// Part A).
+///
+/// At `g/C = 1.0` there is no red interval. For `X >= 1`, `min(1, X) = 1`
+/// so the denominator `1 - min(1, X) g/C` also goes to 0 as `g/C -> 1`,
+/// together with the numerator `0.5 C (1 - g/C)^2`, producing `0/0` (`NaN`)
+/// rather than the true limit. Taking `g/C -> 1^-` with `X >= 1` fixed:
+/// `0.5 C (1 - g/C)^2 / (1 - g/C) = 0.5 C (1 - g/C) -> 0`. So `d1 -> 0` as
+/// `g/C -> 1`, independent of X and PF (no red time means no cyclical
+/// queuing, so there is nothing for arrival pattern to modulate). For
+/// `X < 1` the denominator instead tends to `1 - X > 0` and the unguarded
+/// formula already evaluates the same correct `0/(1 - X) = 0` limit, so
+/// this guard changes no observable behavior there — it only replaces the
+/// `X >= 1` singularity with its limit.
 pub fn uniform_delay(cycle_s: f64, green_s: f64, x: f64, pf: f64) -> f64 {
     let g_over_c = green_s / cycle_s;
+    if g_over_c >= 1.0 {
+        return 0.0;
+    }
     pf * (0.5 * cycle_s * (1.0 - g_over_c).powi(2)) / (1.0 - x.min(1.0) * g_over_c)
 }
 
@@ -383,6 +410,64 @@ mod tests {
         let at1 = uniform_delay(100.0, 40.0, 1.0, 1.0);
         let above1 = uniform_delay(100.0, 40.0, 1.5, 1.0);
         assert!((at1 - above1).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_uniform_delay_g_over_c_one_exact() {
+        // g/C = 1.0 exactly (no red interval): the unguarded formula would
+        // divide 0 by 0 for X >= 1 (min(1,X)*g/C = 1 = g/C). The guard
+        // returns the analytic limit, 0, instead of NaN.
+        let d1_at_capacity = uniform_delay(100.0, 100.0, 1.0, 1.0);
+        assert_eq!(d1_at_capacity, 0.0);
+        let d1_oversaturated = uniform_delay(100.0, 100.0, 1.8, 1.0);
+        assert_eq!(d1_oversaturated, 0.0);
+        // X < 1 at g/C = 1.0 is not actually singular (denominator is
+        // 1 - X > 0), but the guard must still return the same 0 the
+        // unguarded formula would produce.
+        let d1_undersaturated = uniform_delay(100.0, 100.0, 0.5, 1.0);
+        assert_eq!(d1_undersaturated, 0.0);
+    }
+
+    #[test]
+    fn test_uniform_delay_g_over_c_near_one_continuity() {
+        // g/C = 0.9999 with X >= 1: d1 should be small and finite, and
+        // approach the g/C = 1.0 guarded value (0) as g/C -> 1.
+        let c = 100.0;
+        let g_near = 0.9999 * c;
+        let d1_near = uniform_delay(c, g_near, 1.5, 1.0);
+        assert!(d1_near.is_finite(), "d1 should be finite near g/C=1, got {d1_near}");
+        assert!(d1_near > 0.0);
+        assert!(d1_near < 0.01, "d1 near g/C=1 should be tiny, got {d1_near}");
+        // Closer to 1.0 => closer to the limit of 0 (monotone approach in
+        // this regime: d1 ~ 0.5 C (1 - g/C) for X >= 1 near g/C = 1).
+        let g_closer = 0.999_99 * c;
+        let d1_closer = uniform_delay(c, g_closer, 1.5, 1.0);
+        assert!(d1_closer < d1_near);
+        let d1_at_one = uniform_delay(c, c, 1.5, 1.0);
+        assert_eq!(d1_at_one, 0.0);
+    }
+
+    #[test]
+    fn test_uniform_delay_x_above_one_at_g_over_c_one() {
+        // X > 1 (oversaturated) with g/C = 1.0: still 0, matching the
+        // guard's X-independence (no red time => no uniform delay term,
+        // regardless of how oversaturated the lane group is).
+        let d1 = uniform_delay(90.0, 90.0, 3.0, 1.0);
+        assert_eq!(d1, 0.0);
+        // PF's value must not matter either once guarded.
+        let d1_pf = uniform_delay(90.0, 90.0, 3.0, 2.5);
+        assert_eq!(d1_pf, 0.0);
+    }
+
+    #[test]
+    fn test_progression_factor_g_over_c_one_returns_one() {
+        // g/C = 1.0: term1 and term3 would divide by 0. Guard returns 1.0
+        // (no adjustment), matching the pre-existing external guard in
+        // ramp_terminals/ramp_terminals.rs.
+        assert_eq!(progression_factor(0.4, 1.0, 0.8), 1.0);
+        assert_eq!(progression_factor(0.4, 1.0, 1.5), 1.0);
+        // g/C slightly above 1.0 (invalid input, defensive)
+        assert_eq!(progression_factor(0.4, 1.000_001, 0.8), 1.0);
     }
 
     #[test]

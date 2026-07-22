@@ -11,9 +11,9 @@ use serde_json;
 
 // Re-export main types for easier access
 pub use crate::hcm::*;
-pub use crate::hcm::basicfreeways::*;
+pub use crate::hcm::basicfreeways::basicfreeways::*;
 pub use crate::hcm::constraints::*;
-pub use crate::hcm::twolanehighways::*;
+pub use crate::hcm::twolanehighways::twolanehighways::*;
 pub use crate::hcm::topology::*;
 pub use crate::hcm::traffic_flow::*;
 pub use crate::hcm::geometric::*;

@@ -22,7 +22,7 @@
 //! * adjusted saturation flow — ±10 veh/h/ln;
 //! * capacity — ±6 veh/h; v/c ratio — ±0.02.
 
-use transportations_library::hcm::chapter19::{
+use transportations_library::hcm::signalized::{
     LaneGroupKind, SignalizedIntersection,
 };
 use transportations_library::hcm::common::intersection::Direction;
@@ -42,7 +42,7 @@ fn group<'a>(
     ix: &'a SignalizedIntersection,
     dir: Direction,
     kind: LaneGroupKind,
-) -> &'a transportations_library::hcm::chapter19::LaneGroup {
+) -> &'a transportations_library::hcm::signalized::LaneGroup {
     ix.lane_groups
         .iter()
         .find(|lg| lg.direction == dir && lg.kind == kind)

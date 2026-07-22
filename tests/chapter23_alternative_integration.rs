@@ -23,7 +23,7 @@
 //! 55.1 vs. published 55.2 from intermediate rounding) is within tolerance
 //! and does not change LOS.
 
-use transportations_library::hcm::chapter23::alternative_intersections::{
+use transportations_library::hcm::ramp_terminals::alternative_intersections::{
     dlt_offset, AlternativeIntersection, DisplacedLeftTurn,
 };
 use transportations_library::hcm::common::LevelOfService;

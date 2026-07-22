@@ -16,16 +16,19 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
-dependencies = [
-    "pymupdf>=1.26.6",
-    "pymupdf-layout>=1.26.6",
-    "pymupdf4llm>=0.0.17",
-]
+dependencies = []
 
 [project.optional-dependencies]
 test = [
     "pytest>=6.0",
     "pytest-cov",
+]
+# Only needed by the ad-hoc PDF-to-markdown extraction scripts (test_pdf.py),
+# not by the library itself. Install with: pip install transportations_library[pdf]
+pdf = [
+    "pymupdf>=1.26.6",
+    "pymupdf-layout>=1.26.6",
+    "pymupdf4llm>=0.0.17",
 ]
 
 [tool.maturin]

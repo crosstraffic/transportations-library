@@ -1,3 +1,4 @@
+use assert_approx_eq::assert_approx_eq;
 use transportations_library::math;
 use transportations_library::twolanehighways::{BicycleLOS, Segment, SubSegment, TwoLaneHighways};
 
@@ -12,10 +13,15 @@ fn read_test_files() -> Vec<String> {
     let mut setting_files: Vec<String> = Vec::new();
 
     for path in paths {
-        let path_str = path.unwrap().path().display().to_string();
-        // Only include case1.json through case4.json (exclude case_study files)
-        if path_str.contains("case") && !path_str.contains("case_study") {
-            setting_files.push(path_str);
+        let path = path.unwrap().path();
+        // Only include the motorized-methodology fixtures caseN.json; other
+        // fixtures in this directory (case_study*, bicycle_*) have different shapes.
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        if name.starts_with("case")
+            && !name.contains("case_study")
+            && name[4..name.len() - 5].chars().all(|c| c.is_ascii_digit())
+        {
+            setting_files.push(path.display().to_string());
         }
     }
 
@@ -482,4 +488,42 @@ fn bicycle_los_test() {
     let bike_los_default = BicycleLOS::default();
     let result_default = bike_los_default.analyze();
     assert!(result_default.blos_score > 0.0, "Default BLOS should work");
+}
+
+/// HCM worked example (Chapter 26 two-lane highway example problems): a segment is evaluated for
+/// widening, realigning, and repaving; the BLOS in the peak direction is compared between the
+/// current roadway and the proposed design. Fixture: bicycle_widening.json. Published results:
+/// current BLOS 5.90 (LOS F), proposed BLOS 3.58 (LOS D). Tolerances ±0.01 on scores (book rounds
+/// intermediates to two decimals), LOS letters exact.
+#[test]
+fn bicycle_los_widening_example_test() {
+    let mut fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    fixture.push("tests/ExampleCases/hcm/TwoLaneHighways/bicycle_widening.json");
+    let f = File::open(fixture).expect("Unable to open bicycle_widening.json");
+    let json: serde_json::Value =
+        serde_json::from_reader(BufReader::new(f)).expect("Failed to parse JSON");
+
+    let load = |key: &str| -> BicycleLOS {
+        serde_json::from_value(json[key].clone()).expect("Failed to parse BicycleLOS inputs")
+    };
+
+    let current = load("current").analyze();
+    let proposed = load("proposed").analyze();
+
+    // Step 2: vOL = 500 / (0.90 * 1) = 556 veh/h (both designs)
+    assert_approx_eq!(current.flow_rate_outside_lane, 555.6, 0.1);
+
+    // Step 3: We = 14 ft current (Eqs 15-43/15-44), 24 ft proposed (Eqs 15-42/15-44)
+    assert_approx_eq!(current.effective_width, 14.0, 0.01);
+    assert_approx_eq!(proposed.effective_width, 24.0, 0.01);
+
+    // Step 4: St = 4.62 current (Spl 50), 4.79 proposed (Spl 55) per Eq 15-46
+    assert_approx_eq!(current.effective_speed_factor, 4.62, 0.01);
+    assert_approx_eq!(proposed.effective_speed_factor, 4.79, 0.01);
+
+    // Step 5: BLOS 5.90 -> F current, 3.58 -> D proposed (Eq 15-47, Exhibit 15-7)
+    assert_approx_eq!(current.blos_score, 5.90, 0.01);
+    assert_approx_eq!(proposed.blos_score, 3.58, 0.01);
+    assert_eq!(current.los, 'F');
+    assert_eq!(proposed.los, 'D');
 }

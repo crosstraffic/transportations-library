@@ -7,7 +7,7 @@
 
 use std::fs;
 
-use transportations_library::hcm::chapter22::roundabouts::Roundabouts;
+use transportations_library::hcm::roundabouts::roundabouts::Roundabouts;
 
 const DELAY_TOL: f64 = 0.5;
 const CAPACITY_TOL: f64 = 5.0;

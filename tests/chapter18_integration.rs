@@ -39,7 +39,7 @@
 //! 30-32, 30-33, and 30-36); the tests therefore assert the Chapter 18
 //! segment equations built on them, not the Chapter 19 engine.
 
-use transportations_library::hcm::chapter18::UrbanSegment;
+use transportations_library::hcm::urban_segments::UrbanSegment;
 use transportations_library::hcm::common::LevelOfService;
 
 fn load_case(name: &str) -> UrbanSegment {
@@ -227,7 +227,7 @@ fn test_case3_example_problem_1_computed_access_point_delay() {
     // The published dispersion value (0.493) requires the full Chapter 19
     // coordinated-actuated discharge-profile + O-D engine (see
     // docs/hcm/VERIFICATION.md); the dispersion primitives themselves are
-    // unit-tested in chapter18/tests.rs.
+    // unit-tested in urban_segments/tests.rs.
     assert_near!(
         seg.proportion_arriving_green.unwrap(),
         0.486,
