@@ -1,6 +1,6 @@
 # HCM Chapter 23, Part C — Alternative Intersections (RCUT / MUT / DLT)
 
-This document walks through the Rust translation of HCM 7th Edition Chapter 23, Part C ("Alternative Intersection Evaluation"), which follows the same ten-step Exhibit 23-47 framework used for interchanges in Part B (`chapter23.md`), applied to restricted crossing U-turns (RCUT), median U-turns (MUT), and displaced left-turn intersections (DLT). Only the steps genuinely specific to Part C are implemented in `src/hcm/chapter23/alternative_intersections.rs`: junction-level control delays for signalized junctions and the Chapter 18 flow-profile procedure are explicitly out of scope and enter the module as pre-computed `JunctionStep::Provided` inputs, per the module doc comment's step-by-step scoping list (Steps 1-4 largely reuse Chapter 19/20/34 machinery documented elsewhere; only Steps 1's O-D redistribution, 5's U-turn crossover adjustment and DLT offset, 6's STOP-junction evaluation, 7's EDTT, 9's ETT assembly/aggregation, and 10's LOS are modeled here). Sources are EPUB `178_Ch23_pt3_01.xhtml` through `182_Ch23_pt3_05.xhtml` (introduction through applications), cross-checked against Chapter 34 Example Problems 12-17 (`269_Ch34_02b.xhtml`/`269_Ch34_02c.xhtml`, Exhibits 34-123 through 34-150). `docs/hcm/VERIFICATION.md` exists at this branch's tip with a "Chapter 23 Part C (feat/hcm-ch23-alternative-intersections)" section that is the authoritative source for the deviations below.
+This document walks through the Rust translation of HCM 7th Edition Chapter 23, Part C ("Alternative Intersection Evaluation"), which follows the same ten-step Exhibit 23-47 framework used for interchanges in Part B (`chapter23.md`), applied to restricted crossing U-turns (RCUT), median U-turns (MUT), and displaced left-turn intersections (DLT). Only the steps genuinely specific to Part C are implemented in `src/hcm/ramp_terminals/alternative_intersections.rs`: junction-level control delays for signalized junctions and the Chapter 18 flow-profile procedure are explicitly out of scope and enter the module as pre-computed `JunctionStep::Provided` inputs, per the module doc comment's step-by-step scoping list (Steps 1-4 largely reuse Chapter 19/20/34 machinery documented elsewhere; only Steps 1's O-D redistribution, 5's U-turn crossover adjustment and DLT offset, 6's STOP-junction evaluation, 7's EDTT, 9's ETT assembly/aggregation, and 10's LOS are modeled here). Sources are EPUB `178_Ch23_pt3_01.xhtml` through `182_Ch23_pt3_05.xhtml` (introduction through applications), cross-checked against Chapter 34 Example Problems 12-17 (`269_Ch34_02b.xhtml`/`269_Ch34_02c.xhtml`, Exhibits 34-123 through 34-150). `docs/hcm/VERIFICATION.md` exists at this branch's tip with a "Chapter 23 Part C (feat/hcm-ch23-alternative-intersections)" section that is the authoritative source for the deviations below.
 
 ## Step-by-step walkthrough
 
@@ -10,7 +10,7 @@ This document walks through the Rust translation of HCM 7th Edition Chapter 23, 
 | Step 5 (part) — U-turn crossover saturation adjustment | Exhibit 23-52 | `uturn_saturation_adjustment(median_width_ft)` | `alternative_intersections.rs` | median width (ft) | adjustment factor (0.80/0.85/0.95, unitless) |
 | Step 5 (part) — Default STOP headways for a U-turn crossover | Chapter 23 Step 5 text | `UTURN_CROSSOVER_DEFAULT_CRITICAL_HEADWAY_S` (4.4 s), `UTURN_CROSSOVER_DEFAULT_FOLLOWUP_HEADWAY_S` (2.6 s) | `alternative_intersections.rs` | — | default t_c/t_f (s) |
 | Step 5 (DLT) — Supplemental-intersection offset | Eqs. 23-63 through 23-68 | `dlt_offset` | `alternative_intersections.rs` | `td_dlt_ft`, `sf_dlt_mph`, `lag_dlt_s`, `lag_th_s`, `offset_supp_s`, `offset_main_s`, `cycle_s` | `DltOffsetResult` (`tt_dlt_s`, `st_dlt_s`, `st_th_s`, `offset_supp_s`, all s) |
-| Step 6 — STOP-controlled junction performance | Eq. 20-18 (potential capacity), Eq. 20-61 (control delay), Eq. 20-66 (Q95) | `stop_junction_delay` (calls `common::gap_acceptance::potential_capacity`, `common::delay::control_delay_unsignalized`, `chapter20::twsc::Twsc::queue_95`) | `alternative_intersections.rs` | `flow_veh_h`, `conflicting_flow_veh_h`, `critical_headway_s`, `followup_headway_s`, `analysis_period_h` | `StopJunctionResult` (`capacity_veh_h`, `vc_ratio`, `control_delay_s`, `queue_95_veh`) |
+| Step 6 — STOP-controlled junction performance | Eq. 20-18 (potential capacity), Eq. 20-61 (control delay), Eq. 20-66 (Q95) | `stop_junction_delay` (calls `common::gap_acceptance::potential_capacity`, `common::delay::control_delay_unsignalized`, `twsc::twsc::Twsc::queue_95`) | `alternative_intersections.rs` | `flow_veh_h`, `conflicting_flow_veh_h`, `critical_headway_s`, `followup_headway_s`, `analysis_period_h` | `StopJunctionResult` (`capacity_veh_h`, `vc_ratio`, `control_delay_s`, `queue_95_veh`) |
 | Step 6 — Signalized/merge junction performance | Chapter 19 IQA (external); zero delay for a passing merge | `JunctionStep::Provided`/`JunctionStep::Merge` variants, matched in `AltMovement::evaluate` | `alternative_intersections.rs` | supplied `control_delay_s`/`vc_gt_1`/`rq_gt_1` (Provided); none (Merge) | per-junction delay (s/veh) folded into `AltMovementResult.junction_delays_s` |
 | Step 7 — Extra distance travel time (RCUT with merges) | Eq. 23-58 | `edtt_merge` | `alternative_intersections.rs` | `dist_to_crossover_ft`, `dist_from_crossover_ft`, `free_flow_speed_mph`, `accel_decel_s` (10 s minor-left / 15 s minor-through constants) | EDTT (s/veh) |
 | Step 7 — Extra distance travel time (RCUT/MUT with STOP or signal) | Eq. 23-59 | `edtt_stop_or_signal` | `alternative_intersections.rs` | `dist_to_crossover_ft`, `dist_from_crossover_ft`, `free_flow_speed_mph` | EDTT (s/veh) |
@@ -19,17 +19,147 @@ This document walks through the Rust translation of HCM 7th Edition Chapter 23, 
 | Step 9/10 (DLT) — Weighted-average control delay and LOS | Eq. 23-69 | `dlt_weighted_average_delay`, `DisplacedLeftTurn::intersection_ett`, `DisplacedLeftTurn::los` | `alternative_intersections.rs` | `DltDelayCell` `(flow_veh_h, control_delay_s)` per junction, `total_od_demand_veh_h` | `ETT_DLT` (s/veh, = control delay); `LevelOfService` |
 | Step 10 — LOS (RCUT/MUT) | Exhibit 23-13 | `los_alternative_intersection_od` (Part B's `exhibits.rs`, re-used) | `alternative_intersections.rs` (call site in `AltMovement::evaluate`) | ETT (s/veh), v/c>1 and R_Q>1 flags | `LevelOfService` |
 
+### Step 1, 5, and 7 equations (step-table rows not covered in the prose subsections below)
+
+```
+Equation 23-57:  v_i = V_i / PHF                                                      [veh/h]
+  v_i  = demand flow rate for movement i                                             (veh/h)
+  V_i  = demand volume for movement i                                               (veh/h)
+  PHF  = peak hour factor                                                           (unitless, 0 < PHF <= 1)
+This is the same PHF-based flow-rate conversion used throughout the HCM, not a distinct Part-C-specific O-D formula; the EPUB's Step 1 text ("The standard turning movement demand pattern ... is converted into left turns, through vehicles, and right turns at each component junction") describes redistributing the converted flow rates to component junctions, a table the analyst supplies (matching Exhibits 34-124/34-127/34-131/34-135).
+Implemented in: analyst input — AltMovement.demand_veh_h and the per-junction flow fields of JunctionStep (ramp_terminals/alternative_intersections.rs); no dedicated function, since the PHF conversion and O-D-to-junction redistribution are supplied pre-computed.
+
+Exhibit 23-52: U-turn crossover saturation flow adjustment factor by median width
+  median width < 35 ft            -> 0.80  (narrow)
+  35 ft <= median width <= 80 ft  -> 0.85  (typical)
+  median width > 80 ft            -> 0.95  (very wide)
+Applied as an extra saturation flow adjustment factor at the U-turn crossover lane group of the Chapter 19 (`signalized`) analysis (Step 5). These are code constants/thresholds rather than an equation.
+Implemented in: ramp_terminals/alternative_intersections.rs::uturn_saturation_adjustment
+
+Step 5 default STOP-controlled U-turn crossover headways (HCM Chapter 23 Step 5 discussion text, not a numbered equation):
+  UTURN_CROSSOVER_DEFAULT_CRITICAL_HEADWAY_S  = 4.4 s   (t_c, observed at a three-through-lane, 55-mi/h reference site)
+  UTURN_CROSSOVER_DEFAULT_FOLLOWUP_HEADWAY_S  = 2.6 s   (t_f, same reference site)
+Used only when field data or representative local data are unavailable; feed Equation 20-18 (potential capacity) at a U-turn crossover.
+Implemented in: ramp_terminals/alternative_intersections.rs (module constants UTURN_CROSSOVER_DEFAULT_CRITICAL_HEADWAY_S, UTURN_CROSSOVER_DEFAULT_FOLLOWUP_HEADWAY_S)
+
+Equation 23-58:  EDTT = (D_t + D_f) / (1.47 · S_f) + a                                 [s]
+  EDTT = extra distance travel time                                                  (s)
+  D_t  = distance from the main junction to the U-turn crossover                     (ft)
+  D_f  = distance from the U-turn crossover back to the main junction                (ft)
+  1.47 = conversion factor from mi/h to ft/s
+  S_f  = major-street free-flow speed                                               (mi/h)
+  a    = deceleration/acceleration delay term: 10 s for a minor-street left turn (EDTT_MERGE_ACCEL_DECEL_MINOR_LEFT_S), 15 s for a minor-street through movement (EDTT_MERGE_ACCEL_DECEL_MINOR_THROUGH_S) (s)
+EDTT is experienced as a round trip from the main junction to the U-turn crossover and back (RCUTs with merges only).
+Implemented in: ramp_terminals/alternative_intersections.rs::edtt_merge
+
+Equation 23-59:  EDTT = (D_t + D_f) / (1.47 · S_f)                                     [s]
+  D_t, D_f, S_f as defined in Equation 23-58 above
+No acceleration/deceleration term, because it is already captured by the STOP or signal control-delay computation (RCUTs/MUTs with STOP signs or signals).
+Implemented in: ramp_terminals/alternative_intersections.rs::edtt_stop_or_signal
+```
+
 ### Journey construction (`AltMovement`, `JunctionStep`, `AlternativeIntersection`)
 
 `AltIntersectionForm` enumerates the six Part C forms (`RcutFourLeg`, `RcutThreeLeg`, `MutFourLeg`, `MutThreeLeg`, `DltPartial`, `DltFull`; Exhibits 23-41 through 23-45, 23-53, 23-54). An `AltMovement` is one O-D movement's journey: a label, an `Approach` (Eb/Wb/Nb/Sb, for Equation 23-61 aggregation), a demand flow rate (the aggregation weight), an ordered `Vec<JunctionStep>` (the Exhibit 23-48/23-49/23-50 traversal table for that movement, constructed by the analyst/fixture rather than derived automatically from an O-D table — the module doc comment is explicit that "the redistribution table is the analyst's input"), and a Step 7 EDTT scalar (zero for movements that are not rerouted). `JunctionStep` is a three-variant enum: `Provided` (an externally computed control delay — a Chapter 19 signalized junction, or a merge whose weaving delay is nonzero — plus `vc_gt_1`/`rq_gt_1` flags), `Stop` (evaluated in-module via `stop_junction_delay`, with optional `storage_ft`/`queue_spacing_ft` for the queue-storage-ratio LOS-F check), and `Merge` (zero delay, a free-flow merge onto the major street). `AltMovement::evaluate` walks the journey, sums the per-junction control delays, adds EDTT (Equation 23-60, `ett_s = total_control_delay_s + edtt_s`), ORs the `vc_gt_1`/`rq_gt_1` flags across every junction on the journey (forcing a stricter LOS if any junction is over capacity or over storage), and looks up LOS via `los_alternative_intersection_od`. `AlternativeIntersection` (an ordered `Vec<AltMovement>` plus the form) exposes `evaluate()` (all movements), `approach_ett(Approach)` (Equation 23-61, demand-weighted mean ETT within one approach, `None` if that approach carries no demand), and `intersection_ett()` (Equation 23-62, the same weighting over every movement).
+
+```
+Equation 23-60:  ETT = Σd_i + ΣEDTT                                                   [s/veh]
+  ETT  = experienced travel time for the O-D movement                                (s/veh)
+  d_i  = control delay at each junction i encountered on the path through the facility (s)
+  EDTT = extra distance travel time experienced (Equations 23-58/23-59, Step 7 (and Step 8 weaving delay if folded in)) (s)
+Implemented in: ramp_terminals/alternative_intersections.rs::AltMovement::evaluate (`ett_s = total_control_delay_s + edtt_s`)
+
+Equation 23-61:  ETT_A = Σ(ETT_j · v_j) / Σv_j                                         [s/veh]
+  ETT_A = approach experienced travel time                                           (s/veh)
+  ETT_j = experienced travel time for movement j (Equation 23-60)                     (s/veh)
+  v_j   = demand flow rate for movement j                                            (veh/h)
+  j     = ranges over all movements on the approach of interest
+Implemented in: ramp_terminals/alternative_intersections.rs::AlternativeIntersection::approach_ett
+
+Equation 23-62:  ETT_I = Σ(ETT_k · v_k) / Σv_k                                         [s/veh]
+  ETT_I = intersection experienced travel time                                       (s/veh)
+  ETT_k = experienced travel time for movement k (Equation 23-60)                     (s/veh)
+  v_k   = demand flow rate for movement k                                            (veh/h)
+  k     = ranges over all movements at the intersection
+Implemented in: ramp_terminals/alternative_intersections.rs::AlternativeIntersection::intersection_ett
+```
 
 ### DLT (displaced left-turn) intersections
 
 DLTs are modeled as an extension of the urban-street/signalized-intersection procedures rather than through the `AlternativeIntersection`/`AltMovement` journey machinery (per the module doc comment: "analyzed as extensions of the urban-street/signalized-intersection procedures"). `dlt_offset` implements the full Step 5 offset chain: Equation 23-63 (`TT_DLT = TD_DLT/(1.467 S_f,DLT)`, the displaced-left-turn roadway travel time), Equations 23-64/23-65 (`ST_DLT = LAG_DLT + O_SUPP`, `ST_TH = LAG_TH + O_MAIN`, the system start times of the DLT phase and the major-street through phase), and Equations 23-66 through 23-68 (`O_SUPP(s) = O_SUPP - ST_DLT + ST_TH - TT_DLT`, wrapped into `[0, C)` by repeated addition/subtraction of the cycle length rather than a modulo operation — functionally equivalent but written as an explicit `while` loop in the code). `DisplacedLeftTurn` holds the Exhibit 34-145/34-150 weighted-average control-delay table as `Vec<DltDelayCell>` (`flow_veh_h`, `control_delay_s` per component junction) plus the O-D demand total; `dlt_weighted_average_delay`/`DisplacedLeftTurn::intersection_ett` implement Equation 23-69 (`ETT_DLT = Sigma(d_j v_j) / Sigma v_OD`), with the doc comment noting "for DLT intersections, ETT is assumed equal to control delay (Step 7 EDTT is negligible)."
 
+```
+Equation 23-63:  TT_DLT = TD_DLT / (S_f,DLT · 1.47)                                    [s]
+  TT_DLT  = displaced left-turn roadway travel time                                  (s)
+  TD_DLT  = travel distance from the upstream supplemental-intersection crossover stop line to the main-intersection stop line (ft)
+  S_f,DLT = free-flow speed of the displaced left-turn roadway                       (mi/h)
+  1.47    = conversion factor from mi/h to ft/s
+Implemented in: ramp_terminals/alternative_intersections.rs::dlt_offset
+
+Equation 23-64:  ST_DLT = LAG_DLT + O_SUPP                                             [s]
+  ST_DLT  = system start time of the displaced left-turn phase at the upstream supplemental intersection (s)
+  LAG_DLT = duration between the reference point and the start of the DLT phase at the supplemental intersection, from input phase splits (s)
+  O_SUPP  = initial offset at the upstream supplemental intersection                 (s)
+Implemented in: ramp_terminals/alternative_intersections.rs::dlt_offset
+
+Equation 23-65:  ST_TH = LAG_TH + O_MAIN                                               [s]
+  ST_TH   = system start time of the major-street through phase at the main intersection (s)
+  LAG_TH  = duration between the reference point and the start of the major-street through phase at the main intersection, from input phase splits (s)
+  O_MAIN  = offset at the downstream main intersection                              (s)
+Implemented in: ramp_terminals/alternative_intersections.rs::dlt_offset
+
+Equation 23-66:  O_SUPP(s) = O_SUPP − ST_DLT + ST_TH − TT_DLT                          [s]
+  O_SUPP(s) = adjusted offset at the upstream supplemental intersection, chosen so that ST_TH = ST_DLT + TT_DLT (s)
+  O_SUPP    = initial supplemental-intersection offset (Equation 23-64 input)         (s)
+  ST_DLT    = system start time of the DLT phase (Equation 23-64)                     (s)
+  ST_TH     = system start time of the major-street through phase (Equation 23-65)    (s)
+  TT_DLT    = displaced left-turn roadway travel time (Equation 23-63)                (s)
+The manual prints the last term as "TT_LTD" (a typo for TT_DLT); written here and implemented per the derivation/prose, not the literal typo (see Deviations item 4 below; Example 16 reproduces O_SUPP = 45.2 s vs. the published 45 s, from rounding TT_DLT 6.8 to 7 before subtracting).
+Implemented in: ramp_terminals/alternative_intersections.rs::dlt_offset
+
+Equations 23-67/23-68 (wrap the adjusted offset into the valid range [0, C)):
+  If O_SUPP ≥ C  then  O_SUPP = O_SUPP − C      (Equation 23-67)
+  If O_SUPP < 0  then  O_SUPP = O_SUPP + C       (Equation 23-68)
+  C = background system cycle length                                                 (s)
+The manual prints Equation 23-68's guard as "if O_SUPP < C", while the accompanying Step 9 prose reads "if any offset value is lower than zero"; written and implemented here per the prose (guard is O_SUPP < 0), not the literal printed guard (see Deviations item 4 below). The code applies both corrections in a `while` loop rather than a single `if`, functionally equivalent for any O_SUPP within a few cycle lengths of [0, C).
+Implemented in: ramp_terminals/alternative_intersections.rs::dlt_offset
+
+Equation 23-69:  ETT_DLT = Σ(d_j · v_j) / Σv_OD                                        [s/veh]
+  ETT_DLT = weighted average experienced travel time for the DLT intersection         (s/veh)
+  d_j     = control delay at component junction j                                    (s/veh)
+  v_j     = flow rate through component junction j                                   (veh/h)
+  v_OD    = O-D demand volumes; Σv_OD must equal the conventional-intersection movement-demand total, to avoid double-counting trips within the spatial boundaries (Exhibit 23-5) (veh/h)
+For DLT intersections, ETT is assumed equal to control delay (Step 7 EDTT/Step 8 weaving delay are assumed negligible per the EPUB: "EDTT and weaving delay are assumed to be negligible for DLT intersections").
+Implemented in: ramp_terminals/alternative_intersections.rs::dlt_weighted_average_delay, DisplacedLeftTurn::intersection_ett
+```
+
 ### Junction analysis reuse
 
-Step 6's STOP-controlled junction evaluation (`stop_junction_delay`) is a thin wrapper composing three primitives from other chapters rather than new machinery: `common::gap_acceptance::potential_capacity` (Equation 20-18), `common::delay::control_delay_unsignalized` (Equation 20-61), and `chapter20::twsc::Twsc::queue_95` (Equation 20-66). Its doc comment is explicit about scope: it "models a rank-2 movement with no capacity impedance from higher-rank conflicting streams (the movement capacity equals the potential capacity), which is the situation at RCUT/MUT crossovers and the redistributed main-junction minor movements" — higher-rank impedance, when it matters, must be applied through the full Chapter 20 `Twsc` engine directly rather than through this Part-C-specific wrapper. Signalized junction delays are never recomputed by this module; they are supplied as `JunctionStep::Provided` values, which the module doc comment attributes to the Chapter 19 incremental-queue-accumulation (IQA) procedure documented in `chapter19.md`/`chapter19-actuated.md`.
+Step 6's STOP-controlled junction evaluation (`stop_junction_delay`) is a thin wrapper composing three primitives from other chapters rather than new machinery: `common::gap_acceptance::potential_capacity` (Equation 20-18), `common::delay::control_delay_unsignalized` (Equation 20-61), and `twsc::twsc::Twsc::queue_95` (Equation 20-66). Its doc comment is explicit about scope: it "models a rank-2 movement with no capacity impedance from higher-rank conflicting streams (the movement capacity equals the potential capacity), which is the situation at RCUT/MUT crossovers and the redistributed main-junction minor movements" — higher-rank impedance, when it matters, must be applied through the full Chapter 20 `Twsc` engine directly rather than through this Part-C-specific wrapper. Signalized junction delays are never recomputed by this module; they are supplied as `JunctionStep::Provided` values, which the module doc comment attributes to the Chapter 19 incremental-queue-accumulation (IQA) procedure documented in `chapter19.md`/`chapter19-actuated.md`.
+
+```
+Equation 20-18:  c_p,x = v_c,x · e^(−v_c,x·t_c,x / 3600) / (1 − e^(−v_c,x·t_f,x / 3600))     [veh/h]
+  c_p,x  = potential capacity of minor movement x                                    (veh/h)
+  v_c,x  = conflicting flow rate for movement x                                      (veh/h)
+  t_c,x  = critical headway for movement x (default 4.4 s at a U-turn crossover, see UTURN_CROSSOVER_DEFAULT_CRITICAL_HEADWAY_S above) (s)
+  t_f,x  = follow-up headway for movement x (default 2.6 s at a U-turn crossover, see UTURN_CROSSOVER_DEFAULT_FOLLOWUP_HEADWAY_S above) (s)
+Documented in more depth in docs/hcm/procedures/chapter20.md ("Step 5 — Potential capacities"); stop_junction_delay always uses the base gap-acceptance form (no upstream-signal platoon adjustment, no higher-rank impedance), per the scope note above.
+Implemented in: common/gap_acceptance.rs::potential_capacity
+
+Equation 20-61:  d = 3600/c + 900·T·[x − 1 + √((x − 1)² + (3600/c)·x / (450·T))] + 5          [s/veh]
+  d  = control delay                                                                  (s/veh)
+  c  = capacity of the subject movement (Equation 20-18 potential capacity in this Part-C wrapper) (veh/h)
+  x  = v/c ratio, degree of utilization (unitless)
+  T  = analysis period (typically 0.25 h)                                             (h)
+Documented in more depth in docs/hcm/procedures/chapter20.md ("Step 11 — Movement and lane control delay, LOS, queue").
+Implemented in: common/delay.rs::control_delay_unsignalized
+
+Equation 20-66:  Q_95 = 900·T·[x − 1 + √((x − 1)² + (3600/c)·x / (150·T))] · (c / 3600)       [veh]
+  Q_95 = 95th-percentile queue                                                        (veh)
+  x, c, T as in Equation 20-61 above
+Documented in more depth in docs/hcm/procedures/chapter20.md ("Step 11 — Movement and lane control delay, LOS, queue").
+Implemented in: twsc/twsc.rs::Twsc::queue_95
+```
 
 ## Deviations (cross-referenced to `docs/hcm/VERIFICATION.md`)
 

@@ -7,14 +7,14 @@
 //! intermediates and reports whole vehicles); LOS letters exact. The book
 //! prints speeds/densities to 0.1 and volumes to whole veh/h; LOS is
 //! assigned from integer-rounded densities (see VERIFY-HCM notes in
-//! src/hcm/chapter10). Known reproduction gaps in Example Problem 2 are
+//! src/hcm/freeway_facilities). Known reproduction gaps in Example Problem 2 are
 //! asserted at their computed values and annotated with the published ones.
 
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 
-use transportations_library::hcm::chapter10::freeway_facilities::FreewayFacility;
+use transportations_library::hcm::freeway_facilities::freeway_facilities::FreewayFacility;
 use transportations_library::hcm::common::LevelOfService;
 
 fn load_case(name: &str) -> FreewayFacility {
@@ -410,7 +410,7 @@ fn ep2_queue_lifecycle() {
 // Example Problem 5: managed-lane facility (Exhibits 25-78 through 25-87)
 // ═════════════════════════════════════════════════════════════════════════
 
-use transportations_library::hcm::chapter10::managed_lanes::ManagedLaneFacility;
+use transportations_library::hcm::freeway_facilities::managed_lanes::ManagedLaneFacility;
 
 fn load_ml_case(name: &str) -> ManagedLaneFacility {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -536,7 +536,7 @@ fn ep5_facility_performance_matches_exhibit_25_87() {
 // Example Problem 6: planning-level method (Exhibits 25-88 through 25-96)
 // ═════════════════════════════════════════════════════════════════════════
 
-use transportations_library::hcm::chapter10::planning::PlanningFacility;
+use transportations_library::hcm::freeway_facilities::planning::PlanningFacility;
 
 fn load_planning_case(name: &str) -> PlanningFacility {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

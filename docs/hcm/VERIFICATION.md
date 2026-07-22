@@ -53,6 +53,32 @@ published QAP interval detail; SB-left back-of-queue needs milestone-2 ADP proce
    reproduced only via explicit `conflicting_flow_overrides` in the fixture. `twsc.rs:655`.
 2. U-turn critical/follow-up headways on two-lane majors are "NA" in Exhibit 20-17/20-18; four-lane
    values used as fallback if coded. `twsc.rs:804,853`.
+3. **Step 5b upstream-signal platoon blockage (Eqs 20-19..20-21, Exhibit 20-19) wired** via the
+   `platoon_blockage` input (analyst-supplied p_b,x). The Chapter 30 §3 derivation of p_b,x is now
+   also wired (`feat/hcm-ch20-computed-pb`): `src/hcm/chapter20/computed_pb.rs` builds p_b from
+   `upstream_signals` descriptors using the Ch 18/30 dispersion primitives and the Eq 30-13
+   blocked-period-vs-q_c logic; an explicit `platoon_blockage` takes precedence. No published
+   end-to-end p_b regression exists (the 0.170/0.260 of Exhibit 32-12 are Ch 30 EP1 engine output,
+   requiring the full Ch 19 coordinated engine + §2 O-D), so it is validated by mechanism tests
+   (square-wave hand check, dispersion monotonicity, directional mapping, both-direction union,
+   analyst precedence, computed-vs-manual `PlatoonBlockage` equivalence).
+   Validated against Ch 32 TWSC Example Problem 4 (`case3.json`, `test_twsc_example_problem_4_upstream_signals`):
+   conflicting flows, v_c,u,x, and platooned c_p (750/758/859/852/73/72) reproduce exactly. Two
+   findings:
+   - **EP4 Stage II conflicting flow drops the major-street right-turn term** (0.5 v_6 for movement 7,
+     0.5 v_3 for movement 10), same class as finding 1: published v_c,7 = 1,827, v_c,10 = 1,832 vs.
+     Exhibit 20-16 values 1,874/1,879. Fixture uses `conflicting_flow_overrides`.
+   - **EP4 shared major-street left turn now modeled** (feat/hcm-ch20-shared-major-left). The
+     `MajorLeftLaneConfig` input (`major_left_eb`/`major_left_wb`; case3.json sets both to `Shared`)
+     drives the Step 7d p\*_0,j substitution (Eqs 20-29..20-34, `prob_queue_free_shared_major`) into
+     the Rank 3/4 impedance chain and the Step 11b Rank 1 delay (Eqs 20-62/63, `rank1_delay`) into
+     Step 12. With x_2+3 = 0.304, p\*_0 = 0.856, the test now asserts the published c_m,7 = c_m,10 = 47
+     veh/h, d_2+3 = d_5+6 = 1.3 s, d_A,EB/WB = 1.9 s, and d_I = 34.1 s (all +-0.5 s / +-1 veh/h). The
+     two oversaturated minor-left delays d_7 = d_10 = 529 s and d_A,NB/SB = 241 s use +-12 s / +-5 s
+     tolerances because Eq 20-61 slopes ~18.6 s per veh/h near v/c = 1.7 and the book rounds c_m to 47
+     while this library carries 46.6-47.1 (the over/under-shoots cancel in d_I). **Remaining:** the
+     Step 10c through-lane capacity helper `shared_major_lane_capacity` (Eqs 20-51..20-60, c_SS) is
+     still standalone/unwired — it does not affect the minor-street or intersection-delay outputs.
 
 ## Chapter 24 (feat/hcm-ch24-offstreet-pedbike)
 1. Eq 24-17 modal-pair passing distance ambiguity: implementation reproduces the worked example
@@ -235,15 +261,19 @@ as `Provided` junction steps.
    procedure (`actuated.rs`, Eqs 31-1..31-45) is driven from the EP1 controller settings holding the
    Steps 1–5 lane-flow / permitted-green operating point fixed at the published values. It reproduces
    the equivalent maximum allowable headway (3.4 EB/WB, 3.1 minor street) and the barrier balance
-   exactly, and the minor-street through phases within ~4 s (Ph8 NB-T ≈ 51–54 vs 54.0; Ph4 SB-T ≈ 54
-   vs 57.6; SB-T g_e ≈ 9.5 vs 7.8). Two residuals remain, both documented in the module and test:
-   (a) the major-street phases 2/6 under-extend (~23 vs 34 s) because the HCM computational engine's
+   exactly. Following the Eq 31-9 denominator correction (the missing cycle-length factor `C` in the
+   queue-service-time second term, fixed on `fix/hcm-equation-sweep`), the minor-street through phases
+   now match the published durations (Ph8 NB-T 54.00 vs 54.0; Ph4 SB-T 57.79 vs 57.6; SB-T g_e 9.02 vs
+   7.8) and the estimated cycle is 100.0 s, within ~2 s of 101.8 (before the fix these were 51.3 / 53.9
+   / g_e 9.5 and cycle ~89). Two residuals remain, both documented in the module and test:
+   (a) the major-street phases 2/6 under-extend (~28 vs 34 s) because the HCM computational engine's
    combined-flow max-out model holds them at max green while the transcribed green-extension model
    (Eqs 31-29/31-30) gaps them out; (b) the leading protected left phases 3/7 are charged the full
    left-turn demand for queue service rather than only the demand not served in the following
-   permitted period. The estimated cycle is ~13 s short of 101.8 s. Closing these requires embedding
-   the full Steps 1–5 recomputation and the engine's combined-flow extension calibration inside every
-   actuated iteration (Section 7 computational-engine detail). **VERIFY-HCM.**
+   permitted period, so they over-serve (Ph3 14.30 vs 10.2; Ph7 18.09 vs 13.8) — a residual the Eq 31-9
+   correction slightly enlarges. Closing these requires embedding the full Steps 1–5 recomputation and
+   the engine's combined-flow extension calibration inside every actuated iteration (Section 7
+   computational-engine detail). **VERIFY-HCM.**
 2. **Left-turn ADP first-term partial-stop offset.** The first-term back of queue for permitted /
    protected-permitted left-turn lane groups (Eq 31-141) is computed as the largest per-busy-period
    arrival count less `q·d_a/2` (the fully-stopped departure dashed line of Section 4, Step 3 leads
@@ -273,7 +303,10 @@ as `Provided` junction steps.
   (see "Chapter 18/30 computed procedures"); still deferred: the §2 O-D/volume-balance/spillback
   adjustment and the coordinated-actuated convergence loop that would drive §3 discharge profiles
   from Ch 19 timing (so EP1 computed P = 0.493 from the raw signal remains deferred).
-- Ch 20: Ch 30 upstream-signal platoon inputs (p_b,x supplied by caller); pedestrian-mode method.
+- Ch 20: Ch 30 §3 upstream-signal platoon inputs p_b,x now computed from `upstream_signals`
+  descriptors (or supplied directly by the caller); the end-to-end p_b regression against Ch 30 EP1
+  / Exhibit 32-12 stays deferred behind the Ch 19 coordinated engine + §2 O-D. Pedestrian-mode
+  method still deferred.
 - Ch 23: signalized RCUT/MUT sub-junction delays enter as provided inputs (Ch 34 worksheet
   convention); full Ch 19/18 recomputation per sub-junction deferred. Part C itself is implemented
   (feat/hcm-ch23-alternative-intersections).

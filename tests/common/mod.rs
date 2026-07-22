@@ -188,7 +188,7 @@ pub fn create_suburban_highway() -> TwoLaneHighways {
 
 /// Load test data files if they exist
 pub fn load_test_data_files() -> Vec<String> {
-    let test_dir = "src/ExampleCases/hcm/TwoLaneHighways/";
+    let test_dir = "tests/ExampleCases/hcm/TwoLaneHighways/";
     if std::path::Path::new(test_dir).exists() {
         let paths = fs::read_dir(test_dir).expect("Unable to read test directory");
         let mut files: Vec<String> = paths

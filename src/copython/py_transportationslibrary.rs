@@ -1,41 +1,42 @@
 //! Python extension-module entry point. Each HCM chapter's wrapper classes
-//! live in their own `copython::chapterNN` module and are registered here.
+//! live in their own `copython::<topic>` module (e.g. `copython::twolanehighways`
+//! for Chapter 15) and are registered here.
 
 use pyo3::prelude::*;
 
-pub use super::chapter10::*;
-pub use super::chapter11::*;
-pub use super::chapter12::*;
-pub use super::chapter13::*;
-pub use super::chapter14::*;
-pub use super::chapter15::*;
-pub use super::chapter16::*;
-pub use super::chapter17::*;
-pub use super::chapter18::*;
-pub use super::chapter19::*;
-pub use super::chapter20::*;
-pub use super::chapter21::*;
-pub use super::chapter22::*;
-pub use super::chapter23::*;
-pub use super::chapter24::*;
+pub use super::freeway_facilities::*; // HCM Chapter 10
+pub use super::freeway_reliability::*; // HCM Chapter 11
+pub use super::basicfreeways::*; // HCM Chapter 12
+pub use super::weaving::*; // HCM Chapter 13
+pub use super::merge_diverge::*; // HCM Chapter 14
+pub use super::twolanehighways::*; // HCM Chapter 15
+pub use super::urban_facilities::*; // HCM Chapter 16
+pub use super::urban_reliability::*; // HCM Chapter 17
+pub use super::urban_segments::*; // HCM Chapter 18
+pub use super::signalized::*; // HCM Chapter 19
+pub use super::twsc::*; // HCM Chapter 20
+pub use super::awsc::*; // HCM Chapter 21
+pub use super::roundabouts::*; // HCM Chapter 22
+pub use super::ramp_terminals::*; // HCM Chapter 23
+pub use super::offstreet_pedbike::*; // HCM Chapter 24
 
 #[pymodule]
 fn transportations_library(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    super::chapter10::register(m)?;
-    super::chapter11::register(m)?;
-    super::chapter12::register(m)?;
-    super::chapter13::register(m)?;
-    super::chapter14::register(m)?;
-    super::chapter15::register(m)?;
-    super::chapter16::register(m)?;
-    super::chapter17::register(m)?;
-    super::chapter18::register(m)?;
-    super::chapter19::register(m)?;
-    super::chapter20::register(m)?;
-    super::chapter21::register(m)?;
-    super::chapter22::register(m)?;
-    super::chapter23::register(m)?;
-    super::chapter24::register(m)?;
+    super::freeway_facilities::register(m)?;
+    super::freeway_reliability::register(m)?;
+    super::basicfreeways::register(m)?;
+    super::weaving::register(m)?;
+    super::merge_diverge::register(m)?;
+    super::twolanehighways::register(m)?;
+    super::urban_facilities::register(m)?;
+    super::urban_reliability::register(m)?;
+    super::urban_segments::register(m)?;
+    super::signalized::register(m)?;
+    super::twsc::register(m)?;
+    super::awsc::register(m)?;
+    super::roundabouts::register(m)?;
+    super::ramp_terminals::register(m)?;
+    super::offstreet_pedbike::register(m)?;
     super::support::register(m)?;
 
     m.add(

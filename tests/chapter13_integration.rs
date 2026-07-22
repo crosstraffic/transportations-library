@@ -10,7 +10,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 
-use transportations_library::hcm::chapter13::weaving::WeavingSegment;
+use transportations_library::hcm::weaving::weaving::WeavingSegment;
 use transportations_library::hcm::common::LevelOfService;
 
 fn load_case(name: &str) -> WeavingSegment {

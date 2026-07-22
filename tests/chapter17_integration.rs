@@ -24,12 +24,12 @@
 //! 30,902 → 32,083 veh-h, and the count of oversaturated scenarios (out
 //! of 3,120) nearly doubled, 37 → 70. The carryover mechanism itself is
 //! verified directly and exactly in
-//! `hcm::chapter17::tests::test_residual_queue_carryover_and_day_reset`
+//! `hcm::urban_reliability::tests::test_residual_queue_carryover_and_day_reset`
 //! (unit test, synthetic over-capacity segment): queues there build to
 //! several hundred vehicles and drive TTI as high as 8.3 in this fixture,
 //! confirming the mechanism functions as intended. The remaining gap to
 //! the published PTI is attributed to other still-deferred elements
-//! (see `hcm::chapter17::urban_reliability`'s module docs): principally
+//! (see `hcm::urban_reliability::urban_reliability`'s module docs): principally
 //! the random 15-min demand variation (Equations 29-30 through 29-33,
 //! not implemented), whose added flow-rate volatility would generate
 //! more frequent and more severe oversaturation events than the
@@ -38,7 +38,7 @@
 //! which are not independently calibratable against FREEVAL/STREETVAL's
 //! internal reference dataset.
 
-use transportations_library::hcm::chapter17::{AtdmStrategy, UrbanReliability};
+use transportations_library::hcm::urban_reliability::{AtdmStrategy, UrbanReliability};
 
 fn load_case(name: &str) -> UrbanReliability {
     let path = format!(

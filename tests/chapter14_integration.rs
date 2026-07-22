@@ -9,7 +9,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 
-use transportations_library::hcm::chapter14::merge_diverge::RampSegment;
+use transportations_library::hcm::merge_diverge::merge_diverge::RampSegment;
 use transportations_library::hcm::common::LevelOfService;
 
 fn load_case(name: &str) -> RampSegment {

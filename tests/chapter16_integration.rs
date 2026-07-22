@@ -19,7 +19,7 @@
 //!   published segment values exactly (harmonic/arithmetic means of
 //!   identical values), verifying the analyze() pipeline end to end.
 
-use transportations_library::hcm::chapter16::{FacilityResults, UrbanFacility};
+use transportations_library::hcm::urban_facilities::{FacilityResults, UrbanFacility};
 use transportations_library::hcm::common::LevelOfService;
 
 fn load_case(name: &str) -> UrbanFacility {

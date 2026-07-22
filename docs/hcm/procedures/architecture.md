@@ -2,6 +2,8 @@
 
 This document describes the module layout introduced by the `feat/hcm-restructure` branch (commit `8493fd3`, "refactor: reorganize HCM modules into per-chapter layout"), which moved the library from a flat `src/*.rs` layout to one module per HCM chapter plus shared `common`/`support` trees. It is written for the library author to check that the restructuring preserved behavior and that the compatibility shims are load-bearing for downstream consumers, in particular the "semantic firewall" / validator tooling that imports the pre-restructure paths.
 
+A later branch (`feat/hcm-topic-folder-names`) renamed every `src/hcm/chapterNN/` directory to a topic name (`chapter12` -> `basicfreeways`, `chapter15` -> `twolanehighways`, etc. — see the mapping table in that branch's PR description for the full chapter10-24 list). `src/hcm/mod.rs` now declares the topic modules directly and re-exports each one under its old chapter-number name (`pub use basicfreeways as chapter12;`, `pub use twolanehighways as chapter15;`, ...), so every `hcm::chapterNN::...` path documented below still compiles unchanged; only new code should prefer the topic names. The directory table, register pattern, and shim descriptions below use the topic names now in effect; where a chapter-number path is shown it resolves through the alias just described.
+
 ## Module layout
 
 `src/hcm/mod.rs` is the root of the HCM tree. Its module declarations are:
@@ -9,22 +11,28 @@ This document describes the module layout introduced by the `feat/hcm-restructur
 ```
 pub mod common;
 pub mod utils;
-pub mod chapter12;
-pub mod chapter13;
-pub mod chapter14;
-pub mod chapter15;
+pub mod basicfreeways; // HCM Chapter 12
+pub mod weaving; // HCM Chapter 13
+pub mod merge_diverge; // HCM Chapter 14
+pub mod twolanehighways; // HCM Chapter 15
+
+// Chapter-number aliases (external path stability):
+pub use basicfreeways as chapter12;
+pub use weaving as chapter13;
+pub use merge_diverge as chapter14;
+pub use twolanehighways as chapter15;
 ```
 
-Each `chapterNN` directory contains one file per HCM methodology in that chapter, plus a `mod.rs` that re-exports them:
+Each topic directory contains one file per HCM methodology in that chapter, plus a `mod.rs` that re-exports them:
 
 | Directory | Files | HCM content |
 |---|---|---|
-| `src/hcm/chapter12/` | `basicfreeways.rs`, `managed_lanes.rs`, `mod.rs` | Ch. 12 basic freeway/multilane segments and managed-lane segments |
-| `src/hcm/chapter13/` | `weaving.rs`, `mod.rs` | Ch. 13 weaving segments |
-| `src/hcm/chapter14/` | `merge_diverge.rs`, `mod.rs` | Ch. 14 merge/diverge segments |
-| `src/hcm/chapter15/` | `twolanehighways.rs` (2,495 lines), `mod.rs` | Ch. 15 two-lane highways, motorized and bicycle methodologies |
+| `src/hcm/basicfreeways/` | `basicfreeways.rs`, `managed_lanes.rs`, `mod.rs` | Ch. 12 basic freeway/multilane segments and managed-lane segments |
+| `src/hcm/weaving/` | `weaving.rs`, `mod.rs` | Ch. 13 weaving segments |
+| `src/hcm/merge_diverge/` | `merge_diverge.rs`, `mod.rs` | Ch. 14 merge/diverge segments |
+| `src/hcm/twolanehighways/` | `twolanehighways.rs` (2,495 lines), `mod.rs` | Ch. 15 two-lane highways, motorized and bicycle methodologies |
 
-`src/hcm/chapter15/mod.rs` is an 8-line re-export shim (`pub mod twolanehighways; pub use twolanehighways::*;`) — the pattern is the same for every `chapterNN/mod.rs`: a thin `pub mod` + `pub use` wrapper, no logic lives in the `mod.rs` files themselves.
+`src/hcm/twolanehighways/mod.rs` is an 8-line re-export shim (`pub mod twolanehighways; pub use twolanehighways::*;`) — the pattern is the same for every topic `mod.rs`: a thin `pub mod` + `pub use` wrapper, no logic lives in the `mod.rs` files themselves. Note the deliberate self-collision: the folder and its single inner file share the same name (`twolanehighways/twolanehighways.rs`), so both `hcm::twolanehighways::TwoLaneHighways` (via the folder's `pub use twolanehighways::*;`) and `hcm::twolanehighways::twolanehighways::TwoLaneHighways` (the inner file directly) resolve to the same type.
 
 ### `common/` vs `support/`
 
@@ -53,7 +61,7 @@ pybindings = ["with-python"]   # deprecated alias for with-python; will be remov
 
 PyO3 bindings live under `src/copython/`, gated per-module in `src/lib.rs` (`mod copython;` unconditionally, but `pub use copython::py_transportationslibrary::*;` only `#[cfg(feature = "with-python")]`) and per-file in `src/copython/mod.rs`, where every `pub mod chapterNN;` / `pub mod support;` / `pub mod py_transportationslibrary;` declaration carries `#[cfg(feature = "with-python")]`. `pyproject.toml`'s `[tool.maturin] features = ["with-python"]` is what turns the flag on for the Python wheel build; a plain `cargo build`/`cargo test` (no `--features with-python`) compiles none of `src/copython/*`.
 
-The register pattern: each `copython::chapterNN.rs` file defines its `#[pyclass]` wrapper structs (thin newtypes wrapping the corresponding `hcm::chapterNN` Rust struct in an `inner` field, e.g. `copython::chapter15::SubSegment { inner: LibSubSegment }`) and ends with a `pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()>` that calls `m.add_class::<...>()` for each wrapper. `src/copython/py_transportationslibrary.rs` is the single `#[pymodule] fn transportations_library(...)` entry point; its body is just three `register()` calls (`chapter12::register(m)?`, `chapter15::register(m)?`, `support::register(m)?`) plus the module docstring/version. Adding a new chapter's Python bindings means: write `copython::chapterNN.rs` with its own `register()`, add `#[cfg(feature = "with-python")] pub mod chapterNN;` to `copython/mod.rs`, and add one `super::chapterNN::register(m)?;` line to `py_transportationslibrary.rs`. Chapters 13 and 14 (weaving, merge/diverge) do not yet have `copython` wrappers on this branch — only chapter12 and chapter15 are exposed to Python.
+The register pattern: each `copython::<topic>.rs` file (e.g. `copython::twolanehighways.rs` for Chapter 15) defines its `#[pyclass]` wrapper structs (thin newtypes wrapping the corresponding `hcm::<topic>` Rust struct in an `inner` field, e.g. `copython::twolanehighways::SubSegment { inner: LibSubSegment }`) and ends with a `pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()>` that calls `m.add_class::<...>()` for each wrapper. `src/copython/py_transportationslibrary.rs` is the single `#[pymodule] fn transportations_library(...)` entry point; its body is just three `register()` calls (`basicfreeways::register(m)?`, `twolanehighways::register(m)?`, `support::register(m)?`) plus the module docstring/version. Adding a new chapter's Python bindings means: write `copython::<topic>.rs` with its own `register()`, add `#[cfg(feature = "with-python")] pub mod <topic>;` to `copython/mod.rs`, and add one `super::<topic>::register(m)?;` line to `py_transportationslibrary.rs`. Chapters 13 and 14 (weaving, merge/diverge) do not yet have `copython` wrappers on this branch — only chapter 12 (`basicfreeways`) and chapter 15 (`twolanehighways`) are exposed to Python.
 
 `src/copython/support.rs` is not a chapter wrapper; it exposes the `support::constraints` validation module as two free functions, `get_constraints()` and `validate_input(...)`, registered the same way (`m.add_function(wrap_pyfunction!(...))` instead of `m.add_class`).
 
@@ -71,26 +79,24 @@ Python-side tests are `tests/test_twolanehighways_integration.py` (pytest; skips
 
 ## Backward-compatible re-export shims
 
-`src/hcm/mod.rs` ends with:
+`src/hcm/mod.rs` now carries two back-compat layers stacked on top of the topic modules. First, the chapter-number aliases added by `feat/hcm-topic-folder-names` (see the top of this document); then, underneath those, the older pre-chapter-layout shim that predates the chapter split entirely:
 
 ```rust
 // Backward-compatible module paths from the pre-chapter layout.
-// Deprecated: import via `hcm::chapterNN::*` or `hcm::utils::*` instead.
-pub use chapter12::basicfreeways;
-pub use chapter12::managed_lanes;
-pub use chapter13::weaving;
-pub use chapter14::merge_diverge;
-pub use chapter15::twolanehighways;
-pub use support::{constraints, geometric, topology, traffic_flow};
+// Deprecated: import via the topic modules above or `hcm::utils::*` instead.
+pub use basicfreeways::managed_lanes;
+pub use utils::{constraints, geometric, topology, traffic_flow};
 
 pub mod adjustment_factors {
     pub use crate::hcm::common::adjustment_factors::*;
 }
 ```
 
-and `src/lib.rs` re-exports through *that* flat path again: `pub use crate::hcm::basicfreeways::*; pub use crate::hcm::twolanehighways::*; pub use crate::hcm::topology::*;` etc., i.e. `transportations_library::twolanehighways::Segment` and `transportations_library::hcm::twolanehighways::Segment` both resolve to the same type post-restructure, identically to how the pre-restructure flat-module crate exposed them. `src/copython/chapter15.rs` itself imports via the old flat alias (`use crate::hcm::twolanehighways::{Segment as LibSegment, ...}`), showing the shim is exercised by in-tree code, not just a courtesy for external callers.
+(The old `pub use basicfreeways::basicfreeways;` / `pub use twolanehighways::twolanehighways;` lines that used to sit alongside `managed_lanes` here were removed as part of the topic-folder rename: once the folder itself is named `basicfreeways`/`twolanehighways`, re-exporting the identically-named inner file under the same top-level name is a redundant, ambiguous rebinding rather than a useful alias.)
 
-This matters because any downstream validator/consumer code written against the pre-restructure flat paths (`transportations_library::twolanehighways::*`, `transportations_library::constraints::*`, etc.) would fail to compile if these shims were dropped, even though no chapter's actual logic moved or changed during the restructure. That this is a real, exercised path rather than a hypothetical one is confirmed in-tree: `tests/twolanehighways_test.rs` itself imports via the flat alias (`use transportations_library::twolanehighways::{BicycleLOS, Segment, SubSegment, TwoLaneHighways};`), and `src/copython/chapter15.rs` imports via `use crate::hcm::twolanehighways::{Segment as LibSegment, ...}` rather than the new `hcm::chapter15::twolanehighways` path. Removing a shim is therefore a breaking change to any code — in-repo test files included — written against the pre-restructure paths, independent of whether the underlying HCM methodology itself changed.
+`src/lib.rs` re-exports through *that* flat path again: `pub use crate::hcm::basicfreeways::basicfreeways::*; pub use crate::hcm::twolanehighways::twolanehighways::*; pub use crate::hcm::topology::*;` etc., i.e. `transportations_library::twolanehighways::Segment` and `transportations_library::hcm::twolanehighways::Segment` both resolve to the same type post-restructure, identically to how the pre-restructure flat-module crate exposed them. (These two `lib.rs` lines target the inner file module directly — `basicfreeways::basicfreeways::*` / `twolanehighways::twolanehighways::*` — rather than the folder-level glob, precisely to avoid re-importing the folder's own `CHAPTER`/`TITLE` consts and self-named submodule a second time at crate root, which is what caused the ambiguous-glob-reexport warnings this rename had to resolve.) `src/copython/twolanehighways.rs` itself imports via the old flat alias (`use crate::hcm::twolanehighways::{Segment as LibSegment, ...}`), showing the shim is exercised by in-tree code, not just a courtesy for external callers.
+
+This matters because any downstream validator/consumer code written against the pre-restructure flat paths (`transportations_library::twolanehighways::*`, `transportations_library::constraints::*`, etc.) would fail to compile if these shims were dropped, even though no chapter's actual logic moved or changed during the restructure. That this is a real, exercised path rather than a hypothetical one is confirmed in-tree: `tests/twolanehighways_test.rs` itself imports via the flat alias (`use transportations_library::twolanehighways::{BicycleLOS, Segment, SubSegment, TwoLaneHighways};`), and `src/copython/twolanehighways.rs` imports via `use crate::hcm::twolanehighways::{Segment as LibSegment, ...}` rather than the `hcm::twolanehighways::twolanehighways` path directly. Removing a shim is therefore a breaking change to any code — in-repo test files included — written against the pre-restructure paths, independent of whether the underlying HCM methodology itself changed. The same now also holds for the chapter-number aliases: any code written against `hcm::chapter15::twolanehighways` (in-tree or external) depends on `pub use twolanehighways as chapter15;` in `src/hcm/mod.rs`.
 
 ## Validation
 

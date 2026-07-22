@@ -1,13 +1,16 @@
 //! Full-pipeline integration tests for HCM Chapter 20 (TWSC intersections)
-//! against the published answers of HCM Chapter 32, TWSC Example Problems 1
-//! and 3.
+//! against the published answers of HCM Chapter 32, TWSC Example Problems 1,
+//! 3, and 4.
 //!
 //! Tolerances: LOS exact; control delays within +-0.5 s/veh; capacities
-//! within +-5 veh/h of the published (rounded) values.
+//! within +-5 veh/h of the published (rounded) values. Example Problem 4
+//! reproduces the shared-major-left case; the two oversaturated minor-street
+//! left-turn delays use a wider, documented tolerance because Equation 20-61
+//! is steep near v/c = 1.7 and the book rounds c_m to an integer.
 
 use std::fs;
 
-use transportations_library::hcm::chapter20::twsc::{Mv, Twsc};
+use transportations_library::hcm::twsc::twsc::{Mv, Twsc};
 
 const DELAY_TOL: f64 = 0.5;
 const CAPACITY_TOL: f64 = 5.0;
@@ -124,6 +127,132 @@ fn test_twsc_example_problem_3_full_pipeline() {
     assert_close(m4.queue_95.unwrap(), 0.2, 0.2, "Q95,4");
     assert_close(twsc.lanes_nb[0].queue_95, 2.4, 0.2, "Q95,NB");
     assert_close(twsc.lanes_sb[0].queue_95, 1.3, 0.2, "Q95,SB");
+}
+
+/// HCM Chapter 32, TWSC Example Problem 4 (TWSC between two coordinated
+/// upstream signals; Step 5b platoon blockage, Equations 20-19 through
+/// 20-21). Four-lane major street (N = 2), major-street left turns share the
+/// through lane, no minor-street through movements, one stage. Published
+/// p_b = 0.170 for movements 1/4/9/12 and 0.260 for movements 7/10
+/// (Exhibit 32-12).
+///
+/// Published answers (Exhibit 32-13 problem text):
+/// * conflicting flows v_c,1 = 1,086; v_c,4 = 1,076; v_c,9 = 538;
+///   v_c,12 = 543; v_c,7 = 1,827; v_c,10 = 1,832 veh/h;
+/// * unblocked conflicting flows v_c,u = 694, 682, 34, 40, 1,415, 1,422;
+/// * potential (= movement, for 1/4/9/12) capacities c_p,1 = 750;
+///   c_p,4 = 758; c_p,9 = 859; c_p,12 = 852; c_p,7 = 73; c_p,10 = 72 veh/h;
+/// * movement capacities c_m,7 = 47; c_m,10 = 47 veh/h (f_p,7 = 0.647,
+///   f_p,10 = 0.648);
+/// * delays d_1 = 10.3 (B); d_4 = 10.3 (B); d_9 = 9.7 (A); d_12 = 9.8 (A);
+///   d_7 = 529 (F); d_10 = 529 (F);
+/// * approach delays d_A,NB = d_A,SB = 241 s; d_A,EB = d_A,WB = 1.9 s;
+///   d_I = 34.1 s;
+/// * queues Q95: 0.3, 0.3, 0.4, 0.4, 7.9, 7.9 veh.
+///
+/// The major-street left turns share the through lane (`major_left_eb` =
+/// `major_left_wb` = `Shared`, n_L = 0), so Step 7d substitutes the
+/// shared-major-lane queue-free probability p*_0,1+1U = p*_0,4+4U = 0.856
+/// (Equations 20-33/20-34; x_2+3 = 0.304, x_5+6 = 0.307) for the exclusive-lane
+/// p_0 = 0.900 in the Rank 4 impedance products, yielding c_m,7 = c_m,10 = 47
+/// veh/h. Step 11b then charges the Rank 1 through/right movements a shared-lane
+/// delay d_2+3 = d_5+6 = 1.3 s (Equations 20-62/20-63), which enters the EB/WB
+/// approach delay in Step 12.
+///
+/// The two oversaturated minor-street left-turn delays (d_7, d_10, published
+/// 529 s) and the minor-approach delays (d_A,NB, d_A,SB, published 241 s) use a
+/// wider, documented tolerance: Equation 20-61 has slope |dd/dc| ~ 18.6 s per
+/// veh/h near v/c = 1.7, and the book rounds c_m,7 = c_m,10 to the integer 47
+/// while this library carries the full-precision 47.1 (NB) / 46.6 (SB), so the
+/// per-movement delays split around 529 s. Every other published value is
+/// asserted at +-1 s / +-1 veh/h, and d_I lands at 34.1 s because the NB
+/// under-shoot and SB over-shoot cancel.
+#[test]
+fn test_twsc_example_problem_4_upstream_signals() {
+    let mut twsc = load("case3");
+    twsc.analyze();
+    let m = |mv: Mv| twsc.movements[mv.idx()].clone();
+
+    // Step 3 conflicting flows (movements 7 and 10 via override).
+    assert_close(m(Mv::M1).conflicting_flow.unwrap(), 1086.0, 1.0, "v_c,1");
+    assert_close(m(Mv::M4).conflicting_flow.unwrap(), 1076.0, 1.0, "v_c,4");
+    assert_close(m(Mv::M9).conflicting_flow.unwrap(), 538.0, 1.0, "v_c,9");
+    assert_close(m(Mv::M12).conflicting_flow.unwrap(), 543.0, 1.0, "v_c,12");
+    assert_close(m(Mv::M7).conflicting_flow.unwrap(), 1827.0, 1.0, "v_c,7");
+    assert_close(m(Mv::M10).conflicting_flow.unwrap(), 1832.0, 1.0, "v_c,10");
+
+    // Step 5b potential capacities (Equations 20-19 through 20-21).
+    assert_close(m(Mv::M1).potential_capacity.unwrap(), 750.0, CAPACITY_TOL, "c_p,1");
+    assert_close(m(Mv::M4).potential_capacity.unwrap(), 758.0, CAPACITY_TOL, "c_p,4");
+    assert_close(m(Mv::M9).potential_capacity.unwrap(), 859.0, CAPACITY_TOL, "c_p,9");
+    assert_close(m(Mv::M12).potential_capacity.unwrap(), 852.0, CAPACITY_TOL, "c_p,12");
+    assert_close(m(Mv::M7).potential_capacity.unwrap(), 73.0, CAPACITY_TOL, "c_p,7");
+    assert_close(m(Mv::M10).potential_capacity.unwrap(), 72.0, CAPACITY_TOL, "c_p,10");
+
+    // Movement capacities. 1/4/9/12 match published; 7/10 reproduce the
+    // published 47 veh/h via the shared-major-lane p*_0 = 0.856 substitution
+    // (Step 7d, Equations 20-33/20-34).
+    assert_close(m(Mv::M1).movement_capacity.unwrap(), 750.0, CAPACITY_TOL, "c_m,1");
+    assert_close(m(Mv::M4).movement_capacity.unwrap(), 758.0, CAPACITY_TOL, "c_m,4");
+    assert_close(m(Mv::M9).movement_capacity.unwrap(), 859.0, CAPACITY_TOL, "c_m,9");
+    assert_close(m(Mv::M12).movement_capacity.unwrap(), 852.0, CAPACITY_TOL, "c_m,12");
+    assert_close(m(Mv::M7).movement_capacity.unwrap(), 47.0, 1.0, "c_m,7");
+    assert_close(m(Mv::M10).movement_capacity.unwrap(), 47.0, 1.0, "c_m,10");
+
+    // Step 11b Rank 1 delay to the shared-lane major-street through movements
+    // (Equations 20-62/20-63): published d_2+3 = d_5+6 = 1.3 s.
+    let [d23, d56] = twsc.rank1_major_delay.unwrap();
+    assert_close(d23, 1.3, 0.1, "d_2+3 (Rank 1 EB)");
+    assert_close(d56, 1.3, 0.1, "d_5+6 (Rank 1 WB)");
+
+    // Delay and LOS (Equation 20-61, Exhibit 20-2). Major-street left turns
+    // report at the movement level; minor-street movements report at the
+    // lane level (each in an exclusive lane under the Separate config).
+    assert_close(m(Mv::M1).control_delay.unwrap(), 10.3, DELAY_TOL, "d_1");
+    assert_close(m(Mv::M4).control_delay.unwrap(), 10.3, DELAY_TOL, "d_4");
+    assert_eq!(m(Mv::M1).los.unwrap(), 'B', "movement 1 LOS");
+    assert_eq!(m(Mv::M4).los.unwrap(), 'B', "movement 4 LOS");
+
+    let nb_lane = |mv: Mv| {
+        twsc.lanes_nb
+            .iter()
+            .find(|l| l.movements.contains(&mv))
+            .unwrap_or_else(|| panic!("NB lane for {mv:?}"))
+    };
+    let sb_lane = |mv: Mv| {
+        twsc.lanes_sb
+            .iter()
+            .find(|l| l.movements.contains(&mv))
+            .unwrap_or_else(|| panic!("SB lane for {mv:?}"))
+    };
+    let (nb_left, nb_right) = (nb_lane(Mv::M7), nb_lane(Mv::M9));
+    let (sb_left, sb_right) = (sb_lane(Mv::M10), sb_lane(Mv::M12));
+    assert_close(nb_right.control_delay, 9.7, DELAY_TOL, "d_9");
+    assert_close(sb_right.control_delay, 9.8, DELAY_TOL, "d_12");
+    assert_eq!(nb_right.los, 'A', "movement 9 LOS");
+    assert_eq!(sb_right.los, 'A', "movement 12 LOS");
+    // Oversaturated left turns: published d_7 = d_10 = 529 s (LOS F). Wide
+    // tolerance per the doc comment (Equation 20-61 steep near v/c = 1.7; book
+    // rounds c_m to 47).
+    assert_close(nb_left.control_delay, 529.0, 12.0, "d_7");
+    assert_close(sb_left.control_delay, 529.0, 12.0, "d_10");
+    assert_eq!(nb_left.los, 'F', "NB left-turn lane LOS");
+    assert_eq!(sb_left.los, 'F', "SB left-turn lane LOS");
+
+    // Approach and intersection delay (Equations 20-64/20-65). The EB/WB
+    // approaches carry the Step 11b Rank 1 delay on movements 2+3 / 5+6.
+    let [d_eb, d_wb, d_nb, d_sb] = twsc.approach_delays.unwrap();
+    assert_close(d_eb, 1.9, DELAY_TOL, "d_A,EB");
+    assert_close(d_wb, 1.9, DELAY_TOL, "d_A,WB");
+    // Published d_A,NB = d_A,SB = 241 s; wider tolerance per the doc comment.
+    assert_close(d_nb, 241.0, 5.0, "d_A,NB");
+    assert_close(d_sb, 241.0, 5.0, "d_A,SB");
+    assert_close(twsc.intersection_delay.unwrap(), 34.1, DELAY_TOL, "d_I");
+
+    // Step 13 queues (Equation 20-66).
+    assert_close(m(Mv::M1).queue_95.unwrap(), 0.3, 0.2, "Q95,1");
+    assert_close(nb_right.queue_95, 0.4, 0.2, "Q95,9");
+    assert_close(nb_left.queue_95, 7.9, 0.5, "Q95,7");
 }
 
 /// Serde round-trip of a fully analyzed fixture (binding-layer contract).
