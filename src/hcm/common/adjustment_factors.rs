@@ -815,17 +815,18 @@ pub fn calculate_recurring_delay_rate(ffs: f64, peak_hour_speed: f64) -> f64 {
 /// Incident delay rate in hours per mile
 ///
 /// # Note
-/// TODO: VERIFY COEFFICIENTS - The coefficients below are assumed values.
-/// Need to verify from HCM Chapter 11 or Chapter 25 for exact Equation 11-3 formula.
-/// See docs/verification_notes.md for details.
+/// The per-lane `(a, b)` coefficients below are provisional and have not been
+/// confirmed against the manual; results from this function should be treated as
+/// approximate until then.
+/// [REF: HCM Ch.11 / Ch.25 — exact Eq. 11-3 form and a, b coefficients by lane count]
 pub fn calculate_incident_delay_rate(num_lanes: u32, vc_ratio: f64) -> f64 {
     // Cap values as specified in the methodology
     let n = num_lanes.min(4).max(2);
     let x = vc_ratio.min(1.0);
 
-    // Equation 11-3 coefficients depend on number of lanes
-    // IDR = a * X^b where a and b depend on N
-    // TODO: VERIFY - These coefficients are assumed, not from manual
+    // Equation 11-3 coefficients depend on number of lanes: IDR = a * X^b.
+    // [REF: HCM Ch.11/25] the (a, b) values below are provisional, not yet
+    // confirmed against the manual.
     let (a, b) = match n {
         2 => (0.000584, 6.32),
         3 => (0.000382, 5.42),

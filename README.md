@@ -195,9 +195,9 @@ The project uses GitHub Actions for CI/CD, including:
 - Building and publishing to Test PyPI on alpha releases
 - Building and publishing to Cargo and PyPI on new releases
 
-To test the alpha release from Test PyPI, use:
+To install a pre-release from Test PyPI, use (replace the version as needed):
 ```bash
-pip install --no-cache-dir --verbose -i https://test.pypi.org/simple/ transportations-library==0.1.9a4
+pip install --no-cache-dir --verbose -i https://test.pypi.org/simple/ transportations-library==<version>
 ```
 
 Versioning follows [Semantic Versioning](https://semver.org/).
