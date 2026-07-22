@@ -206,6 +206,9 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+          # Guard against a duplicate version failing the whole upload (and
+          # leaving crates.io published but PyPI not — a split release).
+          skip-existing: true
 
       - name: Set environment url
         id: set_url
