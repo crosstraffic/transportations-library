@@ -200,7 +200,11 @@ jobs:
     environment:
       name: PyPI
       url: ${{ steps.set_url.outputs.env_url }}
-    needs: [build, sdist, changelog]
+    # Do NOT depend on `changelog` — it is tags-only (it builds a GitHub Release
+    # from the tag), so a workflow_dispatch skips it, which would in turn skip
+    # this publish (needs = skipped ⇒ skipped). PyPI publishing is independent
+    # of the GitHub-release-notes step; only the artifacts matter.
+    needs: [build, sdist]
     steps:
       - uses: actions/checkout@v6
       - name: Download all artifacts
