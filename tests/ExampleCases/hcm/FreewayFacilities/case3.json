@@ -1,0 +1,138 @@
+{
+  "_comment": "HCM 7th Edition, Chapter 25, Example Problem 3: Capacity Improvements to an Oversaturated Facility (Exhibits 25-61 through 25-68). Example Problem 2 geometry with a fourth lane added to Segments 7-11 (indices 6-10), giving a continuous four-lane cross section from Segment 6.",
+  "segments": [
+    {
+      "seg_type": "Basic",
+      "length_ft": 5280.0,
+      "lanes": 3
+    },
+    {
+      "seg_type": "Merge",
+      "length_ft": 1500.0,
+      "lanes": 3,
+      "ramp_ffs": 40.0,
+      "accel_lane_ft": 500.0,
+      "on_ramp_demand": [
+        500.0,
+        599.0,
+        699.0,
+        400.0,
+        200.0
+      ]
+    },
+    {
+      "seg_type": "Basic",
+      "length_ft": 2280.0,
+      "lanes": 3
+    },
+    {
+      "seg_type": "Diverge",
+      "length_ft": 1500.0,
+      "lanes": 3,
+      "ramp_ffs": 40.0,
+      "decel_lane_ft": 500.0,
+      "off_ramp_demand": [
+        300.0,
+        400.0,
+        300.0,
+        300.0,
+        300.0
+      ]
+    },
+    {
+      "seg_type": "Basic",
+      "length_ft": 5280.0,
+      "lanes": 3
+    },
+    {
+      "seg_type": "Weaving",
+      "length_ft": 2640.0,
+      "lanes": 4,
+      "ramp_ffs": 40.0,
+      "short_length_ft": 1640.0,
+      "num_weaving_lanes": 2,
+      "lc_rf": 1,
+      "lc_fr": 1,
+      "on_ramp_demand": [
+        599.0,
+        799.0,
+        899.0,
+        400.0,
+        300.0
+      ],
+      "off_ramp_demand": [
+        400.0,
+        400.0,
+        400.0,
+        400.0,
+        200.0
+      ],
+      "ramp_to_ramp_demand": [
+        56.0,
+        111.0,
+        167.0,
+        89.0,
+        56.0
+      ]
+    },
+    {
+      "seg_type": "Basic",
+      "length_ft": 5280.0,
+      "lanes": 4
+    },
+    {
+      "seg_type": "Merge",
+      "length_ft": 1140.0,
+      "lanes": 4,
+      "ramp_ffs": 40.0,
+      "accel_lane_ft": 500.0,
+      "on_ramp_demand": [
+        500.0,
+        599.0,
+        699.0,
+        500.0,
+        300.0
+      ]
+    },
+    {
+      "seg_type": "OverlappingRamp",
+      "length_ft": 360.0,
+      "lanes": 4
+    },
+    {
+      "seg_type": "Diverge",
+      "length_ft": 1140.0,
+      "lanes": 4,
+      "ramp_ffs": 40.0,
+      "decel_lane_ft": 500.0,
+      "off_ramp_demand": [
+        300.0,
+        300.0,
+        500.0,
+        300.0,
+        200.0
+      ]
+    },
+    {
+      "seg_type": "Basic",
+      "length_ft": 5280.0,
+      "lanes": 4
+    }
+  ],
+  "mainline_demand": [
+    5001.0,
+    5500.0,
+    5800.0,
+    5200.0,
+    4201.0
+  ],
+  "ffs": 60.0,
+  "heavy_vehicle_pct": 0.0225,
+  "terrain": "Level",
+  "city_type": "Urban",
+  "phf": 1.0,
+  "jam_density_pc": 190.0,
+  "queue_discharge_drop": 0.07,
+  "total_ramp_density": 1.0,
+  "interchange_density": 0.8
+}
