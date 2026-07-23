@@ -1,5 +1,5 @@
 //! Integration tests for HCM Chapter 14 (Freeway Merge and Diverge Segments)
-//! against the published results of HCM Chapter 28 Example Problems 1-4.
+//! against the published results of HCM Chapter 28 Example Problems 1-5.
 //!
 //! Tolerances: flows +-5 pc/h (published values are rounded to whole numbers
 //! and the book carries rounded intermediates); speeds +-0.5 mi/h; densities
@@ -9,7 +9,10 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 
-use transportations_library::hcm::merge_diverge::merge_diverge::RampSegment;
+use transportations_library::hcm::merge_diverge::merge_diverge::{
+    ramp_service_flow_rate_ideal, ramp_service_volumes, AdjacentRampType, RampLanes, RampSegment,
+    RampSide, RampType, ServiceDemandBasis, TerrainType,
+};
 use transportations_library::hcm::common::LevelOfService;
 
 fn load_case(name: &str) -> RampSegment {
@@ -158,4 +161,120 @@ fn example_problem_4_left_hand_on_ramp() {
     assert_approx(seg.get_speed_ramp(), 54.8, 0.5, "S_R (mi/h)");
     assert_approx(seg.get_speed_outer().unwrap(), 61.2, 0.5, "S_O (mi/h)");
     assert_approx(seg.get_speed_avg(), 56.5, 0.5, "S (mi/h)");
+}
+
+/// Build the HCM Chapter 28, Example Problem 5 geometry: an isolated single-lane
+/// right-hand on-ramp on a six-lane freeway (FFS 70), ramp FFS 40, 1,000-ft
+/// acceleration lane. Demands are supplied by the service-flow-rate search.
+fn ep5_template() -> RampSegment {
+    RampSegment {
+        ramp_type: RampType::OnRamp,
+        ramp_side: RampSide::Right,
+        ramp_lanes: RampLanes::OneLane,
+        freeway_lanes: 3,
+        freeway_ffs: 70.0,
+        ramp_ffs: 40.0,
+        accel_lane_length: Some(1000.0),
+        terrain: TerrainType::Level,
+        adjacent_upstream: AdjacentRampType::None,
+        adjacent_downstream: AdjacentRampType::None,
+        ..Default::default()
+    }
+}
+
+/// HCM Chapter 28, Example Problem 5, Case 1: ramp demand fixed at 10% of the
+/// approaching freeway demand; service flow rates expressed as approaching
+/// freeway flows (Exhibit 28-4). f_HV = 0.939 (6.5% trucks), f_p = 1, PHF = 0.87.
+#[test]
+fn example_problem_5_case1_approaching_freeway_demand() {
+    let template = ep5_template();
+    let basis = ServiceDemandBasis::ApproachingFreeway { ramp_fraction: 0.10 };
+    let f_hv = 1.0 / (1.0 + 0.065 * (2.0 - 1.0)); // = 0.939
+    let phf = 0.87;
+
+    // LOS A-C: solve v_F at the threshold densities (Equation 14-22). The book
+    // solves the linearized equation with a rounded slope (0.005454 vs. the
+    // exact 0.0054569), so its published values run a few pc/h high at the
+    // larger flows (e.g. LOS C: 5,280 published vs. 5,277 exact); tolerance is
+    // widened to +-6 pc/h to absorb that rounded intermediate.
+    let sfi_a = ramp_service_flow_rate_ideal(&template, &basis, 10.0).unwrap();
+    let sfi_b = ramp_service_flow_rate_ideal(&template, &basis, 20.0).unwrap();
+    let sfi_c = ramp_service_flow_rate_ideal(&template, &basis, 28.0).unwrap();
+    assert_approx(sfi_a, 1979.0, 6.0, "v_F SFI LOS A (pc/h)");
+    assert_approx(sfi_b, 3813.0, 6.0, "v_F SFI LOS B (pc/h)");
+    assert_approx(sfi_c, 5280.0, 6.0, "v_F SFI LOS C (pc/h)");
+
+    // Prevailing SF and SV for LOS A (Exhibit 28-4: 1,858 veh/h, 1,616 veh/h).
+    let (sf_a, sv_a) = ramp_service_volumes(sfi_a, f_hv, 1.0, phf);
+    assert_approx(sf_a, 1858.0, 3.0, "SF LOS A (veh/h)");
+    assert_approx(sv_a, 1616.0, 3.0, "SV LOS A (veh/h)");
+    let (_, sv_c) = ramp_service_volumes(sfi_c, f_hv, 1.0, phf);
+    assert_approx(sv_c, 4313.0, 3.0, "SV LOS C (veh/h)");
+
+    // LOS E is a capacity limit: downstream freeway reaches 7,200 pc/h, so with
+    // v_R = 0.10 v_F, v_F = 7,200 / 1.10 = 6,545 pc/h (ramp 655 < 2,000 cap).
+    let mut probe = template.clone();
+    probe.phf = 1.0;
+    probe.heavy_vehicle_pct = 0.0;
+    probe.run_analysis();
+    let cap_freeway = probe.get_capacity_freeway();
+    let cap_ramp = probe.get_capacity_ramp();
+    assert_approx(cap_freeway, 7200.0, 1.0, "downstream freeway capacity (pc/h)");
+    assert_approx(cap_ramp, 2000.0, 1.0, "ramp capacity (pc/h)");
+    let sfi_e = cap_freeway / 1.10;
+    assert_approx(sfi_e, 6545.0, 2.0, "v_F SFI LOS E (pc/h)");
+    assert!(0.10 * sfi_e < cap_ramp, "ramp flow at LOS E must stay under capacity");
+
+    // LOS D is unachievable: its threshold flow (v_F ~ 6,563) exceeds the LOS E
+    // capacity, so capacity is reached before density 35 pc/mi/ln (Exhibit 28-4
+    // reports NA for LOS D).
+    let sfi_d = ramp_service_flow_rate_ideal(&template, &basis, 35.0).unwrap();
+    assert!(
+        sfi_d > sfi_e,
+        "LOS D threshold ({sfi_d}) should exceed the LOS E capacity ({sfi_e}), making D unachievable"
+    );
+}
+
+/// HCM Chapter 28, Example Problem 5, Case 2: approaching freeway demand held at
+/// 4,000 veh/h; service flow rates expressed as ramp demands (Exhibit 28-5).
+#[test]
+fn example_problem_5_case2_fixed_freeway_demand() {
+    let template = ep5_template();
+    let f_hv = 1.0 / (1.0 + 0.065 * (2.0 - 1.0)); // = 0.939
+    let phf = 0.87;
+    // Convert the fixed 4,000 veh/h freeway demand to pc/h under ideal conditions.
+    let v_f = 4000.0 / (phf * f_hv); // = 4,896 pc/h
+    assert_approx(v_f, 4896.0, 2.0, "v_F ideal (pc/h)");
+    let basis = ServiceDemandBasis::FixedFreeway { v_f };
+
+    // LOS A and B are unachievable: the minimum density (at zero ramp flow) is
+    // already 22.33 pc/mi/ln, above the 10 and 20 thresholds (Exhibit 28-5 NA).
+    assert!(ramp_service_flow_rate_ideal(&template, &basis, 10.0).is_none());
+    assert!(ramp_service_flow_rate_ideal(&template, &basis, 20.0).is_none());
+
+    // LOS C and D: solve for the ramp flow at the threshold densities.
+    let sfi_c = ramp_service_flow_rate_ideal(&template, &basis, 28.0).unwrap();
+    let sfi_d = ramp_service_flow_rate_ideal(&template, &basis, 35.0).unwrap();
+    assert_approx(sfi_c, 772.0, 3.0, "v_R SFI LOS C (pc/h)");
+    assert_approx(sfi_d, 1726.0, 3.0, "v_R SFI LOS D (pc/h)");
+
+    let (sf_c, sv_c) = ramp_service_volumes(sfi_c, f_hv, 1.0, phf);
+    assert_approx(sf_c, 725.0, 3.0, "SF LOS C (veh/h)");
+    assert_approx(sv_c, 631.0, 3.0, "SV LOS C (veh/h)");
+    let (sf_d, sv_d) = ramp_service_volumes(sfi_d, f_hv, 1.0, phf);
+    assert_approx(sf_d, 1621.0, 3.0, "SF LOS D (veh/h)");
+    assert_approx(sv_d, 1410.0, 3.0, "SV LOS D (veh/h)");
+
+    // LOS E: the downstream-capacity ramp flow (7,200 - 4,896 = 2,304 pc/h)
+    // exceeds the 2,000 pc/h ramp capacity, so LOS E is capped at the ramp
+    // capacity (Exhibit 28-5: SFI 2,000 -> SF 1,878 -> SV 1,633 veh/h).
+    let mut probe = template.clone();
+    probe.phf = 1.0;
+    probe.heavy_vehicle_pct = 0.0;
+    probe.run_analysis();
+    let sfi_e = (probe.get_capacity_freeway() - v_f).min(probe.get_capacity_ramp());
+    assert_approx(sfi_e, 2000.0, 1.0, "v_R SFI LOS E (pc/h)");
+    let (sf_e, sv_e) = ramp_service_volumes(sfi_e, f_hv, 1.0, phf);
+    assert_approx(sf_e, 1878.0, 3.0, "SF LOS E (veh/h)");
+    assert_approx(sv_e, 1633.0, 3.0, "SV LOS E (veh/h)");
 }
