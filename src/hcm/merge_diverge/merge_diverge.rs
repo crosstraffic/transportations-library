@@ -946,6 +946,103 @@ impl RampSegment {
 }
 
 // =============================================================================
+// Service flow rates and service volumes (HCM Chapter 28, Example Problem 5)
+// =============================================================================
+
+/// Basis for a ramp-junction service-flow-rate computation - HCM Chapter 28,
+/// Example Problem 5.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum ServiceDemandBasis {
+    /// Vary the approaching freeway demand v_F, with ramp demand tracking it as
+    /// `ramp_fraction * v_F` (Case 1). The returned SFI is expressed as v_F.
+    ApproachingFreeway { ramp_fraction: f64 },
+    /// Hold the approaching freeway demand fixed at `v_f` (pc/h, ideal) and vary
+    /// the ramp demand v_R (Case 2). The returned SFI is expressed as v_R.
+    FixedFreeway { v_f: f64 },
+}
+
+/// Service flow rate under ideal conditions (pc/h) at a target ramp-influence
+/// density - HCM Chapter 28, Example Problem 5.
+///
+/// Holds the segment geometry (`template`) fixed and searches, under equivalent
+/// ideal conditions (PHF = 1, no heavy vehicles, CAF = SAF = 1), for the demand
+/// that drives the ramp-influence density (Equation 14-22) to `target_density`.
+/// The quantity returned is the one the basis varies: approaching freeway flow
+/// v_F for `ApproachingFreeway`, ramp flow v_R for `FixedFreeway`. This is the
+/// SFI for LOS A-D (density thresholds 10/20/28/35 pc/mi/ln).
+///
+/// The LOS E service flow rate is a capacity limit rather than a density and is
+/// found separately from the downstream-freeway and ramp capacities
+/// ([`RampSegment::get_capacity_freeway`] / [`RampSegment::get_capacity_ramp`]).
+///
+/// Returns `None` when the target density cannot be reached because the density
+/// at zero varied demand already exceeds it - i.e. that LOS is unachievable at
+/// this location (as with LOS A and B in Example Problem 5, Case 2).
+pub fn ramp_service_flow_rate_ideal(
+    template: &RampSegment,
+    basis: &ServiceDemandBasis,
+    target_density: f64,
+) -> Option<f64> {
+    let density_at = |vary: f64| -> f64 {
+        let mut seg = template.clone();
+        seg.phf = 1.0;
+        seg.heavy_vehicle_pct = 0.0;
+        seg.ramp_heavy_vehicle_pct = Some(0.0);
+        seg.caf = 1.0;
+        seg.saf = 1.0;
+        match *basis {
+            ServiceDemandBasis::ApproachingFreeway { ramp_fraction } => {
+                seg.freeway_demand = vary;
+                seg.ramp_demand = ramp_fraction * vary;
+            }
+            ServiceDemandBasis::FixedFreeway { v_f } => {
+                seg.freeway_demand = v_f;
+                seg.ramp_demand = vary;
+            }
+        }
+        seg.run_analysis();
+        seg.get_density()
+    };
+
+    // If even zero varied demand already exceeds the target, that LOS cannot be
+    // achieved at this location.
+    if density_at(0.0) > target_density {
+        return None;
+    }
+    let mut lo = 0.0_f64;
+    let mut hi = 1000.0_f64;
+    let mut guard = 0;
+    while density_at(hi) < target_density && guard < 60 {
+        lo = hi;
+        hi *= 2.0;
+        guard += 1;
+    }
+    for _ in 0..50 {
+        let mid = 0.5 * (lo + hi);
+        if density_at(mid) < target_density {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    Some(0.5 * (lo + hi))
+}
+
+/// Convert an ideal-conditions service flow rate (pc/h) to a prevailing-
+/// condition service flow rate and service volume - HCM Chapter 28, EP 5.
+///
+/// - `f_hv`: heavy-vehicle adjustment factor (SF = SFI x f_HV x f_p).
+/// - `f_p`: driver-population factor (1.0 for regular commuters).
+/// - `phf`: peak hour factor (SV = SF x PHF).
+///
+/// Returns `(SF, SV)` in veh/h.
+pub fn ramp_service_volumes(sfi: f64, f_hv: f64, f_p: f64, phf: f64) -> (f64, f64) {
+    let sf = sfi * f_hv * f_p;
+    let sv = sf * phf;
+    (sf, sv)
+}
+
+// =============================================================================
 // Tests
 // =============================================================================
 

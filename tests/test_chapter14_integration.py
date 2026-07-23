@@ -95,3 +95,58 @@ class TestMergeDivergeExampleProblem2:
     def test_repr(self):
         seg = load_segment(CASE2)
         assert "RampSegment" in repr(seg)
+
+
+class TestMergeDivergeServiceVolumes:
+    """HCM Chapter 28, Example Problem 5 (service flow rates / service volumes)."""
+
+    def _ep5_segment(self):
+        return tl.RampSegment(
+            ramp_type="on_ramp",
+            ramp_side="right",
+            ramp_lanes=1,
+            freeway_lanes=3,
+            freeway_ffs=70.0,
+            ramp_ffs=40.0,
+            accel_lane_length=1000.0,
+            freeway_demand=4000.0,
+            ramp_demand=400.0,
+            phf=0.87,
+            heavy_vehicle_pct=0.065,
+            terrain="level",
+            adjacent_upstream="none",
+            adjacent_downstream="none",
+            caf=1.0,
+            saf=1.0,
+        )
+
+    def test_case1_approaching_freeway_demand(self):
+        seg = self._ep5_segment()
+        f_hv = 1.0 / (1.0 + 0.065 * (2.0 - 1.0))
+        # Case 1: ramp = 10% of freeway; solve v_F at each LOS density.
+        sfi_a = tl.ramp_service_flow_rate_ideal(seg, 10.0, ramp_fraction=0.10)
+        sfi_c = tl.ramp_service_flow_rate_ideal(seg, 28.0, ramp_fraction=0.10)
+        assert sfi_a == pytest.approx(1979.0, abs=6.0)
+        assert sfi_c == pytest.approx(5280.0, abs=6.0)
+        sf_a, sv_a = tl.ramp_service_volumes(sfi_a, f_hv, 1.0, 0.87)
+        assert sf_a == pytest.approx(1858.0, abs=3.0)
+        assert sv_a == pytest.approx(1616.0, abs=3.0)
+
+    def test_case2_fixed_freeway_demand(self):
+        seg = self._ep5_segment()
+        f_hv = 1.0 / (1.0 + 0.065 * (2.0 - 1.0))
+        v_f = 4000.0 / (0.87 * f_hv)  # 4,896 pc/h ideal
+        # LOS A/B unachievable at this fixed freeway demand (min density 22.33).
+        assert tl.ramp_service_flow_rate_ideal(seg, 20.0, fixed_freeway_vf=v_f) is None
+        sfi_c = tl.ramp_service_flow_rate_ideal(seg, 28.0, fixed_freeway_vf=v_f)
+        sfi_d = tl.ramp_service_flow_rate_ideal(seg, 35.0, fixed_freeway_vf=v_f)
+        assert sfi_c == pytest.approx(772.0, abs=3.0)
+        assert sfi_d == pytest.approx(1726.0, abs=3.0)
+        sf_c, sv_c = tl.ramp_service_volumes(sfi_c, f_hv, 1.0, 0.87)
+        assert sf_c == pytest.approx(725.0, abs=3.0)
+        assert sv_c == pytest.approx(631.0, abs=3.0)
+
+    def test_basis_requires_exactly_one(self):
+        seg = self._ep5_segment()
+        with pytest.raises(ValueError):
+            tl.ramp_service_flow_rate_ideal(seg, 28.0)

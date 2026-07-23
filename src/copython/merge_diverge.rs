@@ -1,7 +1,9 @@
 //! Python bindings for HCM Chapter 14 (Freeway Merge and Diverge Segments).
 
 use crate::hcm::merge_diverge::merge_diverge::{
-    AdjacentRampType, RampLanes, RampSegment as LibRampSegment, RampSide, RampType, TerrainType,
+    ramp_service_flow_rate_ideal as lib_ramp_sfi, ramp_service_volumes as lib_ramp_sv,
+    AdjacentRampType, RampLanes, RampSegment as LibRampSegment, RampSide, RampType,
+    ServiceDemandBasis, TerrainType,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -321,7 +323,61 @@ impl RampSegment {
     }
 }
 
+/// Service flow rate under ideal conditions (pc/h) at a target ramp-influence
+/// density - HCM Chapter 28, Example Problem 5.
+///
+/// Provide exactly one of:
+///   - `ramp_fraction`: ramp demand as a fraction of freeway demand; the
+///     returned SFI is the approaching freeway flow v_F (Case 1).
+///   - `fixed_freeway_vf`: fixed approaching freeway flow (pc/h, ideal); the
+///     returned SFI is the ramp flow v_R (Case 2).
+///
+/// Args:
+///     segment: a RampSegment holding the fixed geometry.
+///     target_density: LOS threshold density (pc/mi/ln); 10/20/28/35 for A-D.
+///     ramp_fraction: Case 1 basis (mutually exclusive with fixed_freeway_vf).
+///     fixed_freeway_vf: Case 2 basis (mutually exclusive with ramp_fraction).
+///
+/// Returns:
+///     The SFI (pc/h), or None if that LOS is unachievable (the minimum density
+///     already exceeds the target).
+#[pyfunction]
+#[pyo3(
+    name = "ramp_service_flow_rate_ideal",
+    signature = (segment, target_density, ramp_fraction=None, fixed_freeway_vf=None)
+)]
+pub fn py_ramp_service_flow_rate_ideal(
+    segment: &RampSegment,
+    target_density: f64,
+    ramp_fraction: Option<f64>,
+    fixed_freeway_vf: Option<f64>,
+) -> PyResult<Option<f64>> {
+    let basis = match (ramp_fraction, fixed_freeway_vf) {
+        (Some(f), None) => ServiceDemandBasis::ApproachingFreeway { ramp_fraction: f },
+        (None, Some(vf)) => ServiceDemandBasis::FixedFreeway { v_f: vf },
+        _ => {
+            return Err(PyValueError::new_err(
+                "provide exactly one of ramp_fraction (Case 1) or fixed_freeway_vf (Case 2)",
+            ))
+        }
+    };
+    Ok(lib_ramp_sfi(&segment.inner, &basis, target_density))
+}
+
+/// Convert an ideal-conditions service flow rate (pc/h) to a prevailing-
+/// condition service flow rate and service volume - HCM Chapter 28, EP 5.
+///
+/// Returns:
+///     (sf, sv) in veh/h, where SF = SFI x f_HV x f_p and SV = SF x PHF.
+#[pyfunction]
+#[pyo3(name = "ramp_service_volumes")]
+pub fn py_ramp_service_volumes(sfi: f64, f_hv: f64, f_p: f64, phf: f64) -> (f64, f64) {
+    lib_ramp_sv(sfi, f_hv, f_p, phf)
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<RampSegment>()?;
+    m.add_function(wrap_pyfunction!(py_ramp_service_flow_rate_ideal, m)?)?;
+    m.add_function(wrap_pyfunction!(py_ramp_service_volumes, m)?)?;
     Ok(())
 }
