@@ -1,0 +1,22 @@
+{
+    "weaving_type": "OneSided",
+    "facility_type": "MultilaneOrCD",
+    "length_short": 1000.0,
+    "num_lanes": 3,
+    "num_weaving_lanes": 2,
+    "ffs": 70.0,
+    "v_ff": 3100.0,
+    "v_fr": 200.0,
+    "v_rf": 100.0,
+    "v_rr": 900.0,
+    "phf": 1.0,
+    "heavy_vehicle_pct": 0.0,
+    "terrain": "Level",
+    "lc_rf": 1,
+    "lc_fr": 1,
+    "lc_rr": 0,
+    "interchange_density": 1.0,
+    "basic_freeway_capacity": 2400.0,
+    "caf": 1.0,
+    "saf": 1.0
+}

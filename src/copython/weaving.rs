@@ -1,7 +1,9 @@
 //! Python bindings for HCM Chapter 13 (Freeway Weaving Segments).
 
 use crate::hcm::weaving::weaving::{
-    FacilityType, TerrainType, WeavingSegment as LibWeavingSegment, WeavingType,
+    cross_weave_gp_capacity as lib_cross_weave_gp_capacity, service_flow_rate_ideal as lib_sfi,
+    service_volumes as lib_service_volumes, DemandSplit, FacilityType, TerrainType,
+    WeavingSegment as LibWeavingSegment, WeavingType,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -291,7 +293,79 @@ impl WeavingSegment {
     }
 }
 
+/// Cross-weave capacity effect on the general purpose lanes near an ML access
+/// segment - HCM Equations 13-24 and 13-25.
+///
+/// Args:
+///     cw: cross-weave demand flow rate (pc/h), must be > 0.
+///     l_cw_min: cross-weave length L_cw-min (ft).
+///     n_gp: number of general purpose lanes.
+///     c_gp: unadjusted GP-lane capacity from Chapter 12 (veh/h).
+///
+/// Returns:
+///     (crf, caf, c_gpa) - capacity reduction factor, capacity adjustment
+///     factor, and adjusted GP-lane capacity (veh/h).
+///
+/// Raises:
+///     ValueError: if `cw` is not positive (the model takes its natural log).
+#[pyfunction]
+#[pyo3(name = "cross_weave_gp_capacity")]
+pub fn py_cross_weave_gp_capacity(
+    cw: f64,
+    l_cw_min: f64,
+    n_gp: u32,
+    c_gp: f64,
+) -> PyResult<(f64, f64, f64)> {
+    match lib_cross_weave_gp_capacity(cw, l_cw_min, n_gp, c_gp) {
+        Some(e) => Ok((e.crf, e.caf, e.c_gpa)),
+        None => Err(PyValueError::new_err(
+            "cross-weave demand flow rate (cw) must be > 0",
+        )),
+    }
+}
+
+/// Service flow rate under ideal conditions SFI (pc/h) for a target LOS density
+/// - HCM Chapter 27, Example Problem 5.
+///
+/// Args:
+///     segment: a WeavingSegment holding the fixed geometry.
+///     split: (ff, rf, fr, rr) demand fractions of the total flow, summing to 1.
+///     target_density: LOS threshold density (pc/mi/ln); 10/20/28/35 for A-D.
+///
+/// Returns:
+///     SFI (pc/h) - the largest ideal total flow rate held to that density.
+#[pyfunction]
+#[pyo3(name = "service_flow_rate_ideal")]
+pub fn py_service_flow_rate_ideal(
+    segment: &WeavingSegment,
+    split: (f64, f64, f64, f64),
+    target_density: f64,
+) -> f64 {
+    let (ff, rf, fr, rr) = split;
+    lib_sfi(
+        &segment.inner,
+        &DemandSplit { ff, rf, fr, rr },
+        target_density,
+    )
+}
+
+/// Convert an ideal-conditions service flow rate into prevailing service flow
+/// rate, service volume, and daily service volume - HCM Chapter 27, EP 5.
+///
+/// Returns:
+///     (sfi, sf, sv, dsv) where SF = SFI x f_HV, SV = SF x PHF,
+///     DSV = SV / (K x D).
+#[pyfunction]
+#[pyo3(name = "service_volumes")]
+pub fn py_service_volumes(sfi: f64, f_hv: f64, phf: f64, k: f64, d: f64) -> (f64, f64, f64, f64) {
+    let s = lib_service_volumes(sfi, f_hv, phf, k, d);
+    (s.sfi, s.sf, s.sv, s.dsv)
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<WeavingSegment>()?;
+    m.add_function(wrap_pyfunction!(py_cross_weave_gp_capacity, m)?)?;
+    m.add_function(wrap_pyfunction!(py_service_flow_rate_ideal, m)?)?;
+    m.add_function(wrap_pyfunction!(py_service_volumes, m)?)?;
     Ok(())
 }
