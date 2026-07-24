@@ -185,7 +185,45 @@ impl SignalizedIntersection {
     }
 }
 
+/// Evaluate the bicycle LOS at a signalized intersection - HCM Chapter 19,
+/// Section 6. Takes a JSON `BicycleIntersection` config; returns a JSON
+/// `BicycleIntersectionAnalysis` (capacity, delay, LOS score, LOS).
+#[pyfunction]
+pub fn analyze_signalized_bicycle(config_json: &str) -> PyResult<String> {
+    let ix: crate::hcm::signalized::bicycle::BicycleIntersection =
+        serde_json::from_str(config_json)
+            .map_err(|e| PyValueError::new_err(format!("invalid bicycle config: {e}")))?;
+    serde_json::to_string(&ix.analyze())
+        .map_err(|e| PyValueError::new_err(format!("serialize error: {e}")))
+}
+
+/// Evaluate the pedestrian LOS at a signalized intersection - HCM Chapter 19,
+/// Section 5 (Steps 1-3). Takes a JSON `PedestrianIntersection` config; returns
+/// a JSON `PedestrianIntersectionAnalysis` (delay, LOS score, LOS).
+#[pyfunction]
+pub fn analyze_signalized_pedestrian(config_json: &str) -> PyResult<String> {
+    let ix: crate::hcm::signalized::pedestrian::PedestrianIntersection =
+        serde_json::from_str(config_json)
+            .map_err(|e| PyValueError::new_err(format!("invalid pedestrian config: {e}")))?;
+    serde_json::to_string(&ix.analyze())
+        .map_err(|e| PyValueError::new_err(format!("serialize error: {e}")))
+}
+
+/// Pedestrian delay for a two-stage crossing of one intersection leg
+/// (s/pedestrian) - HCM Chapter 19, Equations 19-78 through 19-88. Takes a JSON
+/// `TwoStageCrossing` config.
+#[pyfunction]
+pub fn signalized_two_stage_crossing_delay(config_json: &str) -> PyResult<f64> {
+    let x: crate::hcm::signalized::pedestrian::TwoStageCrossing =
+        serde_json::from_str(config_json)
+            .map_err(|e| PyValueError::new_err(format!("invalid two-stage config: {e}")))?;
+    Ok(x.delay())
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<SignalizedIntersection>()?;
+    m.add_function(wrap_pyfunction!(analyze_signalized_bicycle, m)?)?;
+    m.add_function(wrap_pyfunction!(analyze_signalized_pedestrian, m)?)?;
+    m.add_function(wrap_pyfunction!(signalized_two_stage_crossing_delay, m)?)?;
     Ok(())
 }

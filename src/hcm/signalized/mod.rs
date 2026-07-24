@@ -12,18 +12,25 @@
 //! right-turn-on-red volume estimate (Chapter 31, Section 8). Fixed timing
 //! remains the default analysis path; the actuated estimator is a separate
 //! entry point ([`signalized::SignalizedIntersection::estimate_actuated_timings`]).
-//! The pedestrian/bicycle LOS methodologies and multi-period analysis are
-//! deferred to a later milestone.
+//! The pedestrian ([`pedestrian`], Section 5) and bicycle ([`bicycle`],
+//! Section 6) intersection LOS methodologies, and the two-stage pedestrian
+//! crossing delay (Equations 19-78 through 19-88), are implemented and
+//! reproduce Chapter 31 Example Problems 2, 3, and 4. Multi-period analysis and
+//! the optional pedestrian circulation-area measures remain out of scope.
 
 pub mod actuated;
+pub mod bicycle;
 pub mod exhibits;
+pub mod pedestrian;
 pub mod signalized;
 
 #[cfg(test)]
 mod tests;
 
 pub use actuated::*;
+pub use bicycle::*;
 pub use exhibits::*;
+pub use pedestrian::*;
 pub use signalized::*;
 
 pub const CHAPTER: u8 = 19;
