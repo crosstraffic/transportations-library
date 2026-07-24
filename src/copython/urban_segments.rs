@@ -1,5 +1,8 @@
 //! Python bindings for HCM Chapter 18 (Urban Street Segments).
 
+use crate::hcm::urban_segments::bicycle::BicycleSegment;
+use crate::hcm::urban_segments::pedestrian::PedestrianSegment;
+use crate::hcm::urban_segments::transit::TransitSegment;
 use crate::hcm::urban_segments::urban_segments::UrbanSegment as LibUrbanSegment;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -198,7 +201,46 @@ impl UrbanSegment {
     }
 }
 
+/// Evaluate the pedestrian LOS of an urban street segment - HCM Chapter 18,
+/// Section 4. Takes a JSON `PedestrianSegment` config; returns a JSON
+/// `PedestrianAnalysis` (effective width, pedestrian space, walking/travel
+/// speed, link/segment LOS score and LOS).
+#[pyfunction]
+pub fn analyze_pedestrian_segment(config_json: &str) -> PyResult<String> {
+    let seg: PedestrianSegment = serde_json::from_str(config_json)
+        .map_err(|e| PyValueError::new_err(format!("invalid pedestrian config: {e}")))?;
+    serde_json::to_string(&seg.analyze())
+        .map_err(|e| PyValueError::new_err(format!("serialize error: {e}")))
+}
+
+/// Evaluate the bicycle LOS of an urban street segment - HCM Chapter 18,
+/// Section 5. Takes a JSON `BicycleSegment` config; returns a JSON
+/// `BicycleAnalysis` (travel speed, effective width, link/segment LOS score
+/// and LOS).
+#[pyfunction]
+pub fn analyze_bicycle_segment(config_json: &str) -> PyResult<String> {
+    let seg: BicycleSegment = serde_json::from_str(config_json)
+        .map_err(|e| PyValueError::new_err(format!("invalid bicycle config: {e}")))?;
+    serde_json::to_string(&seg.analyze())
+        .map_err(|e| PyValueError::new_err(format!("serialize error: {e}")))
+}
+
+/// Evaluate the transit LOS of an urban street segment - HCM Chapter 18,
+/// Section 6. Takes a JSON `TransitSegment` config; returns a JSON
+/// `TransitAnalysis` (running/travel speed, wait-ride score, segment LOS score
+/// and LOS).
+#[pyfunction]
+pub fn analyze_transit_segment(config_json: &str) -> PyResult<String> {
+    let seg: TransitSegment = serde_json::from_str(config_json)
+        .map_err(|e| PyValueError::new_err(format!("invalid transit config: {e}")))?;
+    serde_json::to_string(&seg.analyze())
+        .map_err(|e| PyValueError::new_err(format!("serialize error: {e}")))
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<UrbanSegment>()?;
+    m.add_function(wrap_pyfunction!(analyze_pedestrian_segment, m)?)?;
+    m.add_function(wrap_pyfunction!(analyze_bicycle_segment, m)?)?;
+    m.add_function(wrap_pyfunction!(analyze_transit_segment, m)?)?;
     Ok(())
 }
