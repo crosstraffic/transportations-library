@@ -1,7 +1,11 @@
 //! Integration tests for HCM Chapter 11 (Freeway Reliability Analysis)
-//! against HCM Chapter 25, Example Problem 7 (Reliability Evaluation of an
-//! Existing Freeway Facility; Exhibits 25-97 through 25-105,
-//! `202_Ch25_11a.xhtml`).
+//! against HCM Chapter 25, Example Problems 7-9 (`202_Ch25_11a.xhtml`):
+//! EP7 (Reliability Evaluation of an Existing Freeway Facility; Exhibits
+//! 25-97 through 25-105), EP8 (Reliability Analysis with Geometric
+//! Improvements; Exhibit 25-107), and EP9 (Evaluation of Incident Management;
+//! Exhibit 25-108). Example Problem 10 (the deterministic planning-level
+//! method, Equations 11-1 through 11-5) is reproduced exactly in the
+//! `freeway_reliability::exhibits` unit tests.
 //!
 //! Verification strategy (the published reliability results come from the
 //! FREEVAL computational engine's own Monte Carlo stream with seed 1, so
@@ -14,7 +18,11 @@
 //!   results exactly (undersaturated, max vd/c = 0.99 per the EP7 text);
 //! - (c) distribution-level reliability metrics are compared with Exhibit
 //!   25-104 within documented tolerance bands, with every deviation noted
-//!   as computed-vs-published.
+//!   as computed-vs-published;
+//! - (d) the EP8/EP9 improvement scenarios are verified directionally (the
+//!   intervention lowers mean TTI and raises the reliability rating against
+//!   the same fixed scenario draws), since their published distributions are
+//!   likewise Monte-Carlo-dependent.
 
 use std::fs::File;
 use std::io::BufReader;
@@ -460,5 +468,93 @@ fn ep7_atdm_ramp_metering_strategy_improves_or_holds_reliability() {
         "ramp metering's merge CAF must not lower the reliability rating ({} vs {})",
         strat_metrics.reliability_rating,
         base_metrics.reliability_rating
+    );
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// Example Problems 8 & 9: improvement scenarios (directional)
+//
+// The published EP8/EP9 numbers come from the HCM's Monte-Carlo scenario
+// draws and cannot be reproduced cell-for-cell (see the EP7 metric notes
+// above). These tests instead verify the *direction* of the improvement:
+// holding the scenario draws fixed (the fixture pins the RNG seed), the
+// intervention must reduce mean TTI and raise the reliability rating relative
+// to the unimproved Example Problem 7 facility.
+// ═════════════════════════════════════════════════════════════════════════
+
+/// HCM Chapter 25, Example Problem 8: widening Segments 7-11 by one lane (the
+/// same geometric improvement as Example Problem 3) improves reliability.
+/// Published: mean TTI 1.54 -> 1.18, speed 39.0 -> 50.8 mi/h.
+#[test]
+fn ep8_geometric_improvement_improves_reliability() {
+    let mut base = load_case("case1.json");
+    base.run().unwrap();
+    let mb = base.metrics.clone().unwrap();
+
+    // Same facility with a fourth lane on Segments 7-11 (indices 6-10). The
+    // RNG seed is unchanged, so the scenario set is identical and the delta is
+    // purely the geometry effect.
+    let mut imp = load_case("case1.json");
+    for i in 6..11 {
+        imp.facility.segments[i].lanes += 1;
+    }
+    imp.run().unwrap();
+    let mi = imp.metrics.clone().unwrap();
+
+    assert!(
+        mi.tti_mean < mb.tti_mean,
+        "widening Segments 7-11 should lower mean TTI: {} -> {}",
+        mb.tti_mean,
+        mi.tti_mean
+    );
+    assert!(
+        mi.reliability_rating > mb.reliability_rating,
+        "widening should raise the reliability rating: {} -> {}",
+        mb.reliability_rating,
+        mi.reliability_rating
+    );
+    assert!(
+        mi.tti_95 <= mb.tti_95 + 1e-9,
+        "the planning time index should not worsen: {} -> {}",
+        mb.tti_95,
+        mi.tti_95
+    );
+}
+
+/// HCM Chapter 25, Example Problem 9: improved incident management (mean
+/// incident durations and their standard deviations cut by 30%) improves
+/// reliability. Published: mean TTI 1.35 -> 1.20, speed 44.4 -> 50.0 mi/h.
+#[test]
+fn ep9_incident_management_improves_reliability() {
+    let mut base = load_case("case1.json");
+    base.run().unwrap();
+    let mb = base.metrics.clone().unwrap();
+
+    // Reduce every incident severity's mean duration and standard deviation by
+    // 30%, holding the scenario draws (RNG seed) fixed.
+    let mut imp = load_case("case1.json");
+    let incidents = imp
+        .scenario_generation
+        .incidents
+        .as_mut()
+        .expect("Example Problem 7 fixture defines incident inputs");
+    for p in incidents.duration_params.iter_mut() {
+        p.mean *= 0.70;
+        p.std_dev *= 0.70;
+    }
+    imp.run().unwrap();
+    let mi = imp.metrics.clone().unwrap();
+
+    assert!(
+        mi.tti_mean < mb.tti_mean,
+        "faster incident clearance should lower mean TTI: {} -> {}",
+        mb.tti_mean,
+        mi.tti_mean
+    );
+    assert!(
+        mi.reliability_rating > mb.reliability_rating,
+        "faster clearance should raise the reliability rating: {} -> {}",
+        mb.reliability_rating,
+        mi.reliability_rating
     );
 }
