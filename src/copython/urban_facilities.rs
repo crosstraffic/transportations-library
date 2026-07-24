@@ -1,8 +1,17 @@
 //! Python bindings for HCM Chapter 16 (Urban Street Facilities).
 
-use crate::hcm::urban_facilities::urban_facilities::UrbanFacility as LibUrbanFacility;
+use crate::hcm::urban_facilities::urban_facilities::{
+    facility_bicycle_los as lib_bike_los, facility_pedestrian_los as lib_ped_los,
+    facility_transit_los as lib_transit_los, facility_transit_los_score,
+    facility_weighted_los_score, UrbanFacility as LibUrbanFacility,
+};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+
+fn los_char(l: crate::hcm::common::LevelOfService) -> String {
+    let c: char = l.into();
+    c.to_string()
+}
 
 /// HCM Chapter 16 urban street facility analysis (motorized vehicle
 /// methodology, one direction of travel).
@@ -138,7 +147,54 @@ impl UrbanFacility {
     }
 }
 
+/// HCM Equations 16-7/16-8 (pedestrian) or 16-10/16-11 (bicycle): facility LOS
+/// score as a travel-time-weighted generalized mean of the segment scores.
+///
+/// Args:
+///     segments: list of (length_ft, segment_travel_speed, segment_los_score).
+///
+/// Returns:
+///     The facility LOS score.
+#[pyfunction]
+pub fn facility_pedestrian_or_bicycle_los_score(segments: Vec<(f64, f64, f64)>) -> f64 {
+    facility_weighted_los_score(&segments)
+}
+
+/// HCM Equation 16-13: transit facility LOS score (length-weighted average of
+/// the segment transit scores).
+///
+/// Args:
+///     segments: list of (length_ft, segment_transit_los_score).
+#[pyfunction]
+pub fn facility_transit_los_score_py(segments: Vec<(f64, f64)>) -> f64 {
+    facility_transit_los_score(&segments)
+}
+
+/// Facility pedestrian LOS letter - Exhibit 16-4 (worse of the score-based and
+/// average-pedestrian-space LOS).
+#[pyfunction]
+pub fn facility_pedestrian_los(score: f64, pedestrian_space: f64) -> String {
+    los_char(lib_ped_los(score, pedestrian_space))
+}
+
+/// Facility bicycle LOS letter - Exhibit 16-5, from the bicycle LOS score.
+#[pyfunction]
+pub fn facility_bicycle_los(score: f64) -> String {
+    los_char(lib_bike_los(score))
+}
+
+/// Facility transit LOS letter - Exhibit 16-5, from the transit LOS score.
+#[pyfunction]
+pub fn facility_transit_los(score: f64) -> String {
+    los_char(lib_transit_los(score))
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<UrbanFacility>()?;
+    m.add_function(wrap_pyfunction!(facility_pedestrian_or_bicycle_los_score, m)?)?;
+    m.add_function(wrap_pyfunction!(facility_transit_los_score_py, m)?)?;
+    m.add_function(wrap_pyfunction!(facility_pedestrian_los, m)?)?;
+    m.add_function(wrap_pyfunction!(facility_bicycle_los, m)?)?;
+    m.add_function(wrap_pyfunction!(facility_transit_los, m)?)?;
     Ok(())
 }

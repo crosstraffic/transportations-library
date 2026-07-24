@@ -85,3 +85,30 @@ class TestUrbanFacilityChapter18Pipeline:
     def test_json_round_trip(self, facility):
         restored = tl.UrbanFacility(facility.to_json())
         assert restored.num_segments == facility.num_segments
+
+
+class TestFacilityMultimodalAggregation:
+    """HCM Chapter 16 facility multimodal LOS aggregation (Eqs 16-7 to 16-13),
+    anchored to Chapter 29 Example Problem 2."""
+
+    def test_single_segment_identity(self):
+        # A one-segment facility returns the segment's own score.
+        assert tl.facility_pedestrian_or_bicycle_los_score([(1320.0, 3.55, 2.93)]) == pytest.approx(2.93, abs=1e-9)
+        assert tl.facility_transit_los_score_py([(1320.0, 3.43)]) == pytest.approx(3.43, abs=1e-9)
+
+    def test_hand_computed_two_segment(self):
+        # Eq 16-7: 0.75*[(100*3.8333^3 + 100*5.1667^3)/200]^(1/3)+0.125 = 3.574
+        score = tl.facility_pedestrian_or_bicycle_los_score([(1000.0, 10.0, 3.0), (2000.0, 20.0, 4.0)])
+        assert score == pytest.approx(3.574, abs=0.01)
+        # Eq 16-13: (1000*3 + 2000*4)/3000 = 3.667
+        assert tl.facility_transit_los_score_py([(1000.0, 3.0), (2000.0, 4.0)]) == pytest.approx(3.667, abs=0.001)
+
+    def test_example_problem_2_facility_scores(self):
+        ped = [(1320.0, 3.55, 2.93)] * 3 + [(660.0, 3.18, 2.85)] * 2
+        bike = [(1320.0, 13.16, 3.02)] * 3 + [(660.0, 11.67, 3.01)] * 2
+        ped_score = tl.facility_pedestrian_or_bicycle_los_score(ped)
+        bike_score = tl.facility_pedestrian_or_bicycle_los_score(bike)
+        assert ped_score == pytest.approx(2.91, abs=0.03)   # published 2.91
+        assert bike_score == pytest.approx(3.02, abs=0.02)  # published 3.02
+        assert tl.facility_pedestrian_los(ped_score, 422.2) == "C"
+        assert tl.facility_bicycle_los(bike_score) == "C"
