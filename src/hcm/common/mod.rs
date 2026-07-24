@@ -543,8 +543,13 @@ pub const MAX_CROSS_SLOPE_BREAK: f64 = 8.0;
 // Level of Service
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Level of Service enumeration used throughout HCM
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Level of Service enumeration used throughout HCM.
+///
+/// Variants are declared best-to-worst (A..F), so the derived ordering ranks
+/// them by severity: `a.max(b)` yields the worse (higher-lettered) LOS, which
+/// is how multimodal methods combine per-measure LOS into a segment/facility
+/// LOS (e.g. HCM Exhibit 18-2's worse-of-score-and-space rule).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum LevelOfService {
     A, B, C, D, E, F
 }

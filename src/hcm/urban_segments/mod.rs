@@ -21,20 +21,28 @@
 //! coordinated-system convergence loop that would drive the discharge
 //! profiles directly from the Chapter 19 timing (so reproducing Example
 //! Problem 1's computed `P = 0.493` from the raw signal is deferred — see
-//! `docs/hcm/VERIFICATION.md`). The pedestrian, bicycle, and transit
-//! methodologies of Chapter 18 are out of scope.
+//! `docs/hcm/VERIFICATION.md`). The pedestrian ([`pedestrian`], Section 4),
+//! bicycle ([`bicycle`], Section 5), and transit ([`transit`], Section 6)
+//! methodologies are implemented as self-contained segment LOS models and
+//! reproduce Chapter 30 Example Problems 2, 3, and 4 respectively.
 
 pub mod access_point_delay;
+pub mod bicycle;
 pub mod exhibits;
+pub mod pedestrian;
 pub mod platoon_dispersion;
+pub mod transit;
 pub mod urban_segments;
 
 #[cfg(test)]
 mod tests;
 
 pub use access_point_delay::*;
+pub use bicycle::*;
 pub use exhibits::*;
+pub use pedestrian::*;
 pub use platoon_dispersion::*;
+pub use transit::*;
 pub use urban_segments::*;
 
 pub const CHAPTER: u8 = 18;
