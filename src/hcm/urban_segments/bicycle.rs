@@ -10,36 +10,11 @@
 
 use serde::{Deserialize, Serialize};
 use crate::hcm::common::LevelOfService;
+use super::exhibits::{link_los_from_score, segment_los_from_score};
 
 /// Default average bicycle running speed when field data are unavailable
 /// (Chapter 18, Step 1 guidance), mi/h.
 pub const DEFAULT_BICYCLE_RUNNING_SPEED: f64 = 15.0;
-
-/// Bicycle LOS from a segment-based bicycle LOS score - Exhibit 18-3.
-/// A <=2.00, B <=2.75, C <=3.50, D <=4.25, E <=5.00, F >5.00.
-pub fn bicycle_segment_los(score: f64) -> LevelOfService {
-    match score {
-        s if s <= 2.00 => LevelOfService::A,
-        s if s <= 2.75 => LevelOfService::B,
-        s if s <= 3.50 => LevelOfService::C,
-        s if s <= 4.25 => LevelOfService::D,
-        s if s <= 5.00 => LevelOfService::E,
-        _ => LevelOfService::F,
-    }
-}
-
-/// Bicycle LOS from a link-based bicycle LOS score - Exhibit 18-3.
-/// A <=1.50, B <=2.50, C <=3.50, D <=4.50, E <=5.50, F >5.50.
-pub fn bicycle_link_los(score: f64) -> LevelOfService {
-    match score {
-        s if s <= 1.50 => LevelOfService::A,
-        s if s <= 2.50 => LevelOfService::B,
-        s if s <= 3.50 => LevelOfService::C,
-        s if s <= 4.50 => LevelOfService::D,
-        s if s <= 5.50 => LevelOfService::E,
-        _ => LevelOfService::F,
-    }
-}
 
 /// Inputs for the HCM Chapter 18 bicycle segment evaluation (one direction of
 /// travel). Widths are in feet; the boundary-intersection performance measures
@@ -221,10 +196,10 @@ impl BicycleSegment {
             f_s,
             f_p,
             link_score,
-            link_los: bicycle_link_los(link_score),
+            link_los: link_los_from_score(link_score),
             f_c,
             segment_score,
-            segment_los: bicycle_segment_los(segment_score),
+            segment_los: segment_los_from_score(segment_score),
         }
     }
 }
@@ -274,10 +249,10 @@ mod tests {
 
     #[test]
     fn los_thresholds() {
-        assert_eq!(bicycle_segment_los(2.00), LevelOfService::A);
-        assert_eq!(bicycle_segment_los(2.88), LevelOfService::C);
-        assert_eq!(bicycle_segment_los(5.01), LevelOfService::F);
-        assert_eq!(bicycle_link_los(1.50), LevelOfService::A);
-        assert_eq!(bicycle_link_los(3.62), LevelOfService::D);
+        assert_eq!(segment_los_from_score(2.00), LevelOfService::A);
+        assert_eq!(segment_los_from_score(2.88), LevelOfService::C);
+        assert_eq!(segment_los_from_score(5.01), LevelOfService::F);
+        assert_eq!(link_los_from_score(1.50), LevelOfService::A);
+        assert_eq!(link_los_from_score(3.62), LevelOfService::D);
     }
 }

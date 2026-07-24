@@ -11,39 +11,12 @@
 
 use serde::{Deserialize, Serialize};
 use crate::hcm::common::LevelOfService;
+use super::exhibits::{link_los_from_score, segment_los_from_score};
 
 /// Default free-flow walking speed when field data are unavailable, ft/s.
 pub const DEFAULT_FREE_FLOW_WALK_SPEED: f64 = 4.4;
 /// Default proportion of pedestrians desiring a midblock crossing (Step 9).
 pub const DEFAULT_PROP_MIDBLOCK_CROSSING: f64 = 0.35;
-
-/// Rank a LOS letter A=0 .. F=5 for "worse-of" combination.
-fn los_rank(l: LevelOfService) -> u8 {
-    let c: char = l.into();
-    c as u8 - b'A'
-}
-
-/// The worse (higher-lettered) of two LOS values.
-fn worse_los(a: LevelOfService, b: LevelOfService) -> LevelOfService {
-    if los_rank(a) >= los_rank(b) {
-        a
-    } else {
-        b
-    }
-}
-
-/// Score-based segment pedestrian LOS - Exhibit 18-2 (left).
-/// A <=2.00, B <=2.75, C <=3.50, D <=4.25, E <=5.00, F >5.00.
-pub fn pedestrian_score_los(score: f64) -> LevelOfService {
-    match score {
-        s if s <= 2.00 => LevelOfService::A,
-        s if s <= 2.75 => LevelOfService::B,
-        s if s <= 3.50 => LevelOfService::C,
-        s if s <= 4.25 => LevelOfService::D,
-        s if s <= 5.00 => LevelOfService::E,
-        _ => LevelOfService::F,
-    }
-}
 
 /// Space-based pedestrian LOS - Exhibit 18-2 (average pedestrian space,
 /// ft^2/p): A >60, B >40, C >24, D >15, E >8, F <=8.
@@ -54,19 +27,6 @@ pub fn pedestrian_space_los(space: f64) -> LevelOfService {
         s if s > 24.0 => LevelOfService::C,
         s if s > 15.0 => LevelOfService::D,
         s if s > 8.0 => LevelOfService::E,
-        _ => LevelOfService::F,
-    }
-}
-
-/// Link-based pedestrian LOS score - Exhibit 18-2 (right).
-/// A <=1.50, B <=2.50, C <=3.50, D <=4.50, E <=5.50, F >5.50.
-pub fn pedestrian_link_los(score: f64) -> LevelOfService {
-    match score {
-        s if s <= 1.50 => LevelOfService::A,
-        s if s <= 2.50 => LevelOfService::B,
-        s if s <= 3.50 => LevelOfService::C,
-        s if s <= 4.50 => LevelOfService::D,
-        s if s <= 5.50 => LevelOfService::E,
         _ => LevelOfService::F,
     }
 }
@@ -287,7 +247,9 @@ impl PedestrianSegment {
             10.0
         };
         // Adjusted available sidewalk width and the sidewalk-width coefficient.
-        let w_aa = (self.width_sidewalk_ft - self.width_buffer_ft).min(10.0);
+        // Floored at 0 so a buffer wider than the sidewalk cannot drive the
+        // Equation 18-33 logarithm argument non-positive (which would yield NaN).
+        let w_aa = (self.width_sidewalk_ft - self.width_buffer_ft).clamp(0.0, 10.0);
         let f_sw = 6.0 - 0.3 * w_aa;
         // Buffer area coefficient (Exhibit 18-19 note).
         let f_b = if self.continuous_barrier { 5.37 } else { 1.0 };
@@ -330,10 +292,8 @@ impl PedestrianSegment {
         let segment_score = (num / (t_walk + self.ped_delay_parallel)).cbrt();
 
         // ── Step 10: segment LOS (worse of score-based and space-based) ─────
-        let segment_los = worse_los(
-            pedestrian_score_los(segment_score),
-            pedestrian_space_los(pedestrian_space),
-        );
+        let segment_los =
+            segment_los_from_score(segment_score).max(pedestrian_space_los(pedestrian_space));
 
         PedestrianAnalysis {
             effective_sidewalk_width: w_e,
@@ -345,7 +305,7 @@ impl PedestrianSegment {
             f_v,
             f_s,
             link_score,
-            link_los: pedestrian_link_los(link_score),
+            link_los: link_los_from_score(link_score),
             crossing_score,
             segment_score,
             segment_los,
@@ -404,6 +364,24 @@ mod tests {
         assert!((a.crossing_score - 6.0).abs() < 1e-9, "I_p,mx {}", a.crossing_score);
         assert!((a.segment_score - 3.62).abs() < 0.03, "I_p,seg {}", a.segment_score);
         assert_eq!(a.segment_los, LevelOfService::D);
+    }
+
+    /// A buffer wider than the sidewalk must not produce NaN scores: w_aa is
+    /// floored at 0 so the Equation 18-33 logarithm stays well defined.
+    #[test]
+    fn wide_buffer_does_not_produce_nan() {
+        let seg = PedestrianSegment {
+            width_sidewalk_ft: 5.0,
+            width_buffer_ft: 12.0, // wider than the sidewalk
+            ped_flow_rate: 500.0,
+            midseg_flow_rate: 400.0,
+            motor_running_speed: 30.0,
+            ped_delay_parallel: 30.0,
+            ..PedestrianSegment::default()
+        };
+        let a = seg.analyze();
+        assert!(a.link_score.is_finite(), "link score {}", a.link_score);
+        assert!(a.segment_score.is_finite(), "segment score {}", a.segment_score);
     }
 
     #[test]

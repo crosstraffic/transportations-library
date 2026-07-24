@@ -9,6 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 use crate::hcm::common::LevelOfService;
+use super::exhibits::segment_los_from_score;
 
 /// Default bus acceleration rate r_at, ft/s^2 (TCQSM).
 pub const DEFAULT_ACCEL_RATE: f64 = 3.3;
@@ -23,19 +24,6 @@ pub const DEFAULT_LATE_THRESHOLD_MIN: f64 = 5.0;
 /// Calibration coefficient `e` in the perceived travel time factor
 /// (Equation 18-57). This is a fitted constant, not Euler's number.
 pub const FTT_COEFFICIENT: f64 = -0.40;
-
-/// Transit LOS from a segment transit LOS score - Exhibit 18-3.
-/// A <=2.00, B <=2.75, C <=3.50, D <=4.25, E <=5.00, F >5.00.
-pub fn transit_los(score: f64) -> LevelOfService {
-    match score {
-        s if s <= 2.00 => LevelOfService::A,
-        s if s <= 2.75 => LevelOfService::B,
-        s if s <= 3.50 => LevelOfService::C,
-        s if s <= 4.25 => LevelOfService::D,
-        s if s <= 5.00 => LevelOfService::E,
-        _ => LevelOfService::F,
-    }
-}
 
 /// Inputs for the HCM Chapter 18 transit segment evaluation (one route, one
 /// direction).
@@ -213,7 +201,7 @@ impl TransitSegment {
             travel_time_factor,
             wait_ride_score,
             segment_score,
-            segment_los: transit_los(segment_score),
+            segment_los: segment_los_from_score(segment_score),
         }
     }
 }
@@ -266,8 +254,8 @@ mod tests {
 
     #[test]
     fn los_thresholds() {
-        assert_eq!(transit_los(2.00), LevelOfService::A);
-        assert_eq!(transit_los(2.83), LevelOfService::C);
-        assert_eq!(transit_los(5.01), LevelOfService::F);
+        assert_eq!(segment_los_from_score(2.00), LevelOfService::A);
+        assert_eq!(segment_los_from_score(2.83), LevelOfService::C);
+        assert_eq!(segment_los_from_score(5.01), LevelOfService::F);
     }
 }
