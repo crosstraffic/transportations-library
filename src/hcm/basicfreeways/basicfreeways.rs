@@ -16,6 +16,64 @@ pub const EXPONENT_MULTILANE: f64 = 1.31;
 /// Breakpoint for multilane highway segments (constant) - Exhibit 12-6
 pub const BREAKPOINT_MULTILANE: f64 = 1400.0;
 
+/// Maximum basic-freeway capacity, reached at FFS >= 70 mi/h - Exhibit 12-4 (pc/h/ln).
+pub const MAX_CAPACITY_BASIC_FREEWAY: f64 = 2400.0;
+
+/// Maximum multilane-highway capacity, reached at FFS = 60 mi/h - Exhibit 12-4 (pc/h/ln).
+pub const MAX_CAPACITY_MULTILANE: f64 = 2300.0;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Equivalent-basic-segment primitives
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Chapters 13 and 14 evaluate an "equivalent basic segment" - the same lanes, demand, and
+// free-flow speed, without the ramp or weaving turbulence - and subtract a speed impedance from
+// it. These free functions are that shared surface. `BasicFreewaySegments` delegates to them, so
+// there is one definition of each Exhibit 12-6 parameter rather than one per calling chapter.
+
+/// Exhibit 12-6 basic-freeway breakpoint: `BP_adj = [1,000 + 40 (75 - FFS_adj)] CAF^2` (pc/h/ln).
+pub fn basic_segment_breakpoint(ffs_adj: f64, caf: f64) -> f64 {
+    (1000.0 + 40.0 * (75.0 - ffs_adj)) * caf.powi(2)
+}
+
+/// Equation 12-6 basic-freeway base capacity `c = 2,200 + 10 (FFS_adj - 50)`, capped at the
+/// Exhibit 12-4 maximum (pc/h/ln). Multiply by CAF for the adjusted capacity (Equation 12-8).
+pub fn basic_segment_capacity(ffs_adj: f64) -> f64 {
+    (2200.0 + 10.0 * (ffs_adj - 50.0)).min(MAX_CAPACITY_BASIC_FREEWAY)
+}
+
+/// Equation 12-1 speed-flow relationship for a basic segment (mi/h).
+///
+/// ```text
+/// S = FFS_adj                                                              v_p <= BP_adj
+/// S = FFS_adj - (FFS_adj - c_adj/D_c) ((v_p - BP_adj)/(c_adj - BP_adj))^a  BP_adj < v_p <= c_adj
+/// ```
+///
+/// Returns 0.0 when demand exceeds the adjusted capacity, which the speed-flow curve does not
+/// cover; callers test that condition separately rather than reading a speed of zero as slow
+/// traffic.
+pub fn basic_segment_speed(
+    v_p: f64,
+    ffs_adj: f64,
+    capacity_adj: f64,
+    breakpoint: f64,
+    exponent: f64,
+) -> f64 {
+    let speed_at_capacity = capacity_adj / DENSITY_AT_CAPACITY;
+    if v_p <= breakpoint {
+        ffs_adj
+    } else if v_p <= capacity_adj {
+        let denominator = capacity_adj - breakpoint;
+        if denominator > 0.0 {
+            ffs_adj - (ffs_adj - speed_at_capacity) * ((v_p - breakpoint) / denominator).powf(exponent)
+        } else {
+            speed_at_capacity
+        }
+    } else {
+        0.0
+    }
+}
+
 /// Default base free-flow speed for basic freeway segments - Step 2
 ///
 /// "The predictive algorithm for FFS therefore starts with a value greater than 75 mi/h,
@@ -625,7 +683,7 @@ impl BasicFreeways {
     /// - Multilane highway: BP = 1,400 (constant)
     pub fn calculate_breakpoint(&mut self) -> f64 {
         if self.highway_type == "basic" {
-            self.breakpoint = (1000.0 + 40.0 * (75.0 - self.ffs_adj)) * self.caf.powi(2);
+            self.breakpoint = basic_segment_breakpoint(self.ffs_adj, self.caf);
         } else {
             self.breakpoint = BREAKPOINT_MULTILANE;
         }
@@ -652,26 +710,15 @@ impl BasicFreeways {
             EXPONENT_MULTILANE
         };
 
-        // Speed at capacity = c_adj / D_c
-        let speed_at_capacity = self.capacity_adj / DENSITY_AT_CAPACITY;
-
-        if self.v_p <= self.breakpoint {
-            // Constant speed range
-            self.speed = self.ffs_adj;
-        } else if self.v_p <= self.capacity_adj {
-            // Decreasing speed range (parabolic relationship)
-            let numerator = self.v_p - self.breakpoint;
-            let denominator = self.capacity_adj - self.breakpoint;
-            if denominator > 0.0 {
-                self.speed = self.ffs_adj - (self.ffs_adj - speed_at_capacity)
-                    * (numerator / denominator).powf(exponent);
-            } else {
-                self.speed = speed_at_capacity;
-            }
-        } else {
-            // Demand exceeds capacity - LOS F
-            self.speed = 0.0;  // Indicates breakdown
-        }
+        // Demand above the adjusted capacity returns 0.0, indicating breakdown rather than a
+        // speed on the curve.
+        self.speed = basic_segment_speed(
+            self.v_p,
+            self.ffs_adj,
+            self.capacity_adj,
+            self.breakpoint,
+            exponent,
+        );
 
         self.speed
     }
@@ -712,19 +759,13 @@ impl BasicFreeways {
 
         // Equation 12-6 for basic freeway: c = 2200 + 10 × (FFS - 50)
         // Equation 12-7 for multilane highway: c = 1900 + 20 × (FFS - 45)
+        // Capacity cannot exceed the Exhibit 12-4 maximum: 2,400 pc/h/ln for a basic freeway
+        // (at FFS >= 70 mi/h), 2,300 pc/h/ln for a multilane highway (at FFS = 60 mi/h).
         self.capacity = match self.highway_type.as_str() {
-            "basic" => 2200.0 + 10.0 * (self.ffs_adj - 50.0),
-            "multilane" => 1900.0 + 20.0 * (self.ffs_adj - 45.0),
+            "basic" => basic_segment_capacity(self.ffs_adj),
+            "multilane" => (1900.0 + 20.0 * (self.ffs_adj - 45.0)).min(MAX_CAPACITY_MULTILANE),
             _ => 2000.0,
         };
-
-        // Capacity cannot exceed maximum from Exhibit 12-4
-        // Basic freeway: max 2,400 pc/h/ln (at FFS >= 70 mi/h)
-        // Multilane highway: max 2,300 pc/h/ln (at FFS = 60 mi/h)
-        let max_capacity = if self.highway_type == "basic" { 2400.0 } else { 2300.0 };
-        if self.capacity > max_capacity {
-            self.capacity = max_capacity;
-        }
 
         // Calculate adjusted capacity
         let _ = self.estimate_adjusted_capacity();

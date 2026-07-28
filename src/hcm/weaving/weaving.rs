@@ -7,7 +7,8 @@
 //! 13-22), and density/LOS (Eq. 13-23, Exhibit 13-6).
 
 use serde::{Deserialize, Serialize};
-use crate::hcm::common::LevelOfService;
+use crate::hcm::common::{HcmVersion, LevelOfService};
+use super::v7_1::WeavingAnalysis;
 
 // =============================================================================
 // Constants
@@ -110,6 +111,10 @@ pub fn determine_weaving_los(
 #[serde(default)]
 pub struct WeavingSegment {
     // ── Inputs ──────────────────────────────────────────────────────────
+    /// Which HCM edition to analyze this segment under. Edition 7.1 replaced Chapter 13 with a
+    /// different methodology, so this selects between two sets of results rather than refining
+    /// one. Defaults to the 7th Edition.
+    pub version: HcmVersion,
     /// Type of weaving segment (one-sided or two-sided)
     pub weaving_type: WeavingType,
     /// Facility type for LOS criteria (freeway or multilane/C-D)
@@ -142,6 +147,15 @@ pub struct WeavingSegment {
     pub lc_fr: u32,
     /// Minimum lane changes for one ramp-to-ramp vehicle LC_RR (two-sided), lc
     pub lc_rr: u32,
+    /// Number of lanes from which a ramp-to-freeway weaving maneuver may be made with the minimum
+    /// number of lane changes NW_RF, ln. Edition 7.1 only (Chapter 13, Exhibit 13-5).
+    pub nw_rf: u32,
+    /// Number of lanes from which a freeway-to-ramp weaving maneuver may be made with the minimum
+    /// number of lane changes NW_FR, ln. Edition 7.1 only.
+    pub nw_fr: u32,
+    /// Number of lanes from which a ramp-to-ramp weaving maneuver may be made with the minimum
+    /// number of lane changes NW_RR, ln. Edition 7.1, two-sided segments only (Exhibit 13-6).
+    pub nw_rr: u32,
     /// Interchange density ID, int/mi
     pub interchange_density: f64,
     /// Capacity per lane of a basic freeway segment with the same FFS c_IFL, pc/h/ln
@@ -196,13 +210,20 @@ pub struct WeavingSegment {
     pub density: Option<f64>,
     /// Whether demand exceeds capacity (v/c > 1.0)
     pub demand_exceeds_capacity: Option<bool>,
-    /// Level of service - Exhibit 13-6
+    /// Level of service - Exhibit 13-6 (7th Edition) or Exhibit 13-7 (Edition 7.1)
     pub los: Option<LevelOfService>,
+    /// Full Edition 7.1 result, populated only when the segment's version is
+    /// [`HcmVersion::V7_1`]. The quantities Edition 7.1 computes and the 7th Edition does not -
+    /// the equivalent basic segment, the speed impedance, and the per-lane capacity C_W - live
+    /// here rather than in the shared fields above, so no field carries different units depending
+    /// on which edition produced it.
+    pub analysis_v7_1: Option<WeavingAnalysis>,
 }
 
 impl Default for WeavingSegment {
     fn default() -> Self {
         Self {
+            version: HcmVersion::V7,
             weaving_type: WeavingType::OneSided,
             facility_type: FacilityType::Freeway,
             length_short: 1500.0,
@@ -219,6 +240,9 @@ impl Default for WeavingSegment {
             lc_rf: 1,
             lc_fr: 1,
             lc_rr: 0,
+            nw_rf: 1,
+            nw_fr: 1,
+            nw_rr: 0,
             interchange_density: 0.8,
             basic_freeway_capacity: 2400.0,
             caf: 1.0,
@@ -246,6 +270,7 @@ impl Default for WeavingSegment {
             density: None,
             demand_exceeds_capacity: None,
             los: None,
+            analysis_v7_1: None,
         }
     }
 }
@@ -334,7 +359,10 @@ impl WeavingSegment {
     }
 
     /// Heavy vehicle adjustment factor f_HV using PCEs from Exhibit 12-25.
-    fn calculate_fhv(&self) -> f64 {
+    ///
+    /// Shared by both editions: Edition 7.1 changed the weaving methodology, not the Chapter 12
+    /// heavy-vehicle treatment it draws on.
+    pub(crate) fn calculate_fhv(&self) -> f64 {
         let e_t = match self.terrain {
             TerrainType::Level => 2.0,    // Exhibit 12-25
             TerrainType::Rolling => 3.0,  // Exhibit 12-25
@@ -569,8 +597,18 @@ impl WeavingSegment {
         los
     }
 
-    /// Run the full HCM Chapter 13 analysis (Steps 2-8) and return the LOS.
+    /// Run the full Chapter 13 analysis for the segment's selected HCM edition and return the LOS.
+    ///
+    /// Under [`HcmVersion::V7`] this runs the 7th Edition Steps 2 through 8. Under
+    /// [`HcmVersion::V7_1`] it runs the Edition 7.1 methodology
+    /// ([`WeavingSegment::analyze_v7_1`]) and copies its results into the shared output fields.
+    /// The two editions populate different subsets of those fields, because they compute different
+    /// quantities: Edition 7.1 has no separate weaving and nonweaving speeds and no lane-changing
+    /// rates, and reports capacity per lane in pc/h/ln rather than a whole-segment veh/h value.
     pub fn run_analysis(&mut self) -> LevelOfService {
+        if self.version == HcmVersion::V7_1 {
+            return self.run_analysis_v7_1();
+        }
         self.determine_demand_flow();
         self.determine_configuration_characteristics();
         self.determine_max_weaving_length();
