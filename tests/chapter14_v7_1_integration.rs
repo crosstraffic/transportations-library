@@ -62,7 +62,7 @@ fn example_problem_1_isolated_on_ramp() {
     assert!(!a.demand_exceeds_capacity);
 
     approx(a.density, 32.1, 0.1, "D_M");
-    assert_eq!(los, LevelOfService::E);
+    assert_eq!(los, Some(LevelOfService::E));
 }
 
 /// Example Problem 2, first off-ramp: one of two adjacent one-lane, right-hand off-ramps on a
@@ -105,7 +105,7 @@ fn example_problem_2_first_off_ramp() {
     approx(a.capacity_ramp_roadway, 2000.0, 1e-9, "ramp roadway capacity");
     assert!(!a.demand_exceeds_capacity);
     approx(a.density, 29.4, 0.1, "D_D");
-    assert_eq!(los, LevelOfService::D);
+    assert_eq!(los, Some(LevelOfService::D));
 }
 
 /// Example Problem 2, second off-ramp. Its per-lane demand of 1,584 pc/h/ln falls just below the
@@ -146,7 +146,7 @@ fn example_problem_2_second_off_ramp() {
     approx(a.capacity_ramp_roadway, 1900.0, 1e-9, "ramp roadway capacity");
     assert!(!a.demand_exceeds_capacity);
     approx(a.density, 28.3, 0.1, "D_D");
-    assert_eq!(los, LevelOfService::D);
+    assert_eq!(los, Some(LevelOfService::D));
 }
 
 /// The two editions are genuinely different models. Under the 7th Edition this junction's density
@@ -193,4 +193,37 @@ fn the_two_editions_disagree_on_the_same_junction() {
 #[test]
 fn default_edition_is_the_seventh() {
     assert_eq!(RampSegment::default().version, HcmVersion::V7);
+}
+
+/// A major merge under capacity has no 7th Edition level of service: Chapter 14 checks its
+/// capacity and stops. `run_analysis` returns None there rather than inventing a letter, and the
+/// stored field agrees with the returned value.
+#[test]
+fn major_merge_under_capacity_has_no_seventh_edition_los() {
+    let mut seg = RampSegment {
+        version: HcmVersion::V7,
+        ramp_type: RampType::MajorMerge,
+        ramp_side: RampSide::Right,
+        ramp_lanes: RampLanes::TwoLane,
+        freeway_lanes: 3,
+        freeway_ffs: 65.0,
+        ramp_ffs: 50.0,
+        accel_lane_length: Some(1000.0),
+        freeway_demand: 3000.0,
+        ramp_demand: 1200.0,
+        phf: 0.95,
+        heavy_vehicle_pct: 0.05,
+        terrain: TerrainType::Level,
+        ..Default::default()
+    };
+
+    assert_eq!(seg.run_analysis(), None);
+    assert_eq!(seg.get_los(), None);
+
+    // Edition 7.1 closes the hole: Exhibit 14-2 states its criteria apply to all ramp-freeway
+    // junctions "and may also be applied to major merges and diverges".
+    seg.version = HcmVersion::V7_1;
+    let los = seg.run_analysis();
+    assert!(los.is_some(), "Edition 7.1 defines LOS for a major merge");
+    assert_eq!(seg.get_los(), los);
 }

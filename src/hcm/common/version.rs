@@ -73,12 +73,11 @@ impl FromStr for HcmVersion {
     /// Parses an edition label. Accepts the forms a caller is likely to type: `7`, `7.0`, `v7`,
     /// `HCM7`, `7.1`, `v7.1`, `HCM 7.1`.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let cleaned: String = s
-            .trim()
-            .to_ascii_lowercase()
-            .replace("hcm", "")
-            .replace(' ', "")
-            .replace('_', "")
+        let lowered = s.trim().to_ascii_lowercase().replace("hcm", "");
+        let cleaned: String = lowered
+            .chars()
+            .filter(|c| !matches!(c, ' ' | '_'))
+            .collect::<String>()
             .trim_start_matches('v')
             .to_string();
         match cleaned.as_str() {

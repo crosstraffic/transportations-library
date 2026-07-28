@@ -9,6 +9,15 @@
 - **Edition 7.1 Chapter 14** (`src/hcm/merge_diverge/v7_1.rs`): merge and diverge speed impedance (Eqs 14-4/14-5), the capacity quadratic (Eqs 14-8 through 14-14), all three capacity checks (Exhibits 14-8, 14-9, 14-10), and Exhibit 14-2 LOS. Reproduces Chapter 28 Example Problems 1 and 2 value for value.
 - `WeavingSegment` gains `nw_rf`, `nw_fr`, and `nw_rr`, the weaving-lane counts the Edition 7.1 configuration weighting reads. The 7th Edition methodology ignores them.
 
+### Breaking
+
+- **`RampSegment::determine_los` and `RampSegment::run_analysis` now return `Option<LevelOfService>`**, and the PyO3 `RampSegment.run_analysis()` returns `None` instead of a letter. A major merge operating under capacity has no 7th Edition level of service; the previous code set `self.los = None` but returned `LevelOfService::E`, so a caller reading the return value got a letter the HCM does not sanction. Under Edition 7.1 this case always yields a letter, because Exhibit 14-2 extends its criteria to major merges and diverges.
+
+### Fixed
+
+- **Eight-lane P_FM could go negative.** The Exhibit 14-8 regression `0.2178 - 0.000125 v_R` falls below zero past roughly 1,742 pc/h of ramp demand, putting a negative flow in Lanes 1 and 2 and a negative density downstream. Both eight-lane forms and the Exhibit 14-9 base form are now clamped to a proportion, with a VERIFY-HCM note that a clamp signals an input outside the regression's fitted range.
+- Verified that Exhibit 25-17 and Exhibit 10-6 are identical value for value, closing an open question about whether `planning.rs` reusing `los_freeway_facility` was a mismatch. It is not; the module doc now records the check.
+
 ### Changed
 
 - The Exhibit 12-6 basic-segment primitives (breakpoint, capacity, and the Equation 12-1 speed-flow curve) are now free functions in `basicfreeways`, which `BasicFreeways` delegates to and Chapters 13 and 14 share. Behavior is unchanged; there is now one definition of each parameter rather than one per calling chapter.

@@ -54,7 +54,7 @@ fn example_problem_1_isolated_on_ramp_four_lane() {
 
     // Step 4 (Equation 14-22, Exhibit 14-3)
     assert_approx(seg.get_density(), 28.2, 0.5, "D_R (pc/mi/ln)");
-    assert_eq!(los, LevelOfService::D);
+    assert_eq!(los, Some(LevelOfService::D));
 
     // Step 5 (Exhibit 14-13): S_R = 53.0 mi/h with M_S = 0.389
     assert_approx(seg.get_speed_ramp(), 53.0, 0.5, "S_R (mi/h)");
@@ -86,7 +86,7 @@ fn example_problem_2_first_off_ramp_six_lane() {
 
     // Step 4 (Equation 14-23, Exhibit 14-3)
     assert_approx(seg.get_density(), 27.9, 0.5, "D_R (pc/mi/ln)");
-    assert_eq!(los, LevelOfService::C);
+    assert_eq!(los, Some(LevelOfService::C));
 
     // Step 5 (Exhibits 14-14/14-15): S_R = 52.9, S_O = 62.6, S = 56.0
     assert_approx(seg.get_speed_ramp(), 52.9, 0.5, "S_R (mi/h)");
@@ -123,7 +123,7 @@ fn example_problem_3_on_ramp_eight_lane() {
 
     // Step 4 (Equation 14-22, Exhibit 14-3)
     assert_approx(seg.get_density(), 27.2, 0.5, "D_R (pc/mi/ln)");
-    assert_eq!(los, LevelOfService::C);
+    assert_eq!(los, Some(LevelOfService::C));
 
     // Step 5 (Exhibit 14-13): S_R = 56.2, S_O = 59.9
     assert_approx(seg.get_speed_ramp(), 56.2, 0.5, "S_R (mi/h)");
@@ -155,7 +155,7 @@ fn example_problem_4_left_hand_on_ramp() {
 
     // Step 4 (Equation 14-22 with v_23, Exhibit 14-3)
     assert_approx(seg.get_density(), 29.5, 0.5, "D_R (pc/mi/ln)");
-    assert_eq!(los, LevelOfService::D);
+    assert_eq!(los, Some(LevelOfService::D));
 
     // Step 5 (Exhibits 14-13/14-15): S_R = 54.8, S_O = 61.2, S = 56.5
     assert_approx(seg.get_speed_ramp(), 54.8, 0.5, "S_R (mi/h)");

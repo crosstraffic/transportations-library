@@ -18,7 +18,11 @@
 //! - Equation 25-47 (+ Exhibit 25-16): undersaturated delay rate;
 //! - Equation 25-48: oversaturated delay rate;
 //! - Equations 25-49 through 25-52: travel rate, time, speed, and density;
-//! - Exhibit 25-17: urban/rural LOS thresholds.
+//! - Exhibit 25-17: urban/rural LOS thresholds. Verified identical to Exhibit 10-6 value for
+//!   value (urban <=11/>11-18/>18-26/>26-35/>35-45/>45, rural <=6/>6-14/>14-22/>22-29/>29-39/>39),
+//!   so this module's reuse of `los_freeway_facility` is correct and not a mismatch. The two
+//!   exhibits differ only in wording, 25-17 saying "any component section" where 10-6 says
+//!   "any component segment".
 //!
 //! Reproduces HCM Chapter 25 Example Problem 6 (`202_Ch25_11.xhtml`, Exhibits
 //! 25-88 through 25-96).

@@ -220,10 +220,15 @@ impl RampSegment {
         self.inner.determine_density()
     }
 
-    /// Level of service letter - Exhibit 14-3.
-    pub fn determine_los(&mut self) -> String {
-        let los: char = self.inner.determine_los().into();
-        los.to_string()
+    /// Level of service letter - Exhibit 14-3 (7th Edition) or Exhibit 14-2 (Edition 7.1).
+    ///
+    /// Returns None for a major merge under capacity, where the 7th Edition defines no level of
+    /// service and only the capacity checks apply.
+    pub fn determine_los(&mut self) -> Option<String> {
+        self.inner.determine_los().map(|los| {
+            let c: char = los.into();
+            c.to_string()
+        })
     }
 
     /// Step 5: speeds (S_R, S_O or None, S) in mi/h
@@ -233,11 +238,15 @@ impl RampSegment {
     }
 
     /// Run the full Chapter 14 analysis for the junction's selected HCM edition; returns the LOS
-    /// letter. Under version "7" this is the 7th Edition Steps 1-5; under "7.1" it is the Edition
+    /// letter, or None for a major merge under capacity, where the 7th Edition defines no level of
+    /// service and only the capacity checks apply. Edition 7.1 always returns a letter, because
+    /// Exhibit 14-2 extends its criteria to major merges and diverges. Under version "7" this is the 7th Edition Steps 1-5; under "7.1" it is the Edition
     /// 7.1 methodology, whose full result is available from `analysis_v7_1`.
-    pub fn run_analysis(&mut self) -> String {
-        let los: char = self.inner.run_analysis().into();
-        los.to_string()
+    pub fn run_analysis(&mut self) -> Option<String> {
+        self.inner.run_analysis().map(|los| {
+            let c: char = los.into();
+            c.to_string()
+        })
     }
 
     /// The HCM edition this junction is analyzed under, as "7" or "7.1".

@@ -200,6 +200,9 @@ pub fn weaving_intensity(
 ///
 /// A movement's contribution is scaled by `(LC + 1)/(NW + 1)`: more required lane changes raise
 /// its influence, more lanes from which the maneuver can be made lower it.
+/// Takes each configuration parameter separately because that is how Chapter 13 names them; the
+/// caller normally has them as individual fields on a segment rather than as a group.
+#[allow(clippy::too_many_arguments)]
 pub fn configured_weaving_flow(
     weaving_type: WeavingType,
     lc_rf: u32,
@@ -559,7 +562,7 @@ mod tests {
         assert!((a.speed_avg - 59.32).abs() < 0.02, "S_o {}", a.speed_avg);
 
         let cw = a.capacity_per_lane.expect("capacity");
-        assert!((cw - 1866.0).abs() < 2.0, "C_W {}", cw);
+        assert!((cw - 1866.0).abs() < 2.0, "C_W {cw}");
         assert!(
             (a.dc_ratio.unwrap() - 0.75).abs() < 0.005,
             "d/c {:?}",
