@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **HCM Edition 7.1 support, selectable per segment.** Edition 7.1 (November 2025) replaces Chapters 13, 14, 27, and 28 with new weaving, merge, and diverge methodologies from NCHRP Research Report 1038; the rest of the 7th Edition is unchanged. `HcmVersion` (`V7`, `V7_1`) selects the edition on `WeavingSegment` and `RampSegment`, and `run_analysis()` dispatches on it. From Python: `WeavingSegment(version="7.1", ...)`, a settable `.version` property, `.analysis_v7_1()` for the full typed result, and `hcm_versions()` / `hcm_latest_version()` / `hcm_version_changes_chapter()` for building a version picker.
+- **Edition 7.1 Chapter 13** (`src/hcm/weaving/v7_1.rs`): overall speed as an equivalent basic segment less a speed impedance (Eqs 13-7 through 13-14), capacity solved analytically from the 35 pc/mi/ln breakdown density (Eqs 13-15 through 13-19), the simple weaving volume estimation method (Eqs 13-2 through 13-6), and Exhibit 13-7 LOS. Reproduces Chapter 27 Example Problems 1, 2, and 3 value for value.
+- **Edition 7.1 Chapter 14** (`src/hcm/merge_diverge/v7_1.rs`): merge and diverge speed impedance (Eqs 14-4/14-5), the capacity quadratic (Eqs 14-8 through 14-14), all three capacity checks (Exhibits 14-8, 14-9, 14-10), and Exhibit 14-2 LOS. Reproduces Chapter 28 Example Problems 1 and 2 value for value.
+- `WeavingSegment` gains `nw_rf`, `nw_fr`, and `nw_rr`, the weaving-lane counts the Edition 7.1 configuration weighting reads. The 7th Edition methodology ignores them.
+
+### Changed
+
+- The Exhibit 12-6 basic-segment primitives (breakpoint, capacity, and the Equation 12-1 speed-flow curve) are now free functions in `basicfreeways`, which `BasicFreeways` delegates to and Chapters 13 and 14 share. Behavior is unchanged; there is now one definition of each parameter rather than one per calling chapter.
+
+### Notes
+
+- The default edition remains the 7th, so existing callers keep their numbers. The two editions are different models rather than successive refinements, and on identical inputs a segment can land several pc/mi/ln and a full LOS letter apart between them.
+- Edition 7.1 LOS bands are tighter than the 7th Edition's at every letter. Weaving LOS F now begins at 35 rather than 43 pc/mi/ln, and a merge or diverge density above 35 pc/mi/ln is now LOS F on its own where the 7th Edition read it as LOS E.
+- Book discrepancies found while implementing these chapters are recorded in `docs/hcm/VERIFICATION.md`; the walkthrough is `docs/hcm/procedures/chapter13-14-v7-1.md`.
+
 ## 0.2.0 — 2026-07
 
 ### Corrected (affects results computed with 0.1.10–0.1.12)

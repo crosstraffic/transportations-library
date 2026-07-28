@@ -4,10 +4,47 @@ A comprehensive Rust-based library implementing transportation engineering metho
 
 ## What this covers
 
-Currently implements:
+Highway Capacity Manual 7th Edition computational chapters 10 through 24, with the supplemental
+chapters (25, 27, 28, 30, 31, 32, 33, 34, 35) they draw on:
 
-- Highway Capacity Manual (HCM) Chapter 15: Two-Lane Highways analysis
-- Other chapters are to be added in future releases
+| Chapter | Topic | Chapter | Topic |
+|---|---|---|---|
+| 10 | Freeway Facilities | 18 | Urban Street Segments |
+| 11 | Freeway Reliability | 19 | Signalized Intersections |
+| 12 | Basic Freeway and Multilane Segments | 20 | Two-Way STOP-Controlled Intersections |
+| 13 | Freeway Weaving Segments | 21 | All-Way STOP-Controlled Intersections |
+| 14 | Freeway Merge and Diverge Segments | 22 | Roundabouts |
+| 15 | Two-Lane Highways | 23 | Ramp Terminals and Alternative Intersections |
+| 16 | Urban Street Facilities | 24 | Off-Street Pedestrian and Bicycle Facilities |
+| 17 | Urban Street Reliability | | |
+
+Methodologies are validated against the manual's own published example problems; see
+`docs/hcm/procedures/` for per-chapter walkthroughs and `docs/hcm/VERIFICATION.md` for the places
+where the manual is ambiguous, self-contradictory, or not reproducible from its printed procedure.
+
+### Selecting an HCM edition
+
+Edition 7.1 (November 2025) replaces Chapters 13, 14, 27, and 28 with new weaving, merge, and
+diverge methodologies. It does not supersede the rest of the manual, so the edition is selected per
+segment rather than globally, and defaults to the 7th Edition:
+
+```python
+import json, transportations_library as tl
+
+tl.hcm_versions()          # ["7", "7.1"]
+tl.hcm_latest_version()    # "7.1"
+
+seg = tl.WeavingSegment(version="7.1", length_short=1500.0, num_lanes=4, ffs=65.0,
+                        v_ff=1815.0, v_fr=692.0, v_rf=1037.0, v_rr=1297.0,
+                        phf=0.91, heavy_vehicle_pct=0.05,
+                        lc_rf=0, lc_fr=1, nw_rf=2, nw_fr=1)
+seg.run_analysis()                       # "C"
+json.loads(seg.analysis_v7_1())["speed_avg"]   # 59.32 mi/h
+```
+
+The two editions are different models, not successive refinements: the same segment can land a full
+LOS letter apart between them. `tl.hcm_version_changes_chapter("7.1", 19)` returns `False`, because
+Edition 7.1 left Chapter 19 alone.
 
 ## Installation
 ### Prerequisites

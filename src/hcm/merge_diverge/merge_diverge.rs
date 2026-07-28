@@ -11,7 +11,8 @@
 //! (Eq. 14-28).
 
 use serde::{Deserialize, Serialize};
-use crate::hcm::common::LevelOfService;
+use crate::hcm::common::{HcmVersion, LevelOfService};
+use super::v7_1::RampAnalysis;
 
 // =============================================================================
 // Constants
@@ -232,6 +233,10 @@ pub fn left_hand_adjustment(freeway_lanes: u32, is_on_ramp: bool) -> f64 {
 #[serde(default)]
 pub struct RampSegment {
     // ── Inputs ──────────────────────────────────────────────────────────
+    /// Which HCM edition to analyze this junction under. Edition 7.1 replaced Chapter 14 with a
+    /// different methodology, so this selects between two sets of results rather than refining
+    /// one. Defaults to the 7th Edition.
+    pub version: HcmVersion,
     /// Type of ramp junction
     pub ramp_type: RampType,
     /// Side of the freeway (right or left)
@@ -317,13 +322,19 @@ pub struct RampSegment {
     pub speed_avg: Option<f64>,
     /// Aggregate density across all lanes, pc/mi/ln - Equation 14-24
     pub density_all_lanes: Option<f64>,
-    /// Level of service - Exhibit 14-3
+    /// Level of service - Exhibit 14-3 (7th Edition) or Exhibit 14-2 (Edition 7.1)
     pub los: Option<LevelOfService>,
+    /// Full Edition 7.1 result, populated only when the segment's version is
+    /// [`HcmVersion::V7_1`]. The quantities Edition 7.1 computes and the 7th Edition does not -
+    /// the equivalent basic segment, the speed impedance, and the per-lane influence-area
+    /// capacity - live here rather than in the shared fields above.
+    pub analysis_v7_1: Option<RampAnalysis>,
 }
 
 impl Default for RampSegment {
     fn default() -> Self {
         Self {
+            version: HcmVersion::V7,
             ramp_type: RampType::OnRamp,
             ramp_side: RampSide::Right,
             ramp_lanes: RampLanes::OneLane,
@@ -365,6 +376,7 @@ impl Default for RampSegment {
             speed_avg: None,
             density_all_lanes: None,
             los: None,
+            analysis_v7_1: None,
         }
     }
 }
@@ -432,13 +444,13 @@ impl RampSegment {
         self.saf = saf;
     }
 
-    fn is_on_ramp(&self) -> bool {
+    pub(crate) fn is_on_ramp(&self) -> bool {
         matches!(self.ramp_type, RampType::OnRamp | RampType::MajorMerge)
     }
 
     /// Heavy vehicle adjustment factor for a given HV proportion (Eq. 12-10),
     /// using PCEs from Exhibit 12-25.
-    fn fhv_for(&self, pct: f64) -> f64 {
+    pub(crate) fn fhv_for(&self, pct: f64) -> f64 {
         let e_t = match self.terrain {
             TerrainType::Level => 2.0,    // Exhibit 12-25
             TerrainType::Rolling => 3.0,  // Exhibit 12-25
@@ -935,6 +947,9 @@ impl RampSegment {
 
     /// Run the full HCM Chapter 14 analysis (Steps 1-5) and return the LOS.
     pub fn run_analysis(&mut self) -> LevelOfService {
+        if self.version == HcmVersion::V7_1 {
+            return self.run_analysis_v7_1();
+        }
         self.determine_demand_flow();
         self.estimate_v12();
         self.determine_capacity();

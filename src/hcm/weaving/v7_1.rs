@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 use crate::hcm::basicfreeways::basicfreeways::{
     basic_segment_breakpoint, basic_segment_capacity, basic_segment_speed, EXPONENT_BASIC_FREEWAY,
 };
+use crate::hcm::common::los_tables::los_weaving_v7_1;
 use crate::hcm::common::LevelOfService;
 
 use super::weaving::{WeavingSegment, WeavingType};
@@ -275,19 +276,10 @@ pub fn weaving_capacity_per_lane(
 ///
 /// `A 0-11, B >11-18, C >18-25, D >25-30, E >30-35, F >35 or demand exceeds capacity.` These
 /// thresholds are not the 7th Edition's (Exhibit 13-6, `A <=10 ... E <=43`); a density that read
-/// LOS C under the 7th Edition can read LOS D here.
+/// LOS C under the 7th Edition can read LOS D here. The bands live in
+/// [`crate::hcm::common::los_tables`], which Exhibit 14-2 shares.
 pub fn determine_weaving_los(density: f64, demand_exceeds_capacity: bool) -> LevelOfService {
-    if demand_exceeds_capacity {
-        return LevelOfService::F;
-    }
-    match density {
-        d if d <= 11.0 => LevelOfService::A,
-        d if d <= 18.0 => LevelOfService::B,
-        d if d <= 25.0 => LevelOfService::C,
-        d if d <= 30.0 => LevelOfService::D,
-        d if d <= WEAVING_BREAKDOWN_DENSITY => LevelOfService::E,
-        _ => LevelOfService::F,
-    }
+    los_weaving_v7_1(density, demand_exceeds_capacity)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
