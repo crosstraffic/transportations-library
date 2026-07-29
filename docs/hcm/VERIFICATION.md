@@ -344,7 +344,22 @@ Source: `resource/HCM7-corrections-clarifications-updates-12-2022.pdf`, the TRB 
    - **Cost to one reproduction.** Chapter 25 Example Problem 4 (work zone, SAF_wz = 0.982) shifts. Period 5, the queue-recovery period, moves from (14.20 mi/h, 90.4 veh/mi/ln) to (14.82, 88.3) against a published (13.7, 93.4), so both measures move further from the book. Other periods are mixed rather than systematically worse: p3 moves closer on both measures, p4 closer on speed, p1 and p2 marginally further. Read against this problem's existing oversaturated-regime gap (its overall facility speed computes 16.5 against a published 19.5), the p5 shift is inside the noise rather than evidence the book used FFS_adj. The p5 tolerances were widened deliberately; reverting the Equation 12-6 change would restore the tighter bounds.
    - **Inference, not stated in the corrections.** Exhibits 14-8 and 14-10 tabulate Equation 12-6 capacities by FFS, so they are now read at the unadjusted FFS on the same reasoning. The corrections address Equations 12-6 and 12-7 explicitly and these exhibits only by implication.
 2. **APPLIED.** The corrections resolve half of the open Chapter 20 discrepancy recorded above: Equations 20-14/20-15 and the matching Exhibit 20-16 rows replace the major-street right-turn term in the minor-street left turns' Stage II conflicting flow with the opposing minor-street through movement. Example Problems 3 and 4 now reproduce without `conflicting_flow_overrides` for movements 7 and 10. See the Chapter 20-22 section above for what remains open.
-3. **Chapter 26 repeats the Chapter 12 capacity correction** in four places (pages 26-31, 26-33, 26-36, 26-39, all "Change the first equation to read: c = 2,200 + 10 x (FFS - 50)"), which independently confirms the unadjusted-FFS reading applied above.
+3. **Chapter 26 independently confirms the Chapter 12 capacity correction, including in a worked example.** The same `c = 2,200 + 10 x (FFS - 50)` change appears at pages 26-31, 26-33, 26-36, and 26-50, and 26-39 carries the multilane form. Page 26-48 goes further and reworks a worked example: `c = 0.78 x (2,200 + 10 x [52.3 - 50]) = 1,743` becomes `c = 0.78 x (2,200 + 10 x [60.8 - 50]) = 1,800 pc/h/ln`, replacing the SAF-reduced 52.3 mi/h with the unadjusted 60.8 mi/h, while the Step 5 speed computation on the same page keeps 52.3 in the speed-flow curve and takes 1,800 as the capacity. That is exactly the capacity-from-FFS, speed-from-FFS_adj asymmetry implemented above, demonstrated on the manual's own numbers.
 
-4. **Not yet reviewed against the corrections:** Chapters 3, 9, 11, 15, 18, 25, 31, 32, and 38 all carry entries in the document. Only the Chapter 12 and Chapter 20 items have been actioned.
+4. **Chapter 32 confirms the Chapter 20 correction.** Page 32-17 restates the `f_c,7,6 v_6` to `f_c,7,11 v_11` change and additionally corrects the paragraph's citation from Equation 20-26 to Equation 20-14. Consistent with what was applied.
+
+## Review status of the December 2022 corrections
+
+The document is fully reviewed against the code. Only two of its items ever required a code change, and both are applied.
+
+| Chapter | Items | Outcome |
+|---|---|---|
+| 3, 9, 11, 14 | Exhibit titles and captions, a glossary entry for BP_adj, a default-value pointer | Editorial. No code impact. |
+| 12 | Equations 12-6/12-7 read the unadjusted FFS | **Fixed.** See item 1 above. |
+| 15 | Passing-lane effective length measured from the start rather than the end; N in Equation 15-40 is directional lanes (1 for a two-lane highway); We wording in Equations 15-45/15-47 | **No change needed.** The code already implements every corrected reading: `l_de` is documented and computed as the distance from the passing lane's start, and `BicycleLOS::num_lanes` is already documented as "number of directional through lanes (1 for two-lane highways, 2+ for multilane)". |
+| 20 | Equations 20-14/20-15 and Exhibit 20-16 Stage II conflicting movements | **Fixed.** See the Chapter 20-22 section above. |
+| 26 | Four repeats of the Chapter 12 capacity correction plus a reworked example; Exhibit 26-15 caption; a Step 10 LOS sentence; Section 5 significantly revised | **No change needed.** The library has no separate Chapter 26 capacity path; the formula lives only in the sites fixed under item 1. The Section 5 revision is guidance, not computation. |
+| 31 | Two cross-reference corrections pointing the Exhibit 31-65 left-turn saturation adjustment at Equations 31-110/31-112 rather than 19-8 | **No code impact.** Exhibit 31-65 is not implemented. The `Eq. 31-65` reference in `signalized.rs` is to Equation 31-65 (revised lane-group flow rates), a different object. Recorded as a coverage gap in REVIEW_NOTES.md. |
+| 32 | Restates the Chapter 20 correction | Covered by the Chapter 20 fix. |
+| 38 | Editorial cross-references; BP renamed BP_adj in Equation 38-14 | **No code impact.** Chapter 38 is not implemented. |
 

@@ -39,6 +39,8 @@ Code-level findings surfaced by the documentation pass (independent agents readi
 
 ## Coverage gaps (test debt, not bugs)
 
+0. **Exhibit 31-65 (additional saturation-flow adjustment for left turns) is not implemented.** Surfaced while reviewing the December 2022 corrections, which correct which equation it feeds: Equation 31-112 for protected left turns and Equation 31-110 for permitted ones, not Equation 19-8 as originally printed. Nothing in the library reads the exhibit, so the correction has no effect today; noted so the right equations are used if it is ever added.
+
 27. Exhibit 31-12 lag-row phasing variants (LagLead/LagLag/PermLead/PermLag) transcribed but exercised by no fixture (feat/hcm-ch19-signalized).
 28. Cross-weave CAF (Eqs 13-24/25) has no published example coverage; unit-tested against the equation only (feat/hcm-ch10-managed-lanes).
 29. ~~PARTLY FIXED (fix/hcm-ch12-pce-tables)~~ No Python integration test for Chapter 12 — `tests/test_chapter12_integration.py` now covers Example Problems 1-3 end to end, the general-terrain and specific-upgrade PCE paths, interpolation, off-domain errors, and design analysis. The Rust `estimate_number_of_lanes` test no longer skips two of its three cases. **Remaining:** the managed-lane segment model still has no published-example fixture (feat/hcm-ch12-14-completion).
