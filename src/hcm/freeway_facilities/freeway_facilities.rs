@@ -457,10 +457,15 @@ impl FreewayFacility {
 
     /// Base per-lane capacity, pc/h/ln (Equation 12-6, capped at 2,400;
     /// `c_ifl_override` wins when provided).
-    fn base_capacity_pc(&self, ffs_adj: f64) -> f64 {
+    ///
+    /// Takes the **unadjusted** segment FFS. The December 2022 corrections changed Equation 12-6
+    /// from FFS_adj to FFS: SAF reaches capacity only through CAF, never through the speed the
+    /// capacity is computed from. This matters here more than anywhere else in the library,
+    /// because the scenario engine is where SAF actually varies.
+    fn base_capacity_pc(&self, ffs: f64) -> f64 {
         match self.c_ifl_override {
             Some(c) => c,
-            None => (2200.0 + 10.0 * (ffs_adj - 50.0)).min(2400.0),
+            None => (2200.0 + 10.0 * (ffs - 50.0)).min(2400.0),
         }
     }
 
@@ -531,16 +536,18 @@ impl FreewayFacility {
         self.capacity = vec![vec![0.0; p_count]; n];
         for i in 0..n {
             for p in 0..p_count {
-                let ffs_adj = self.seg_ffs(i) * self.effective_saf(i, p);
+                let ffs = self.seg_ffs(i);
+                let ffs_adj = ffs * self.effective_saf(i, p);
                 let caf = self.effective_caf(i, p);
                 let lanes = f64::from(self.segments[i].lanes);
                 let cap = match self.segments[i].seg_type {
                     SegmentType::Basic | SegmentType::OverlappingRamp => {
-                        self.base_capacity_pc(ffs_adj) * caf * lanes * f_hv
+                        self.base_capacity_pc(ffs) * caf * lanes * f_hv
                     }
                     SegmentType::Merge | SegmentType::Diverge => {
-                        // Exhibit 14-10 freeway capacity per lane.
-                        get_freeway_capacity_per_lane(ffs_adj) * caf * lanes * f_hv
+                        // Exhibit 14-10 freeway capacity per lane, tabulated from Equation 12-6
+                        // and so read at the unadjusted FFS on the same reasoning.
+                        get_freeway_capacity_per_lane(ffs) * caf * lanes * f_hv
                     }
                     SegmentType::Weaving => {
                         let mut weave = self.build_weave(i, p, self.demand[i][p]);
@@ -552,7 +559,7 @@ impl FreewayFacility {
                         } else {
                             // L_S >= L_MAX: operates as a basic segment
                             // (Exhibit 10-12(b)).
-                            self.base_capacity_pc(ffs_adj) * caf * lanes * f_hv
+                            self.base_capacity_pc(ffs) * caf * lanes * f_hv
                         }
                     }
                 };
@@ -663,8 +670,11 @@ impl FreewayFacility {
     /// Space mean speed of a basic freeway segment at per-lane flow `v_p`
     /// (pc/h/ln) — Equation 12-1 with the Exhibit 12-6 breakpoint and
     /// capacity models.
-    fn basic_speed(&self, v_p: f64, ffs_adj: f64, caf: f64) -> f64 {
-        let c_adj = self.base_capacity_pc(ffs_adj) * caf;
+    /// `ffs` is the unadjusted segment free-flow speed and `ffs_adj` the same speed times SAF.
+    /// Capacity is computed from the former and the breakpoint and speed curve from the latter;
+    /// see [`base_capacity_pc`](Self::base_capacity_pc).
+    fn basic_speed(&self, v_p: f64, ffs: f64, ffs_adj: f64, caf: f64) -> f64 {
+        let c_adj = self.base_capacity_pc(ffs) * caf;
         let bp = (1000.0 + 40.0 * (75.0 - ffs_adj)) * caf * caf;
         let speed_at_capacity = c_adj / DENSITY_AT_CAPACITY;
         if v_p <= bp {
@@ -682,11 +692,12 @@ impl FreewayFacility {
     fn engine_eval(&self, i: usize, p: usize, volume: f64, onr: f64, offr: f64) -> EngineEval {
         let seg = &self.segments[i];
         let f_hv = self.f_hv();
-        let ffs_adj = self.seg_ffs(i) * self.effective_saf(i, p);
+        let ffs = self.seg_ffs(i);
+        let ffs_adj = ffs * self.effective_saf(i, p);
         let caf = self.effective_caf(i, p);
         let basic = |v: f64| {
             let v_p = v / (f64::from(seg.lanes) * f_hv * self.phf);
-            self.basic_speed(v_p, ffs_adj, caf)
+            self.basic_speed(v_p, ffs, ffs_adj, caf)
         };
         match seg.seg_type {
             SegmentType::Basic | SegmentType::OverlappingRamp => EngineEval {

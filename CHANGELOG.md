@@ -15,6 +15,7 @@
 
 ### Fixed
 
+- **Base capacity was computed from the speed-adjusted free-flow speed.** The December 2022 corrections to the 7th Edition change Equations 12-6 and 12-7 from FFS_adj to FFS and state that "FFS used in the adjusted capacity computation is the original and unadjusted free-flow speed". `basicfreeways`, the Chapter 10 facilities engine, and the new Edition 7.1 modules all passed `ffs x saf`, so a speed adjustment factor suppressed capacity a second time on top of CAF. The breakpoint still uses FFS_adj; that asymmetry is deliberate. No published example problem could catch this because they all set SAF = 1.0. Results change wherever SAF varies: weather and incident scenarios, work zones, ATDM. Chapter 25 Example Problem 4 shifts as a result, documented in `docs/hcm/VERIFICATION.md`.
 - **Eight-lane P_FM could go negative.** The Exhibit 14-8 regression `0.2178 - 0.000125 v_R` falls below zero past roughly 1,742 pc/h of ramp demand, putting a negative flow in Lanes 1 and 2 and a negative density downstream. Both eight-lane forms and the Exhibit 14-9 base form are now clamped to a proportion, with a VERIFY-HCM note that a clamp signals an input outside the regression's fitted range.
 - Verified that Exhibit 25-17 and Exhibit 10-6 are identical value for value, closing an open question about whether `planning.rs` reusing `los_freeway_facility` was a mismatch. It is not; the module doc now records the check.
 

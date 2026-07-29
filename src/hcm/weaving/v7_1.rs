@@ -370,7 +370,9 @@ impl WeavingSegment {
 
         // Step 3: equivalent basic segment, then the speed impedance.
         let ffs_adj = self.ffs * self.saf;
-        let capacity_basic_adj = basic_segment_capacity(ffs_adj) * self.caf;
+        // Equation 12-6 reads the unadjusted FFS (December 2022 corrections); SAF reaches
+        // capacity only through CAF. The breakpoint below does use FFS_adj.
+        let capacity_basic_adj = basic_segment_capacity(self.ffs) * self.caf;
         let breakpoint_adj = basic_segment_breakpoint(ffs_adj, self.caf);
         let speed_basic = basic_segment_speed(
             flow_per_lane,
