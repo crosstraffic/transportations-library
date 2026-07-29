@@ -536,8 +536,10 @@ impl FreewayFacility {
         self.capacity = vec![vec![0.0; p_count]; n];
         for i in 0..n {
             for p in 0..p_count {
+                // Capacity reads the unadjusted FFS throughout (Equations 12-6/12-7 as corrected
+                // December 2022); SAF reaches capacity only through CAF, and the weaving engine
+                // applies its own SAF internally.
                 let ffs = self.seg_ffs(i);
-                let ffs_adj = ffs * self.effective_saf(i, p);
                 let caf = self.effective_caf(i, p);
                 let lanes = f64::from(self.segments[i].lanes);
                 let cap = match self.segments[i].seg_type {
