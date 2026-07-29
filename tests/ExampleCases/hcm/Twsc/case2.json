@@ -31,8 +31,6 @@
   "heavy_vehicle_pct": 10.0,
   "conflicting_flow_overrides": [
     { "movement": "8", "stage": "stage2", "value": 532.0 },
-    { "movement": "11", "stage": "stage1", "value": 482.0 },
-    { "movement": "7", "stage": "stage2", "value": 337.0 },
-    { "movement": "10", "stage": "stage2", "value": 257.0 }
+    { "movement": "11", "stage": "stage1", "value": 482.0 }
   ]
 }

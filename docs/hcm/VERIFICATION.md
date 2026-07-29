@@ -49,8 +49,22 @@ published QAP interval detail; SB-left back-of-queue needs milestone-2 ADP proce
 
 ## Chapter 20–22 (feat/hcm-ch20-22-unsignalized)
 1. **Ch 32 TWSC Example Problem 3 contradicts the 7th-edition exhibits** (movements 8/11 v_6 factor
-   and 7/10 Stage II factor match HCM6). Code follows the 7th-ed exhibits; the published example is
-   reproduced only via explicit `conflicting_flow_overrides` in the fixture. `twsc.rs:655`.
+   and 7/10 Stage II factor match HCM6).
+   - **The 7/10 half is RESOLVED**, and the worked examples were right all along. The December 2022
+     corrections change Equation 20-14 from `f_c,7,6 v_6` to `f_c,7,11 v_11`, Equation 20-15 from
+     `f_c,10,3 v_3` to `f_c,10,8 v_8`, and the matching Exhibit 20-16 rows: the Stage II conflicting
+     movement is the opposing minor-street through, not the major-street right turn. With the
+     correction applied, Example Problem 3 reproduces v_c,II,7 = 337 and v_c,II,10 = 257 and
+     Example Problem 4 reproduces v_c,7 = 1,827 and v_c,10 = 1,832, all without overrides. The
+     `conflicting_flow_overrides` for movements 7 and 10 have been removed from `case2.json` and
+     `case3.json`, and `case3.json` now carries none at all.
+   - **The 8/11 half is still open.** The corrections say nothing about Exhibit 20-14, and Example
+     Problem 3's own numbers still apply the 6th Edition factors there (v_6 or v_3 with factor 1.0
+     rather than the shared-lane 0.5). `case2.json` still overrides those two totals.
+   - **VERIFY-HCM:** the corrected Exhibit 20-16 gives `f_c,7,11 = f_c,10,8 = 0` when the
+     conflicting minor-street movement runs in a STOP- or YIELD-controlled channelized lane and 0.5
+     otherwise. `MinorLaneConfig` has no channelized variant, so only the 0.5 case is reachable and
+     no published example exercises the other.
 2. U-turn critical/follow-up headways on two-lane majors are "NA" in Exhibit 20-17/20-18; four-lane
    values used as fallback if coded. `twsc.rs:804,853`.
 3. **Step 5b upstream-signal platoon blockage (Eqs 20-19..20-21, Exhibit 20-19) wired** via the
@@ -329,6 +343,8 @@ Source: `resource/HCM7-corrections-clarifications-updates-12-2022.pdf`, the TRB 
 1. **Equation 12-6/12-7 base capacity reads the UNADJUSTED free-flow speed.** The corrections change FFS_adj to FFS in both equations and add: "It is important to note that FFS used in the adjusted capacity computation is the original and unadjusted free-flow speed (FFS)." The library previously computed capacity from `ffs_adj = ffs x saf` in `basicfreeways`, in the Chapter 10 facilities engine, and in the new Edition 7.1 modules. Now fixed: capacity comes from the unadjusted FFS and SAF reaches capacity only through CAF. The breakpoint continues to use FFS_adj, and that asymmetry is the trap. Invisible in every published example problem, all of which set SAF = 1.0; pinned by `speed_adjustment_factor_does_not_move_base_capacity`.
    - **Cost to one reproduction.** Chapter 25 Example Problem 4 (work zone, SAF_wz = 0.982) shifts. Period 5, the queue-recovery period, moves from (14.20 mi/h, 90.4 veh/mi/ln) to (14.82, 88.3) against a published (13.7, 93.4), so both measures move further from the book. Other periods are mixed rather than systematically worse: p3 moves closer on both measures, p4 closer on speed, p1 and p2 marginally further. Read against this problem's existing oversaturated-regime gap (its overall facility speed computes 16.5 against a published 19.5), the p5 shift is inside the noise rather than evidence the book used FFS_adj. The p5 tolerances were widened deliberately; reverting the Equation 12-6 change would restore the tighter bounds.
    - **Inference, not stated in the corrections.** Exhibits 14-8 and 14-10 tabulate Equation 12-6 capacities by FFS, so they are now read at the unadjusted FFS on the same reasoning. The corrections address Equations 12-6 and 12-7 explicitly and these exhibits only by implication.
-2. **The corrections resolve the open Chapter 20 discrepancy recorded above.** Equation 20-14 changes `f_c,7,6 v_6` to `f_c,7,11 v_11`, Equation 20-15 changes `f_c,10,3 v_3` to `f_c,10,8 v_8`, and Exhibit 20-16 changes movement 7 Stage II conflicting movement 6 to 11 and movement 10 Stage II conflicting movement 3 to 8. That is exactly the "Ch 32 TWSC Example Problem 3 contradicts the 7th-edition exhibits" item, which the fixture works around with `conflicting_flow_overrides`. NOT YET APPLIED: the code still follows the uncorrected exhibits. Applying it should let the overrides be removed.
-3. **Not yet reviewed against the corrections:** Chapters 3, 9, 11, 15, 18, 25, 26, 31, 32, and 38 all carry entries in the document. Only the Chapter 12 item above has been actioned.
+2. **APPLIED.** The corrections resolve half of the open Chapter 20 discrepancy recorded above: Equations 20-14/20-15 and the matching Exhibit 20-16 rows replace the major-street right-turn term in the minor-street left turns' Stage II conflicting flow with the opposing minor-street through movement. Example Problems 3 and 4 now reproduce without `conflicting_flow_overrides` for movements 7 and 10. See the Chapter 20-22 section above for what remains open.
+3. **Chapter 26 repeats the Chapter 12 capacity correction** in four places (pages 26-31, 26-33, 26-36, 26-39, all "Change the first equation to read: c = 2,200 + 10 x (FFS - 50)"), which independently confirms the unadjusted-FFS reading applied above.
+
+4. **Not yet reviewed against the corrections:** Chapters 3, 9, 11, 15, 18, 25, 31, 32, and 38 all carry entries in the document. Only the Chapter 12 and Chapter 20 items have been actioned.
 

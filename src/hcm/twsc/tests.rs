@@ -220,9 +220,15 @@ fn test_ep3_step3_conflicting_flows() {
     assert!(approx(m(Mv::M10).conflicting_flow.unwrap(), 739.0, 0.01));
 }
 
-/// Default (7th Edition Exhibit 20-14/20-16) conflicting-flow factors
-/// without overrides: v_c,II,8 = 482 (0.5 x v_6), v_c,I,11 = 532
-/// (1.0 x v_6), v_c,II,7 = 332, v_c,II,10 = 216 veh/h.
+/// Conflicting-flow factors with no overrides applied.
+///
+/// The minor-street left turns now match the published Example Problem 3 values without help,
+/// because the December 2022 corrections to Exhibit 20-16 replaced the major-street right-turn
+/// term in Stage II with the opposing minor-street through movement. Before the correction this
+/// test pinned v_c,II,7 = 332 and v_c,II,10 = 216, neither of which the book ever printed.
+///
+/// The movements 8/11 figures are a separate, still-open discrepancy: Example Problem 3's own
+/// numbers apply the 6th Edition factors there, and `case2.json` still overrides those two.
 #[test]
 fn test_ep3_step3_default_exhibit_factors() {
     let mut t = example_problem_3();
@@ -234,10 +240,10 @@ fn test_ep3_step3_default_exhibit_factors() {
     assert!(approx(m(Mv::M8).conflicting_flow_stage2.unwrap(), 482.0, 0.01));
     // Exhibit 20-14: movement 11 Stage I factor on v6 is 1 (not channelized)
     assert!(approx(m(Mv::M11).conflicting_flow_stage1.unwrap(), 532.0, 0.01));
-    // Exhibit 20-16: movement 7 Stage II = 2(66) + 0.5(300) + 0.5(100) = 332
-    assert!(approx(m(Mv::M7).conflicting_flow_stage2.unwrap(), 332.0, 0.01));
-    // Exhibit 20-16: movement 10 Stage II = 2(33) + 0.5(250) + 0.5(50) = 216
-    assert!(approx(m(Mv::M10).conflicting_flow_stage2.unwrap(), 216.0, 0.01));
+    // Corrected Exhibit 20-16: v_c,II,7 uses 0.5 v_11, reproducing the published 337 veh/h.
+    assert!(approx(m(Mv::M7).conflicting_flow_stage2.unwrap(), 337.0, 0.01));
+    // Corrected Exhibit 20-16: v_c,II,10 uses 0.5 v_8, reproducing the published 257 veh/h.
+    assert!(approx(m(Mv::M10).conflicting_flow_stage2.unwrap(), 257.0, 0.01));
 }
 
 /// Step 4 for Example Problem 3: two-lane major street adjustments
