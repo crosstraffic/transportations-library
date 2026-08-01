@@ -1197,7 +1197,9 @@ mod tests {
         let mut seg = RampSegment {
             ramp_type: RampType::OnRamp,
             ramp_side: RampSide::Right,
-            ramp_lanes: RampLanes::TwoLane,
+            // One-lane ramp: a two-lane on-ramp routes through the constant
+            // `pfm_two_lane_onramp` and never reaches the clamped regression.
+            ramp_lanes: RampLanes::OneLane,
             freeway_lanes: 4,
             freeway_ffs: 70.0,
             ramp_ffs: 45.0,
