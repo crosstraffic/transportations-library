@@ -37,3 +37,25 @@ jobs:
 
             - name: Run Rust tests
               run: cargo test
+
+    # Advisory cross-repo signal: cross-traffic-middleware consumes this library through a
+    # sibling path dependency, so an API change here can break it while every gate in this
+    # repo stays green. continue-on-error because a deliberate breaking change is red here
+    # until the middleware's companion PR merges; read a failure as "coordinate the
+    # migration", not "this PR is broken".
+    consumer-smoke:
+        runs-on: ubuntu-latest
+        continue-on-error: true
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                path: transportations-library
+
+            - name: Install Rust
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Check cross-traffic-middleware against this branch
+              run: |
+                git clone --depth 1 https://github.com/crosstraffic/cross-traffic-middleware.git
+                cd cross-traffic-middleware
+                cargo check
