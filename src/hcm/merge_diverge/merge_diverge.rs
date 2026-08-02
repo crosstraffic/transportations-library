@@ -517,9 +517,12 @@ impl RampSegment {
     /// Clamp a modeled proportion into [0, 1].
     ///
     /// The Exhibit 14-8 and 14-9 regressions are unbounded polynomials; outside the conditions
-    /// they were fitted on they can return values that are not proportions at all. Clamping keeps
-    /// a non-physical intermediate from propagating into flows and densities that still look
-    /// plausible.
+    /// they were fitted on they can return values that are not proportions at all (the Equation
+    /// 14-5 form exceeds 1 at v_D/L_DOWN above about 1.7, the eight-lane forms go negative past
+    /// roughly 1,742 pc/h of ramp demand). Every P_FM/P_FD selection passes through this clamp
+    /// before it becomes a flow, so a non-physical intermediate cannot propagate into flows and
+    /// densities that still look plausible. A clamp firing means the input is outside the range
+    /// the regression was fitted on; treat the result as an extrapolation.
     fn clamp_proportion(x: f64) -> f64 {
         x.clamp(0.0, 1.0)
     }
@@ -574,13 +577,16 @@ impl RampSegment {
                 }
 
                 // When both adjacent off-ramps apply, the larger P_FM governs
-                // (Chapter 14, Exhibit 14-8 discussion).
-                candidates
-                    .into_iter()
-                    .fold(None, |acc: Option<f64>, c| {
-                        Some(acc.map_or(c, |cur| cur.max(c)))
-                    })
-                    .unwrap_or(pfm_base)
+                // (Chapter 14, Exhibit 14-8 discussion). Clamped because the adjacent-ramp
+                // regressions are unbounded (Equation 14-5 passes 1 at v_D/L_DOWN ≈ 1.72).
+                Self::clamp_proportion(
+                    candidates
+                        .into_iter()
+                        .fold(None, |acc: Option<f64>, c| {
+                            Some(acc.map_or(c, |cur| cur.max(c)))
+                        })
+                        .unwrap_or(pfm_base),
+                )
             }
             _ => {
                 // 8-lane freeway (Exhibit 14-8):
@@ -654,13 +660,16 @@ impl RampSegment {
                     }
                 }
 
-                // When both adjacent ramps apply, the larger P_FD governs.
-                candidates
-                    .into_iter()
-                    .fold(None, |acc: Option<f64>, c| {
-                        Some(acc.map_or(c, |cur| cur.max(c)))
-                    })
-                    .unwrap_or(pfd_base)
+                // When both adjacent ramps apply, the larger P_FD governs. Clamped because the
+                // adjacent-ramp regressions are unbounded polynomials.
+                Self::clamp_proportion(
+                    candidates
+                        .into_iter()
+                        .fold(None, |acc: Option<f64>, c| {
+                            Some(acc.map_or(c, |cur| cur.max(c)))
+                        })
+                        .unwrap_or(pfd_base),
+                )
             }
             // 8-lane freeway: P_FD = 0.436 (constant) - Exhibit 14-9
             _ => 0.436,
@@ -1221,5 +1230,38 @@ mod tests {
         );
         // A non-negative proportion keeps the derived flow non-negative too.
         assert!(seg.v_12.unwrap() >= 0.0, "v_12 {:?}", seg.v_12);
+    }
+
+    /// The Equation 14-5 adjacent-off-ramp form `0.5487 + 0.2628 (v_D/L_DOWN)` passes 1 once
+    /// v_D/L_DOWN exceeds about 1.72 (here 1,000/400 gives 1.21 unclamped), which would put more
+    /// flow into Lanes 1 and 2 than exists on the mainline. The selection is clamped.
+    #[test]
+    fn six_lane_adjacent_ramp_pfm_stays_a_proportion() {
+        let mut seg = RampSegment {
+            ramp_type: RampType::OnRamp,
+            ramp_side: RampSide::Right,
+            ramp_lanes: RampLanes::OneLane,
+            freeway_lanes: 3,
+            freeway_ffs: 70.0,
+            ramp_ffs: 45.0,
+            accel_lane_length: Some(500.0),
+            freeway_demand: 4000.0,
+            ramp_demand: 500.0,
+            phf: 1.0,
+            heavy_vehicle_pct: 0.0,
+            terrain: TerrainType::Level,
+            adjacent_downstream: AdjacentRampType::OffRamp,
+            downstream_distance: Some(400.0),
+            downstream_ramp_flow: Some(1000.0),
+            ..Default::default()
+        };
+        seg.determine_demand_flow();
+        seg.estimate_v12();
+
+        let p_f = seg.p_f.expect("P_FM computed");
+        assert!(
+            (0.0..=1.0).contains(&p_f),
+            "P_FM {p_f} is not a proportion"
+        );
     }
 }
