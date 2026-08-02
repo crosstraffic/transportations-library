@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-08
 
 ### Added
 
@@ -12,6 +12,8 @@
 ### Breaking
 
 - **`RampSegment::determine_los` and `RampSegment::run_analysis` now return `Option<LevelOfService>`**, and the PyO3 `RampSegment.run_analysis()` returns `None` instead of a letter. A major merge operating under capacity has no 7th Edition level of service; the previous code set `self.los = None` but returned `LevelOfService::E`, so a caller reading the return value got a letter the HCM does not sanction. Under Edition 7.1 this case always yields a letter, because Exhibit 14-2 extends its criteria to major merges and diverges.
+- **The Python step methods raise on a `version="7.1"` segment.** `determine_demand_flow()`, `determine_capacity()`, `estimate_speed()`, `determine_los()`, and the other stepwise methods implement the 7th Edition's numbered steps, which Edition 7.1 replaced with a different structure that has no one-to-one equivalents. They previously ran 7th Edition math silently regardless of the segment's version; they now raise `ValueError` pointing at `run_analysis()` / `analysis_v7_1()`. The two editions disagree on speeds, capacities, and LOS bands, so a silent wrong-edition number was the worst available behavior.
+- **`speed_avg` in the Edition 7.1 analysis results is optional.** When demand is so far past capacity that the speed impedance consumes the whole equivalent-basic-segment speed, Equations 13-7 and 14-2/14-3 have no physical meaning; the serialized `speed_avg` is now `null` there instead of a negative number. Density is infinite and LOS reads F in that regime, as before.
 - **`BasicFreeways::lc_r` and `lc_l` are `f64`, not `u32`.** The Exhibit 12-21 note says "Interpolate for noninteger values of right-side lateral clearance", which an integer field cannot express, and the previously dead interpolating lookup is now the implementation. Integer clearances read exactly the exhibit values, so existing results do not move; Python callers can pass ints or floats.
 
 ### Fixed
@@ -22,6 +24,7 @@
 - **Eight-lane P_FM could go negative.** The Exhibit 14-8 regression `0.2178 - 0.000125 v_R` falls below zero past roughly 1,742 pc/h of ramp demand, putting a negative flow in Lanes 1 and 2 and a negative density downstream. Both eight-lane forms and the Exhibit 14-9 base form are now clamped to a proportion, with a VERIFY-HCM note that a clamp signals an input outside the regression's fitted range.
 - Verified that Exhibit 25-17 and Exhibit 10-6 are identical value for value, closing an open question about whether `planning.rs` reusing `los_freeway_facility` was a mismatch. It is not; the module doc now records the check.
 - **The Edition 7.1 capacity quadratics refuse off-domain inputs instead of returning the wrong root.** Below FFS_adj = C_b,adj/45 (roughly SAF under 0.71 at 75 mi/h) the leading coefficient goes non-positive and `(-b + sqrt)/(2a)` is no longer the larger root; both solvers now return `None` there, consistent with their None-not-NaN design.
+- **Every Chapter 14 P_FM/P_FD selection is clamped to a proportion.** The eight-lane forms and the P_FD base form were already clamped; the six-lane adjacent-ramp candidates were not, and the Equation 14-5 form exceeds 1 once v_D/L_DOWN passes about 1.72, putting more flow into Lanes 1 and 2 than exists on the mainline. A clamp firing still means the input left the regression's fitted range.
 
 ### Changed
 
