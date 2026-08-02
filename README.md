@@ -168,6 +168,16 @@ Available constraints include:
 - `grade`, `phf`, `phv`, `speed_limit` (range)
 - `speed_radius` (table lookup - AASHTO Table 3-7)
 
+### Using from Rust, Python, and JavaScript
+
+The same compute core is reachable from three languages, and the mapping is mechanical:
+
+- **Rust** is the source of truth. Every chapter lives under `src/hcm/`, and the structs there (`BasicFreeways`, `WeavingSegment`, `RampSegment`, ...) are the API. Add the crate as a dependency and call the `run_analysis`/step methods directly.
+- **Python** bindings are generated from the same structs via PyO3 (`src/copython/`), built with `maturin`. Field names, defaults, and units are identical to the Rust side; constructors take the struct fields as keyword arguments, and enums map to strings (`version="7.1"`, `terrain="level"`). A Rust method returning `Option<T>` returns `None` in Python.
+- **JavaScript** goes through WebAssembly, but not from this repo: [`cross-traffic-middleware`](https://github.com/crosstraffic/cross-traffic-middleware) wraps these structs in `wasm_bindgen` types (`WasmBasicFreeways`, `WasmRampSegment`, ...) and is built with `wasm-pack`. The same `Option<T>` becomes `undefined`. The [web calculator](https://github.com/crosstraffic/cross-traffic-web-calculator) is the reference consumer.
+
+One convention to know when porting numbers between languages: percentages are percent in the UI-facing bindings and decimals in Rust where the HCM equation wants a proportion; each binding's docstring states which it takes. Editions, LOS letters, and every published-example value are identical across the three surfaces, and the integration tests assert the Rust and Python sides against the same JSON fixtures in `tests/ExampleCases/`.
+
 ## Testing
 
 ### Run Tests

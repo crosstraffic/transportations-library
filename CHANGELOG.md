@@ -12,6 +12,7 @@
 ### Breaking
 
 - **`RampSegment::determine_los` and `RampSegment::run_analysis` now return `Option<LevelOfService>`**, and the PyO3 `RampSegment.run_analysis()` returns `None` instead of a letter. A major merge operating under capacity has no 7th Edition level of service; the previous code set `self.los = None` but returned `LevelOfService::E`, so a caller reading the return value got a letter the HCM does not sanction. Under Edition 7.1 this case always yields a letter, because Exhibit 14-2 extends its criteria to major merges and diverges.
+- **`BasicFreeways::lc_r` and `lc_l` are `f64`, not `u32`.** The Exhibit 12-21 note says "Interpolate for noninteger values of right-side lateral clearance", which an integer field cannot express, and the previously dead interpolating lookup is now the implementation. Integer clearances read exactly the exhibit values, so existing results do not move; Python callers can pass ints or floats.
 
 ### Fixed
 
@@ -20,10 +21,12 @@
 - **Minor-street crossing movements used pre-correction Exhibit 20-14 factors.** The same December 2022 corrections (page 20-18) swap the conflicting-movement-6 entries between movement 8 Stage II and movement 11 Stage I, so f(8,6) is the "channelized 0 / all others 1" form and f(11,6) the shared-lane 0.5 form. Example Problem 3's v_c,II,8 = 532 and v_c,I,11 = 482 now reproduce natively, and no TWSC fixture carries `conflicting_flow_overrides` any more. This entry was missed in the first pass over the corrections document and caught on re-review.
 - **Eight-lane P_FM could go negative.** The Exhibit 14-8 regression `0.2178 - 0.000125 v_R` falls below zero past roughly 1,742 pc/h of ramp demand, putting a negative flow in Lanes 1 and 2 and a negative density downstream. Both eight-lane forms and the Exhibit 14-9 base form are now clamped to a proportion, with a VERIFY-HCM note that a clamp signals an input outside the regression's fitted range.
 - Verified that Exhibit 25-17 and Exhibit 10-6 are identical value for value, closing an open question about whether `planning.rs` reusing `los_freeway_facility` was a mismatch. It is not; the module doc now records the check.
+- **The Edition 7.1 capacity quadratics refuse off-domain inputs instead of returning the wrong root.** Below FFS_adj = C_b,adj/45 (roughly SAF under 0.71 at 75 mi/h) the leading coefficient goes non-positive and `(-b + sqrt)/(2a)` is no longer the larger root; both solvers now return `None` there, consistent with their None-not-NaN design.
 
 ### Changed
 
 - The Exhibit 12-6 basic-segment primitives (breakpoint, capacity, and the Equation 12-1 speed-flow curve) are now free functions in `basicfreeways`, which `BasicFreeways` delegates to and Chapters 13 and 14 share. Behavior is unchanged; there is now one definition of each parameter rather than one per calling chapter.
+- The Chapter 10 facilities engine's `basic_speed` and `base_capacity_pc` delegate to those same primitives instead of re-inlining the formulas (values identical), and the capacity-loop variable that held the unadjusted FFS is no longer named `ffs_adj_input`.
 
 ### Notes
 
