@@ -15,6 +15,21 @@ pub struct WeavingSegment {
     pub inner: LibWeavingSegment,
 }
 
+impl WeavingSegment {
+    /// The stepwise methods implement the 7th Edition's numbered steps, which Edition 7.1
+    /// replaced with a different structure. Guard them so a "7.1" segment cannot silently
+    /// produce 7th Edition numbers.
+    fn require_v7(&self, method: &str) -> PyResult<()> {
+        if self.inner.version == HcmVersion::V7_1 {
+            return Err(PyValueError::new_err(format!(
+                "{method}() implements the 7th Edition step structure, but this segment is \
+                 version \"7.1\". Use run_analysis() or analysis_v7_1() instead."
+            )));
+        }
+        Ok(())
+    }
+}
+
 #[pymethods]
 impl WeavingSegment {
     /// Create an HCM Chapter 13 weaving segment.
@@ -175,47 +190,67 @@ impl WeavingSegment {
     }
 
     // ── HCM Ch.13 step methods (stateful; call in analysis order) ──────────
+    //
+    // These implement the 7th Edition's numbered steps. Edition 7.1 has a different step
+    // structure (equivalent basic segment, speed impedance, capacity quadratic) with no
+    // one-to-one equivalents, so on a version "7.1" segment they raise instead of silently
+    // returning 7th Edition numbers.
 
     /// Step 2: demand flows under equivalent ideal conditions (Eq. 13-1).
-    /// Returns (v_W, v_NW, v) in pc/h.
-    pub fn determine_demand_flow(&mut self) -> (f64, f64, f64) {
-        self.inner.determine_demand_flow()
+    /// Returns (v_W, v_NW, v) in pc/h. 7th Edition only; raises on a "7.1" segment.
+    pub fn determine_demand_flow(&mut self) -> PyResult<(f64, f64, f64)> {
+        self.require_v7("determine_demand_flow")?;
+        Ok(self.inner.determine_demand_flow())
     }
 
     /// Step 3: minimum lane-changing rate LC_MIN (lc/h) - Eqs. 13-2/13-3.
-    pub fn determine_configuration_characteristics(&mut self) -> f64 {
-        self.inner.determine_configuration_characteristics()
+    /// 7th Edition only; raises on a "7.1" segment.
+    pub fn determine_configuration_characteristics(&mut self) -> PyResult<f64> {
+        self.require_v7("determine_configuration_characteristics")?;
+        Ok(self.inner.determine_configuration_characteristics())
     }
 
     /// Step 4: maximum weaving length L_MAX (ft) - Eq. 13-4.
-    pub fn determine_max_weaving_length(&mut self) -> f64 {
-        self.inner.determine_max_weaving_length()
+    /// 7th Edition only; raises on a "7.1" segment.
+    pub fn determine_max_weaving_length(&mut self) -> PyResult<f64> {
+        self.require_v7("determine_max_weaving_length")?;
+        Ok(self.inner.determine_max_weaving_length())
     }
 
     /// Step 5: weaving segment capacity (veh/h) - Eqs. 13-5..13-10.
-    pub fn determine_capacity(&mut self) -> f64 {
-        self.inner.determine_capacity()
+    /// 7th Edition only; raises on a "7.1" segment.
+    pub fn determine_capacity(&mut self) -> PyResult<f64> {
+        self.require_v7("determine_capacity")?;
+        Ok(self.inner.determine_capacity())
     }
 
     /// Step 6: total lane-changing rate LC_ALL (lc/h) - Eqs. 13-11..13-17.
-    pub fn determine_lane_changing_rates(&mut self) -> f64 {
-        self.inner.determine_lane_changing_rates()
+    /// 7th Edition only; raises on a "7.1" segment.
+    pub fn determine_lane_changing_rates(&mut self) -> PyResult<f64> {
+        self.require_v7("determine_lane_changing_rates")?;
+        Ok(self.inner.determine_lane_changing_rates())
     }
 
     /// Step 7: speeds (S_W, S_NW, S) in mi/h - Eqs. 13-18..13-22.
-    pub fn estimate_speed(&mut self) -> (f64, f64, f64) {
-        self.inner.estimate_speed()
+    /// 7th Edition only; raises on a "7.1" segment.
+    pub fn estimate_speed(&mut self) -> PyResult<(f64, f64, f64)> {
+        self.require_v7("estimate_speed")?;
+        Ok(self.inner.estimate_speed())
     }
 
     /// Step 8a: density (pc/mi/ln) - Eq. 13-23.
-    pub fn determine_density(&mut self) -> f64 {
-        self.inner.determine_density()
+    /// 7th Edition only; raises on a "7.1" segment.
+    pub fn determine_density(&mut self) -> PyResult<f64> {
+        self.require_v7("determine_density")?;
+        Ok(self.inner.determine_density())
     }
 
     /// Step 8b: level of service letter - Exhibit 13-6.
-    pub fn determine_los(&mut self) -> String {
+    /// 7th Edition only; raises on a "7.1" segment.
+    pub fn determine_los(&mut self) -> PyResult<String> {
+        self.require_v7("determine_los")?;
         let los: char = self.inner.determine_los().into();
-        los.to_string()
+        Ok(los.to_string())
     }
 
     /// Run the full Chapter 13 analysis for the segment's selected HCM edition; returns the LOS

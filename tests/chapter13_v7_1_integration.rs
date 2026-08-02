@@ -59,7 +59,7 @@ fn example_problem_1_complex_weave() {
     approx(a.speed_basic, 65.0, 1e-9, "S_b");
     approx(a.weaving_intensity, 0.006336, 5e-6, "W");
     approx(a.speed_impedance, 5.68, 0.02, "SIW");
-    approx(a.speed_avg, 59.32, 0.02, "S_o");
+    approx(a.speed_avg.unwrap(), 59.32, 0.02, "S_o");
     approx(a.capacity_per_lane.unwrap(), 1866.0, 2.0, "C_W");
     approx(a.dc_ratio.unwrap(), 0.75, 0.005, "d/c");
     approx(a.density, 23.6, 0.1, "D");
@@ -110,7 +110,7 @@ fn example_problem_2_simple_weave() {
     approx(a.speed_basic, 74.31, 0.01, "S_b");
     approx(a.weaving_intensity, 0.004814, 5e-6, "W");
     approx(a.speed_impedance, 3.61, 0.01, "SIW");
-    approx(a.speed_avg, 70.70, 0.01, "S_o");
+    approx(a.speed_avg.unwrap(), 70.70, 0.01, "S_o");
     approx(a.capacity_per_lane.unwrap(), 1992.0, 2.0, "C_W");
     approx(a.dc_ratio.unwrap(), 0.63, 0.005, "d/c");
     approx(a.density, 17.7, 0.05, "D");
@@ -155,7 +155,7 @@ fn example_problem_3_two_sided_weave() {
     approx(a.speed_basic, 59.31, 0.02, "S_b");
     approx(a.weaving_intensity, 0.005199, 5e-6, "W");
     approx(a.speed_impedance, 6.73, 0.02, "SIW");
-    approx(a.speed_avg, 52.58, 0.03, "S_o");
+    approx(a.speed_avg.unwrap(), 52.58, 0.03, "S_o");
     approx(a.capacity_per_lane.unwrap(), 1827.0, 3.0, "C_W");
     approx(a.dc_ratio.unwrap(), 0.98, 0.005, "d/c");
     approx(a.density, 34.1, 0.1, "D");

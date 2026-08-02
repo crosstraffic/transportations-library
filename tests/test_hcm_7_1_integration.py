@@ -181,3 +181,65 @@ def test_version_is_settable_after_construction():
     assert seg.version == "7.1"
     with pytest.raises(ValueError):
         seg.version = "nonsense"
+
+
+def test_v7_step_methods_raise_on_a_7_1_segment():
+    """The stepwise methods implement the 7th Edition's numbered steps; a "7.1" segment must
+    raise rather than silently return 7th Edition numbers (the two editions disagree on speeds,
+    capacities, and LOS bands)."""
+    weave = tl.WeavingSegment(version="7.1")
+    for method in (
+        "determine_demand_flow",
+        "determine_configuration_characteristics",
+        "determine_max_weaving_length",
+        "determine_capacity",
+        "determine_lane_changing_rates",
+        "estimate_speed",
+        "determine_density",
+        "determine_los",
+    ):
+        with pytest.raises(ValueError, match="7th Edition step structure"):
+            getattr(weave, method)()
+
+    ramp = tl.RampSegment(version="7.1")
+    for method in (
+        "determine_demand_flow",
+        "estimate_v12",
+        "determine_capacity",
+        "determine_density",
+        "determine_los",
+        "estimate_speed",
+    ):
+        with pytest.raises(ValueError, match="7th Edition step structure"):
+            getattr(ramp, method)()
+
+    # run_analysis and analysis_v7_1 remain the sanctioned 7.1 entry points.
+    assert weave.run_analysis() is not None
+
+
+def test_7_1_speed_avg_is_none_far_past_capacity():
+    """Past the point where the speed impedance consumes the whole basic-segment speed, the
+    serialized speed_avg is null rather than a negative number; density is infinite and LOS
+    reads F."""
+    seg = tl.WeavingSegment(
+        version="7.1",
+        weaving_type="one_sided",
+        length_short=300.0,
+        num_lanes=2,
+        num_weaving_lanes=2,
+        ffs=75.0,
+        v_ff=6000.0,
+        v_fr=4000.0,
+        v_rf=4000.0,
+        v_rr=2000.0,
+        phf=1.0,
+        heavy_vehicle_pct=0.0,
+        lc_rf=2,
+        lc_fr=2,
+        nw_rf=1,
+        nw_fr=1,
+    )
+    assert seg.run_analysis() == "F"
+    a = json.loads(seg.analysis_v7_1())
+    assert a["speed_avg"] is None
+    assert a["los"] == "F"
