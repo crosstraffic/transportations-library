@@ -51,7 +51,7 @@ fn example_problem_1_isolated_on_ramp() {
     approx(a.capacity_basic_adj, 2300.0, 1e-9, "C_b,adj");
     approx(a.speed_basic, 59.47, 0.02, "S_b");
     approx(a.speed_impedance, 4.37, 0.02, "SIM");
-    approx(a.speed_avg, 55.10, 0.03, "S_M");
+    approx(a.speed_avg.unwrap(), 55.10, 0.03, "S_M");
     approx(a.capacity_per_lane.unwrap(), 1882.0, 3.0, "C_M");
     approx(a.dc_ratio.unwrap(), 0.94, 0.005, "d/c");
 
@@ -99,7 +99,7 @@ fn example_problem_2_first_off_ramp() {
     approx(a.flow_per_lane, 1698.0, 2.0, "v_1/N");
     approx(a.speed_basic, 59.83, 0.02, "S_b");
     approx(a.speed_impedance, 2.04, 0.02, "SID");
-    approx(a.speed_avg, 57.79, 0.03, "S_D");
+    approx(a.speed_avg.unwrap(), 57.79, 0.03, "S_D");
     approx(a.capacity_per_lane.unwrap(), 1940.0, 3.0, "C_D");
     approx(a.capacity_neighboring_freeway, 6900.0, 1e-9, "upstream freeway capacity");
     approx(a.capacity_ramp_roadway, 2000.0, 1e-9, "ramp roadway capacity");
@@ -141,7 +141,7 @@ fn example_problem_2_second_off_ramp() {
     // Below the breakpoint, so the basic segment runs at the adjusted FFS.
     approx(a.speed_basic, 60.0, 1e-9, "S_b");
     approx(a.speed_impedance, 4.04, 0.02, "SID");
-    approx(a.speed_avg, 55.96, 0.03, "S_D");
+    approx(a.speed_avg.unwrap(), 55.96, 0.03, "S_D");
     approx(a.capacity_per_lane.unwrap(), 1874.0, 3.0, "C_D");
     approx(a.capacity_ramp_roadway, 1900.0, 1e-9, "ramp roadway capacity");
     assert!(!a.demand_exceeds_capacity);

@@ -26,6 +26,21 @@ pub struct RampSegment {
     pub inner: LibRampSegment,
 }
 
+impl RampSegment {
+    /// The stepwise methods implement the 7th Edition's numbered steps, which Edition 7.1
+    /// replaced with a different structure. Guard them so a "7.1" segment cannot silently
+    /// produce 7th Edition numbers.
+    fn require_v7(&self, method: &str) -> PyResult<()> {
+        if self.inner.version == HcmVersion::V7_1 {
+            return Err(PyValueError::new_err(format!(
+                "{method}() implements the 7th Edition step structure, but this segment is \
+                 version \"7.1\". Use run_analysis() or analysis_v7_1() instead."
+            )));
+        }
+        Ok(())
+    }
+}
+
 #[pymethods]
 impl RampSegment {
     /// Create an HCM Chapter 14 ramp-freeway junction.
@@ -197,44 +212,61 @@ impl RampSegment {
     }
 
     // ── HCM Ch.14 step methods (stateful; call in analysis order) ──────────
+    //
+    // These implement the 7th Edition's numbered steps. Edition 7.1 has a different step
+    // structure (equivalent basic segment, speed impedance, capacity quadratic) with no
+    // one-to-one equivalents, so on a version "7.1" segment they raise instead of silently
+    // returning 7th Edition numbers.
 
     /// Step 1: demand flows (v_F, v_R) in pc/h - Eq. 14-1.
-    pub fn determine_demand_flow(&mut self) -> (f64, f64) {
-        self.inner.determine_demand_flow()
+    /// 7th Edition only; raises on a "7.1" segment.
+    pub fn determine_demand_flow(&mut self) -> PyResult<(f64, f64)> {
+        self.require_v7("determine_demand_flow")?;
+        Ok(self.inner.determine_demand_flow())
     }
 
     /// Step 2: flow in Lanes 1 and 2, v_12 (pc/h) - Eqs. 14-2..14-19.
-    pub fn estimate_v12(&mut self) -> f64 {
-        self.inner.estimate_v12()
+    /// 7th Edition only; raises on a "7.1" segment.
+    pub fn estimate_v12(&mut self) -> PyResult<f64> {
+        self.require_v7("estimate_v12")?;
+        Ok(self.inner.estimate_v12())
     }
 
     /// Step 3: adjusted freeway capacity (pc/h) and capacity checks
     /// (Exhibits 14-10/14-12, Eq. 14-21).
-    pub fn determine_capacity(&mut self) -> f64 {
-        self.inner.determine_capacity()
+    /// 7th Edition only; raises on a "7.1" segment.
+    pub fn determine_capacity(&mut self) -> PyResult<f64> {
+        self.require_v7("determine_capacity")?;
+        Ok(self.inner.determine_capacity())
     }
 
     /// Step 4: density in the ramp influence area (pc/mi/ln)
     /// - Eqs. 14-22/14-23/14-28.
-    pub fn determine_density(&mut self) -> f64 {
-        self.inner.determine_density()
+    /// 7th Edition only; raises on a "7.1" segment.
+    pub fn determine_density(&mut self) -> PyResult<f64> {
+        self.require_v7("determine_density")?;
+        Ok(self.inner.determine_density())
     }
 
-    /// Level of service letter - Exhibit 14-3 (7th Edition) or Exhibit 14-2 (Edition 7.1).
+    /// Level of service letter - Exhibit 14-3 (7th Edition).
     ///
     /// Returns None for a major merge under capacity, where the 7th Edition defines no level of
-    /// service and only the capacity checks apply.
-    pub fn determine_los(&mut self) -> Option<String> {
-        self.inner.determine_los().map(|los| {
+    /// service and only the capacity checks apply. 7th Edition only; raises on a "7.1" segment
+    /// (use run_analysis() or analysis_v7_1(), whose Exhibit 14-2 criteria always yield a letter).
+    pub fn determine_los(&mut self) -> PyResult<Option<String>> {
+        self.require_v7("determine_los")?;
+        Ok(self.inner.determine_los().map(|los| {
             let c: char = los.into();
             c.to_string()
-        })
+        }))
     }
 
     /// Step 5: speeds (S_R, S_O or None, S) in mi/h
     /// - Exhibits 14-13/14-14/14-15.
-    pub fn estimate_speed(&mut self) -> (f64, Option<f64>, f64) {
-        self.inner.estimate_speed()
+    /// 7th Edition only; raises on a "7.1" segment.
+    pub fn estimate_speed(&mut self) -> PyResult<(f64, Option<f64>, f64)> {
+        self.require_v7("estimate_speed")?;
+        Ok(self.inner.estimate_speed())
     }
 
     /// Run the full Chapter 14 analysis for the junction's selected HCM edition; returns the LOS

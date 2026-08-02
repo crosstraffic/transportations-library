@@ -252,9 +252,12 @@ pub fn weaving_capacity_per_lane(
     if denom <= 0.0 {
         return None;
     }
-    // Equation 13-17.
+    // Equation 13-17. A non-positive `a` is off the model's fitted domain (it needs
+    // FFS_adj > C_b,adj/45, which SAF below roughly 0.71 violates); the larger quadratic root
+    // the method wants is `(-b + sqrt)/(2a)` only while `a` is positive, so bail out rather
+    // than return the wrong root.
     let a = WEAVING_BREAKDOWN_DENSITY * (ffs_adj - capacity_basic_adj / 45.0) / denom;
-    if a == 0.0 {
+    if a <= 0.0 {
         return None;
     }
     // Equation 13-18.
@@ -314,8 +317,10 @@ pub struct WeavingAnalysis {
     pub weaving_intensity: f64,
     /// Speed impedance SIW (mi/h) - Equation 13-10.
     pub speed_impedance: f64,
-    /// Overall mean speed of all vehicles S_o (mi/h) - Equation 13-7.
-    pub speed_avg: f64,
+    /// Overall mean speed of all vehicles S_o (mi/h) - Equation 13-7. `None` when the speed
+    /// impedance consumes the whole basic-segment speed (demand far past capacity, where
+    /// Equation 13-7 has no physical meaning); density is infinite and LOS reads F there.
+    pub speed_avg: Option<f64>,
     /// Weaving segment capacity C_W (pc/h/ln) - Equation 13-16.
     pub capacity_per_lane: Option<f64>,
     /// Weaving segment capacity across all lanes (pc/h).
@@ -399,8 +404,12 @@ impl WeavingSegment {
             class.coefficients(),
         );
         let siw = speed_impedance(w, flow_per_lane);
-        // Equation 13-7.
-        let speed_avg = speed_basic - siw;
+        // Equation 13-7. None rather than a negative "speed" once the impedance consumes the
+        // whole basic-segment speed; consumers read null, not a number below zero.
+        let speed_avg = match speed_basic - siw {
+            s if s > 0.0 => Some(s),
+            _ => None,
+        };
 
         // Step 4: capacity and d/c.
         let capacity_per_lane =
@@ -417,10 +426,9 @@ impl WeavingSegment {
 
         // Step 5: density and LOS. Above capacity the speed from Step 3 is discarded and LOS F is
         // assigned, per the Level of Service F discussion in Step 4.
-        let density = if speed_avg > 0.0 {
-            flow_per_lane / speed_avg
-        } else {
-            f64::INFINITY
+        let density = match speed_avg {
+            Some(s) => flow_per_lane / s,
+            None => f64::INFINITY,
         };
         let los = determine_weaving_los(density, demand_exceeds_capacity);
 
@@ -462,7 +470,7 @@ impl WeavingSegment {
         self.f_hv = Some(a.f_hv);
         self.flow_total = Some(a.flow_total);
         self.weaving_intensity = Some(a.weaving_intensity);
-        self.speed_avg = Some(a.speed_avg);
+        self.speed_avg = a.speed_avg;
         self.density = Some(a.density);
         self.demand_exceeds_capacity = Some(a.demand_exceeds_capacity);
         self.los = Some(a.los);
@@ -491,6 +499,17 @@ impl WeavingSegment {
 mod tests {
     use super::*;
     use crate::hcm::common::HcmVersion;
+
+    /// Below FFS_adj = C_b,adj/45 the Equation 13-17 leading coefficient goes non-positive and
+    /// the closed-form larger root no longer is `(-b + sqrt)/(2a)`; the solver must refuse
+    /// rather than return the wrong root. FFS 75 with SAF 0.70 sits past that edge.
+    #[test]
+    fn capacity_solver_refuses_offdomain_negative_leading_coefficient() {
+        let ffs_adj = 75.0 * 0.70;
+        let c_b_adj = crate::hcm::basicfreeways::basicfreeways::basic_segment_capacity(75.0);
+        let bp_adj = crate::hcm::basicfreeways::basicfreeways::basic_segment_breakpoint(ffs_adj, 1.0);
+        assert!(weaving_capacity_per_lane(0.4, ffs_adj, c_b_adj, bp_adj).is_none());
+    }
 
     /// Exhibit 27-2: the Example Problem 1 complex weaving segment.
     fn example_problem_1() -> WeavingSegment {
@@ -561,7 +580,7 @@ mod tests {
             "SIW {}",
             a.speed_impedance
         );
-        assert!((a.speed_avg - 59.32).abs() < 0.02, "S_o {}", a.speed_avg);
+        assert!((a.speed_avg.unwrap() - 59.32).abs() < 0.02, "S_o {:?}", a.speed_avg);
 
         let cw = a.capacity_per_lane.expect("capacity");
         assert!((cw - 1866.0).abs() < 2.0, "C_W {cw}");

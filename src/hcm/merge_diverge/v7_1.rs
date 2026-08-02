@@ -117,8 +117,12 @@ pub fn ramp_capacity_per_lane(
         return None;
     }
     // Equations 14-9 / 14-12.
+    // A non-positive `a` is off the model's fitted domain (it needs FFS_adj > C_b,adj/45,
+    // which SAF below roughly 0.71 violates); the larger quadratic root the method wants is
+    // `(-b + sqrt)/(2a)` only while `a` is positive, so bail out rather than return the
+    // wrong root.
     let a = RAMP_BREAKDOWN_DENSITY * (ffs_adj - capacity_basic_adj / 45.0) / denom;
-    if a == 0.0 {
+    if a <= 0.0 {
         return None;
     }
     // Equations 14-10 / 14-13: the printed 0.143 and 0.0049 are the speed model coefficient
@@ -194,7 +198,10 @@ pub struct RampAnalysis {
     /// Speed impedance SIM or SID (mi/h) - Equations 14-4/14-5.
     pub speed_impedance: f64,
     /// Average speed in the ramp influence area S_M or S_D (mi/h) - Equations 14-2/14-3.
-    pub speed_avg: f64,
+    /// `None` when the impedance consumes the whole basic-segment speed (demand far past
+    /// capacity, where the equation has no physical meaning); density is infinite and LOS
+    /// reads F there.
+    pub speed_avg: Option<f64>,
     /// Ramp influence area capacity C_M or C_D (pc/h/ln) - Equation 14-8.
     pub capacity_per_lane: Option<f64>,
     /// Demand-to-capacity ratio of the ramp influence area.
@@ -289,8 +296,12 @@ impl RampSegment {
                 DIVERGE_IMPEDANCE_COEFFICIENT,
             )
         };
-        // Equations 14-2 / 14-3.
-        let speed_avg = speed_basic - speed_impedance;
+        // Equations 14-2 / 14-3. None rather than a negative "speed" once the impedance
+        // consumes the whole basic-segment speed; consumers read null, not a number below zero.
+        let speed_avg = match speed_basic - speed_impedance {
+            s if s > 0.0 => Some(s),
+            _ => None,
+        };
 
         // Step 3: the three capacity checks.
         let capacity_per_lane = ramp_capacity_per_lane(
@@ -321,10 +332,9 @@ impl RampSegment {
             || flow_ramp > capacity_ramp_roadway;
 
         // Step 4: Equations 14-15 / 14-16.
-        let density = if speed_avg > 0.0 {
-            flow_per_lane / speed_avg
-        } else {
-            f64::INFINITY
+        let density = match speed_avg {
+            Some(s) => flow_per_lane / s,
+            None => f64::INFINITY,
         };
         let los = los_merge_diverge_v7_1(density, demand_exceeds_capacity);
 
@@ -360,8 +370,8 @@ impl RampSegment {
 
         self.flow_freeway = Some(a.flow_freeway);
         self.flow_ramp = Some(a.flow_ramp);
-        self.speed_ramp = Some(a.speed_avg);
-        self.speed_avg = Some(a.speed_avg);
+        self.speed_ramp = a.speed_avg;
+        self.speed_avg = a.speed_avg;
         self.density = Some(a.density);
         self.capacity_ramp = Some(a.capacity_ramp_roadway);
         self.capacity_freeway = Some(a.capacity_neighboring_freeway);
@@ -378,6 +388,20 @@ impl RampSegment {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Below FFS_adj = C_b,adj/45 the Equation 14-9/14-12 leading coefficient goes non-positive
+    /// and the closed-form larger root no longer is `(-b + sqrt)/(2a)`; the solver must refuse
+    /// rather than return the wrong root. FFS 75 with SAF 0.70 sits past that edge.
+    #[test]
+    fn capacity_solver_refuses_offdomain_negative_leading_coefficient() {
+        let ffs_adj = 75.0 * 0.70;
+        let c_b_adj = crate::hcm::basicfreeways::basicfreeways::basic_segment_capacity(75.0);
+        let bp_adj = crate::hcm::basicfreeways::basicfreeways::basic_segment_breakpoint(ffs_adj, 1.0);
+        assert!(
+            ramp_capacity_per_lane(1.5, MERGE_IMPEDANCE_COEFFICIENT, ffs_adj, c_b_adj, bp_adj)
+                .is_none()
+        );
+    }
 
     /// The capacity quadratic reproduces the definition it was derived from: at C the segment sits
     /// exactly at the 35 pc/mi/ln breakdown density (Equations 14-6/14-7).
