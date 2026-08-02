@@ -117,8 +117,12 @@ pub fn ramp_capacity_per_lane(
         return None;
     }
     // Equations 14-9 / 14-12.
+    // A non-positive `a` is off the model's fitted domain (it needs FFS_adj > C_b,adj/45,
+    // which SAF below roughly 0.71 violates); the larger quadratic root the method wants is
+    // `(-b + sqrt)/(2a)` only while `a` is positive, so bail out rather than return the
+    // wrong root.
     let a = RAMP_BREAKDOWN_DENSITY * (ffs_adj - capacity_basic_adj / 45.0) / denom;
-    if a == 0.0 {
+    if a <= 0.0 {
         return None;
     }
     // Equations 14-10 / 14-13: the printed 0.143 and 0.0049 are the speed model coefficient
@@ -378,6 +382,20 @@ impl RampSegment {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Below FFS_adj = C_b,adj/45 the Equation 14-9/14-12 leading coefficient goes non-positive
+    /// and the closed-form larger root no longer is `(-b + sqrt)/(2a)`; the solver must refuse
+    /// rather than return the wrong root. FFS 75 with SAF 0.70 sits past that edge.
+    #[test]
+    fn capacity_solver_refuses_offdomain_negative_leading_coefficient() {
+        let ffs_adj = 75.0 * 0.70;
+        let c_b_adj = crate::hcm::basicfreeways::basicfreeways::basic_segment_capacity(75.0);
+        let bp_adj = crate::hcm::basicfreeways::basicfreeways::basic_segment_breakpoint(ffs_adj, 1.0);
+        assert!(
+            ramp_capacity_per_lane(1.5, MERGE_IMPEDANCE_COEFFICIENT, ffs_adj, c_b_adj, bp_adj)
+                .is_none()
+        );
+    }
 
     /// The capacity quadratic reproduces the definition it was derived from: at C the segment sits
     /// exactly at the 35 pc/mi/ln breakdown density (Equations 14-6/14-7).

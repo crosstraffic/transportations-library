@@ -7,6 +7,11 @@ pub mod delay;
 pub mod gap_acceptance;
 pub mod intersection;
 pub mod los_tables;
+// Three published E_T values in the generated tables happen to equal 3.14 and trip clippy's
+// deny-level approx_constant lint (it reads them as sloppy pi). They are genuine exhibit
+// entries, byte-checked against the EPUB by test_pce_table_epub.py, not approximations. The
+// allow lives here because pce_table.rs is generated and must not be hand-edited.
+#[allow(clippy::approx_constant)]
 pub mod pce_table;
 pub mod reliability;
 pub mod time_period;

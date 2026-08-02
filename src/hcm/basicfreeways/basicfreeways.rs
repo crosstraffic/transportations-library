@@ -231,10 +231,11 @@ pub struct BasicFreeways {
     pub length: f64,
     /// Lane width, ft.
     pub lw: Option<f64>,
-    /// Right-side lateral clearance, ft.
-    pub lc_r: u32,
-    /// Left-side lateral clearance, ft.
-    pub lc_l: u32,
+    /// Right-side lateral clearance, ft. Noninteger values are meaningful: the Exhibit 12-21
+    /// note says to interpolate for them.
+    pub lc_r: f64,
+    /// Left-side lateral clearance, ft (multilane highways; enters the Exhibit 12-22 total).
+    pub lc_l: f64,
     /// Proportation of Single Unit Trucks (SUTs) and Tractor-Trailers (TTs) in traffic stream, percentage float
     pub p_t: Option<f64>,
     /// Passenger equivalent of one heavy vehicle in the traffic stream (PCEs)
@@ -293,8 +294,8 @@ impl BasicFreeways {
             capacity_adj: 2000.0,
             lane_count: 2,
             density: 0.0,
-            lc_r: 6,
-            lc_l: 6,
+            lc_r: 6.0,
+            lc_l: 6.0,
             p_t: None,
             e_t: None,
             apd: 0,
@@ -371,8 +372,8 @@ impl BasicFreeways {
         self.bffs = defaults.base_ffs
             .unwrap_or_else(|| bffs_from_speed_limit(self.speed_limit as f64));
         self.lw = Some(defaults.lane_width);
-        self.lc_r = defaults.right_lateral_clearance as u32;
-        self.lc_l = defaults.left_lateral_clearance as u32;
+        self.lc_r = defaults.right_lateral_clearance;
+        self.lc_l = defaults.left_lateral_clearance;
         self.p_t = Some(defaults.heavy_vehicle_pct);
         self.phf = defaults.phf;
         self.apd = defaults.access_point_density;
@@ -488,51 +489,18 @@ impl BasicFreeways {
         }
     }
 
-    /// Adjustment for right-side lateral clearance
+    /// Adjustment for right-side lateral clearance (Exhibit 12-21). The exhibit's note says
+    /// "Interpolate for noninteger values of right-side lateral clearance", so this delegates
+    /// to the interpolating lookup; at the tabulated integer clearances the two readings are
+    /// identical.
     fn adjustment_right_side_lateral_clearance(&mut self) -> Result<f64, String> {
-
-        match (self.lane_count, self.lc_r) {
-            // lane_count = 2
-            (2, 6..) => Ok(0.0),
-            (2, 5) => Ok(0.6),
-            (2, 4) => Ok(1.2),
-            (2, 3) => Ok(1.8),
-            (2, 2) => Ok(2.4),
-            (2, 1) => Ok(3.0),
-            (2, 0) => Ok(3.6),
-
-            // lane_count = 3
-            (3, 6..) => Ok(0.0),
-            (3, 5) => Ok(0.4),
-            (3, 4) => Ok(0.8),
-            (3, 3) => Ok(1.2),
-            (3, 2) => Ok(1.6),
-            (3, 1) => Ok(2.0),
-            (3, 0) => Ok(2.4),
-
-            // lane_count = 4
-            (4, 6..) => Ok(0.0),
-            (4, 5) => Ok(0.2),
-            (4, 4) => Ok(0.4),
-            (4, 3) => Ok(0.6),
-            (4, 2) => Ok(0.8),
-            (4, 1) => Ok(1.0),
-            (4, 0) => Ok(1.2),
-
-            // lane_count >= 5
-            (5.., 6..) => Ok(0.0),
-            (5.., 5) => Ok(0.1),
-            (5.., 4) => Ok(0.2),
-            (5.., 3) => Ok(0.3),
-            (5.., 2) => Ok(0.4),
-            (5.., 1) => Ok(0.5),
-            (5.., 0) => Ok(0.6),
-
-            _ => Err(format!(
-                "No adjustment defined for lane_count={} lc_r={}",
-                self.lane_count, self.lc_r
-            )),
+        if !self.lc_r.is_finite() || self.lc_r < 0.0 {
+            return Err(format!(
+                "Right-side lateral clearance is infeasible: lc_r={}",
+                self.lc_r
+            ));
         }
+        Ok(self.adjustment_right_side_lateral_clearance_interpolated(self.lc_r))
     }
 
     /// Adjustment for total lateral clearance for multilane highways
@@ -540,8 +508,8 @@ impl BasicFreeways {
     /// Supports interpolation for non-integer TLC values
     fn adjustment_total_lateral_clearance(&mut self) -> Result<f64, String> {
         // Cap lateral clearances at 6 ft max each
-        let lc_r = (self.lc_r as f64).min(6.0);
-        let lc_l = (self.lc_l as f64).min(6.0);
+        let lc_r = self.lc_r.min(6.0);
+        let lc_l = self.lc_l.min(6.0);
         let tlc = lc_r + lc_l;
 
         // Four-Lane Highways (2 lanes in one direction) - Exhibit 12-22
@@ -1199,5 +1167,29 @@ mod tests {
             basic_segment_breakpoint(65.0, 1.0) != basic_segment_breakpoint(65.0 * 0.90, 1.0),
             "breakpoint should follow FFS_adj"
         );
+    }
+
+    /// Exhibit 12-21 note: "Interpolate for noninteger values of right-side lateral
+    /// clearance." Tabulated clearances must read exactly the exhibit values and a
+    /// noninteger clearance must land halfway between its neighbors.
+    #[test]
+    fn right_side_lateral_clearance_interpolates_per_exhibit_12_21() {
+        let mut seg = BasicFreeways::new();
+        seg.lane_count = 2;
+        seg.lc_r = 4.0;
+        assert!((seg.adjustment_right_side_lateral_clearance().unwrap() - 1.2).abs() < 1e-9);
+
+        seg.lc_r = 4.5;
+        assert!((seg.adjustment_right_side_lateral_clearance().unwrap() - 0.9).abs() < 1e-9);
+
+        seg.lane_count = 3;
+        seg.lc_r = 2.5;
+        assert!((seg.adjustment_right_side_lateral_clearance().unwrap() - 1.4).abs() < 1e-9);
+
+        // Clearances beyond 6 ft carry no penalty, and negative input is an error.
+        seg.lc_r = 8.0;
+        assert!((seg.adjustment_right_side_lateral_clearance().unwrap()).abs() < 1e-9);
+        seg.lc_r = -1.0;
+        assert!(seg.adjustment_right_side_lateral_clearance().is_err());
     }
 }
