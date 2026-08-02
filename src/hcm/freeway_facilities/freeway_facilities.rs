@@ -25,7 +25,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::hcm::basicfreeways::basicfreeways::DENSITY_AT_CAPACITY;
+use crate::hcm::basicfreeways::basicfreeways::{
+    basic_segment_breakpoint, basic_segment_capacity, basic_segment_speed, DENSITY_AT_CAPACITY,
+    EXPONENT_BASIC_FREEWAY,
+};
 use crate::hcm::weaving::weaving::{
     FacilityType as WeaveFacility, TerrainType as WeaveTerrain, WeavingSegment,
     WeavingType,
@@ -465,7 +468,7 @@ impl FreewayFacility {
     fn base_capacity_pc(&self, ffs: f64) -> f64 {
         match self.c_ifl_override {
             Some(c) => c,
-            None => (2200.0 + 10.0 * (ffs - 50.0)).min(2400.0),
+            None => basic_segment_capacity(ffs),
         }
     }
 
@@ -611,14 +614,14 @@ impl FreewayFacility {
         let v_rf = (seg.on_demand(p) * scale - v_rr).max(0.0);
         let v_fr = (seg.off_demand(p) * scale - v_rr).max(0.0);
         let v_ff = (volume - v_rf - v_rr - v_fr).max(0.0);
-        let ffs_adj_input = self.seg_ffs(i); // SAF applied inside the engine
+        let ffs_unadjusted = self.seg_ffs(i); // SAF applied inside the engine
         WeavingSegment {
             weaving_type: WeavingType::OneSided,
             facility_type: WeaveFacility::Freeway,
             length_short: seg.short_length_ft.unwrap_or(seg.length_ft),
             num_lanes: seg.lanes,
             num_weaving_lanes: seg.num_weaving_lanes,
-            ffs: ffs_adj_input,
+            ffs: ffs_unadjusted,
             v_ff,
             v_fr,
             v_rf,
@@ -677,14 +680,13 @@ impl FreewayFacility {
     /// see [`base_capacity_pc`](Self::base_capacity_pc).
     fn basic_speed(&self, v_p: f64, ffs: f64, ffs_adj: f64, caf: f64) -> f64 {
         let c_adj = self.base_capacity_pc(ffs) * caf;
-        let bp = (1000.0 + 40.0 * (75.0 - ffs_adj)) * caf * caf;
-        let speed_at_capacity = c_adj / DENSITY_AT_CAPACITY;
-        if v_p <= bp {
-            ffs_adj
-        } else if v_p <= c_adj && c_adj > bp {
-            ffs_adj - (ffs_adj - speed_at_capacity) * ((v_p - bp) / (c_adj - bp)).powi(2)
+        let bp = basic_segment_breakpoint(ffs_adj, caf);
+        if v_p <= c_adj {
+            basic_segment_speed(v_p, ffs_adj, c_adj, bp, EXPONENT_BASIC_FREEWAY)
         } else {
-            speed_at_capacity
+            // Above capacity this engine clamps to the speed at capacity; the oversaturated
+            // procedure, not the Equation 12-1 curve, owns that regime.
+            c_adj / DENSITY_AT_CAPACITY
         }
     }
 
