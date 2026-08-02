@@ -68,3 +68,39 @@ class TestChapter19Signalized:
     def test_unknown_approach_raises(self, example_problem_1):
         with pytest.raises(ValueError):
             example_problem_1.approach_delay_s("XX")
+
+
+class TestSignalizedMultimodalLOS:
+    """HCM Chapter 31 Example Problems 2-4: pedestrian and bicycle LOS and the
+    two-stage crossing delay, through the PyO3 JSON functions."""
+
+    def test_ep3_bicycle_los(self):
+        cfg = {
+            "saturation_flow": 2000.0, "effective_green_s": 48.0, "cycle_length_s": 120.0,
+            "bicycle_flow": 120.0, "cross_street_width_ft": 70.0, "total_width_ft": 17.0,
+            "v_left": 85.0, "v_through": 924.0, "v_right": 77.0, "num_through_lanes": 2.0,
+        }
+        r = json.loads(tl.analyze_signalized_bicycle(json.dumps(cfg)))
+        assert r["capacity"] == pytest.approx(800.0, abs=1.0)
+        assert r["delay"] == pytest.approx(23.0, abs=0.1)
+        assert r["los_score"] == pytest.approx(2.45, abs=0.01)
+        assert r["los"] == "B"
+
+    def test_ep2_pedestrian_los(self):
+        cfg = {
+            "cycle_length_s": 80.0, "walk_setting_s": 7.0, "lanes_crossed": 2.0,
+            "v_rtor": 30.0, "v_lt_perm": 42.0, "num_rtci": 0.0,
+            "crossed_street_volume_sum": 986.0, "crossed_street_lanes": 2.0, "speed_85_mph": 35.0,
+        }
+        r = json.loads(tl.analyze_signalized_pedestrian(json.dumps(cfg)))
+        assert r["delay"] == pytest.approx(29.8, abs=0.1)
+        assert r["los_score"] == pytest.approx(2.37, abs=0.02)
+        assert r["los"] == "B"
+
+    def test_ep4_two_stage_crossing(self):
+        cfg = {
+            "cycle_length_s": 140.0, "walk_setting_x_s": 5.0, "walk_setting_y_s": 5.0,
+            "first_stage_distance_ft": 56.0, "walk_speed_fps": 3.3,
+            "walk_start_x_s": 78.0, "walk_start_y_s": 112.0,
+        }
+        assert tl.signalized_two_stage_crossing_delay(json.dumps(cfg)) == pytest.approx(78.0, abs=0.5)

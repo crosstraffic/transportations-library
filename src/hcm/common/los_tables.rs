@@ -194,6 +194,60 @@ pub fn los_merge_diverge(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// HCM Edition 7.1 (replacement Chapters 13 and 14)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// The Edition 7.1 density bands shared by Exhibit 13-7 and Exhibit 14-2.
+///
+/// | LOS | Density (pc/mi/ln)        |
+/// |-----|---------------------------|
+/// | A   | 0–11                      |
+/// | B   | >11–18                    |
+/// | C   | >18–25                    |
+/// | D   | >25–30                    |
+/// | E   | >30–35                    |
+/// | F   | >35, or demand > capacity |
+///
+/// The two exhibits print identical bands, value for value, because both chapters now key LOS to
+/// the same 35 pc/mi/ln breakdown density. They are given one implementation and two chapter-named
+/// entry points, so a future change to one exhibit cannot silently drift from the other.
+fn los_v7_1_bands(density_pc_mi_ln: f64, demand_exceeds_capacity: bool) -> LevelOfService {
+    if demand_exceeds_capacity {
+        return LevelOfService::F;
+    }
+    match density_pc_mi_ln {
+        d if d <= 11.0 => LevelOfService::A,
+        d if d <= 18.0 => LevelOfService::B,
+        d if d <= 25.0 => LevelOfService::C,
+        d if d <= 30.0 => LevelOfService::D,
+        d if d <= 35.0 => LevelOfService::E,
+        _ => LevelOfService::F,
+    }
+}
+
+/// HCM Edition 7.1 Exhibit 13-7: LOS Criteria for Weaving Segments.
+///
+/// Not the 7th Edition's Exhibit 13-6: the bands are tighter at every letter, and LOS F now begins
+/// at 35 rather than 43 pc/mi/ln. Edition 7.1 states these criteria for freeway weaving segments
+/// and directs Section 4 to apply them to C-D roads and multilane highways as well, so unlike
+/// [`los_weaving`] there is no separate multilane band set.
+pub fn los_weaving_v7_1(density_pc_mi_ln: f64, demand_exceeds_capacity: bool) -> LevelOfService {
+    los_v7_1_bands(density_pc_mi_ln, demand_exceeds_capacity)
+}
+
+/// HCM Edition 7.1 Exhibit 14-2: LOS Criteria for Freeway Merge and Diverge Segments.
+///
+/// Two changes from the 7th Edition's Exhibit 14-3: the bands are tighter, and density above 35
+/// pc/mi/ln is now LOS F on its own. Under the 7th Edition only insufficient capacity produced
+/// LOS F and any density above 35 read as LOS E.
+pub fn los_merge_diverge_v7_1(
+    density_pc_mi_ln: f64,
+    demand_exceeds_capacity: bool,
+) -> LevelOfService {
+    los_v7_1_bands(density_pc_mi_ln, demand_exceeds_capacity)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Tests
 // ═══════════════════════════════════════════════════════════════════════════════
 

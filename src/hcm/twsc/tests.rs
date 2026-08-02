@@ -59,31 +59,10 @@ fn example_problem_3() -> Twsc {
     };
     let mut twsc = Twsc::new(demand, geometry);
     twsc.heavy_vehicle_pct = 10.0;
-    // The published example's conflicting flows for the Stage II crossing
-    // and left-turn movements follow the HCM 6th Edition equation forms
-    // (see the VERIFY-HCM note in twsc.rs); override to match Chapter 32.
-    twsc.conflicting_flow_overrides = vec![
-        ConflictingFlowOverride {
-            movement: "8".into(),
-            stage: "stage2".into(),
-            value: 532.0,
-        },
-        ConflictingFlowOverride {
-            movement: "11".into(),
-            stage: "stage1".into(),
-            value: 482.0,
-        },
-        ConflictingFlowOverride {
-            movement: "7".into(),
-            stage: "stage2".into(),
-            value: 337.0,
-        },
-        ConflictingFlowOverride {
-            movement: "10".into(),
-            stage: "stage2".into(),
-            value: 257.0,
-        },
-    ];
+    // No conflicting-flow overrides. The published Example Problem 3 values
+    // reproduce natively under the December 2022 corrections (Equations
+    // 20-14/20-15 with Exhibit 20-16, and the Exhibit 20-14 movement 8
+    // Stage II / movement 11 Stage I swap); see the comment in twsc.rs.
     twsc
 }
 
@@ -220,9 +199,15 @@ fn test_ep3_step3_conflicting_flows() {
     assert!(approx(m(Mv::M10).conflicting_flow.unwrap(), 739.0, 0.01));
 }
 
-/// Default (7th Edition Exhibit 20-14/20-16) conflicting-flow factors
-/// without overrides: v_c,II,8 = 482 (0.5 x v_6), v_c,I,11 = 532
-/// (1.0 x v_6), v_c,II,7 = 332, v_c,II,10 = 216 veh/h.
+/// Conflicting-flow factors with no overrides applied.
+///
+/// All four two-stage movements now match the published Example Problem 3 values without help.
+/// The December 2022 corrections to Exhibit 20-16 replaced the major-street right-turn term in
+/// the left turns' Stage II with the opposing minor-street through movement (before that, this
+/// test pinned v_c,II,7 = 332 and v_c,II,10 = 216, neither of which the book ever printed), and
+/// the corrections' Exhibit 20-14 swap of the movement 8 Stage II / movement 11 Stage I entries
+/// for conflicting movement 6 resolved the crossing movements the same way (before it, the
+/// defaults gave v_c,II,8 = 482 and v_c,I,11 = 532, the published values transposed).
 #[test]
 fn test_ep3_step3_default_exhibit_factors() {
     let mut t = example_problem_3();
@@ -230,14 +215,16 @@ fn test_ep3_step3_default_exhibit_factors() {
     t.step1_2_demand_flow_rates();
     t.step3_conflicting_flows();
     let m = |mv: Mv| &t.movements[mv.idx()];
-    // Exhibit 20-14: movement 8 Stage II factor on v6 is 0.5 (shared lane)
-    assert!(approx(m(Mv::M8).conflicting_flow_stage2.unwrap(), 482.0, 0.01));
-    // Exhibit 20-14: movement 11 Stage I factor on v6 is 1 (not channelized)
-    assert!(approx(m(Mv::M11).conflicting_flow_stage1.unwrap(), 532.0, 0.01));
-    // Exhibit 20-16: movement 7 Stage II = 2(66) + 0.5(300) + 0.5(100) = 332
-    assert!(approx(m(Mv::M7).conflicting_flow_stage2.unwrap(), 332.0, 0.01));
-    // Exhibit 20-16: movement 10 Stage II = 2(33) + 0.5(250) + 0.5(50) = 216
-    assert!(approx(m(Mv::M10).conflicting_flow_stage2.unwrap(), 216.0, 0.01));
+    // Corrected Exhibit 20-14: movement 8 Stage II factor on v6 is 1 (not channelized),
+    // reproducing the published 532 veh/h.
+    assert!(approx(m(Mv::M8).conflicting_flow_stage2.unwrap(), 532.0, 0.01));
+    // Corrected Exhibit 20-14: movement 11 Stage I factor on v6 is 0.5 (shared lane),
+    // reproducing the published 482 veh/h.
+    assert!(approx(m(Mv::M11).conflicting_flow_stage1.unwrap(), 482.0, 0.01));
+    // Corrected Exhibit 20-16: v_c,II,7 uses 0.5 v_11, reproducing the published 337 veh/h.
+    assert!(approx(m(Mv::M7).conflicting_flow_stage2.unwrap(), 337.0, 0.01));
+    // Corrected Exhibit 20-16: v_c,II,10 uses 0.5 v_8, reproducing the published 257 veh/h.
+    assert!(approx(m(Mv::M10).conflicting_flow_stage2.unwrap(), 257.0, 0.01));
 }
 
 /// Step 4 for Example Problem 3: two-lane major street adjustments

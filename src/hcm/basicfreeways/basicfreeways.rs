@@ -16,6 +16,75 @@ pub const EXPONENT_MULTILANE: f64 = 1.31;
 /// Breakpoint for multilane highway segments (constant) - Exhibit 12-6
 pub const BREAKPOINT_MULTILANE: f64 = 1400.0;
 
+/// Maximum basic-freeway capacity, reached at FFS >= 70 mi/h - Exhibit 12-4 (pc/h/ln).
+pub const MAX_CAPACITY_BASIC_FREEWAY: f64 = 2400.0;
+
+/// Maximum multilane-highway capacity, reached at FFS = 60 mi/h - Exhibit 12-4 (pc/h/ln).
+pub const MAX_CAPACITY_MULTILANE: f64 = 2300.0;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Equivalent-basic-segment primitives
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Chapters 13 and 14 evaluate an "equivalent basic segment" - the same lanes, demand, and
+// free-flow speed, without the ramp or weaving turbulence - and subtract a speed impedance from
+// it. These free functions are that shared surface. `BasicFreewaySegments` delegates to them, so
+// there is one definition of each Exhibit 12-6 parameter rather than one per calling chapter.
+
+/// Exhibit 12-6 basic-freeway breakpoint: `BP_adj = [1,000 + 40 (75 - FFS_adj)] CAF^2` (pc/h/ln).
+pub fn basic_segment_breakpoint(ffs_adj: f64, caf: f64) -> f64 {
+    (1000.0 + 40.0 * (75.0 - ffs_adj)) * caf.powi(2)
+}
+
+/// Equation 12-6 basic-freeway base capacity `c = 2,200 + 10 (FFS - 50)`, capped at the Exhibit
+/// 12-4 maximum (pc/h/ln). Multiply by CAF for the adjusted capacity (Equation 12-8).
+///
+/// **Takes the unadjusted free-flow speed, not FFS_adj.** The December 2022 corrections to the
+/// 7th Edition changed Equations 12-6 and 12-7 from FFS_adj to FFS and added the sentence "It is
+/// important to note that FFS used in the adjusted capacity computation is the original and
+/// unadjusted free-flow speed (FFS)." The speed adjustment factor reaches capacity only through
+/// CAF, never through the speed the capacity is computed from.
+///
+/// The asymmetry with [`basic_segment_breakpoint`] is deliberate and is the whole trap: the
+/// breakpoint *does* use FFS_adj. Passing FFS_adj here is invisible whenever SAF = 1.0, which is
+/// every published example problem, and wrong wherever SAF varies (weather and incident
+/// scenarios, work zones, ATDM).
+pub fn basic_segment_capacity(ffs: f64) -> f64 {
+    (2200.0 + 10.0 * (ffs - 50.0)).min(MAX_CAPACITY_BASIC_FREEWAY)
+}
+
+/// Equation 12-1 speed-flow relationship for a basic segment (mi/h).
+///
+/// ```text
+/// S = FFS_adj                                                              v_p <= BP_adj
+/// S = FFS_adj - (FFS_adj - c_adj/D_c) ((v_p - BP_adj)/(c_adj - BP_adj))^a  BP_adj < v_p <= c_adj
+/// ```
+///
+/// Returns 0.0 when demand exceeds the adjusted capacity, which the speed-flow curve does not
+/// cover; callers test that condition separately rather than reading a speed of zero as slow
+/// traffic.
+pub fn basic_segment_speed(
+    v_p: f64,
+    ffs_adj: f64,
+    capacity_adj: f64,
+    breakpoint: f64,
+    exponent: f64,
+) -> f64 {
+    let speed_at_capacity = capacity_adj / DENSITY_AT_CAPACITY;
+    if v_p <= breakpoint {
+        ffs_adj
+    } else if v_p <= capacity_adj {
+        let denominator = capacity_adj - breakpoint;
+        if denominator > 0.0 {
+            ffs_adj - (ffs_adj - speed_at_capacity) * ((v_p - breakpoint) / denominator).powf(exponent)
+        } else {
+            speed_at_capacity
+        }
+    } else {
+        0.0
+    }
+}
+
 /// Default base free-flow speed for basic freeway segments - Step 2
 ///
 /// "The predictive algorithm for FFS therefore starts with a value greater than 75 mi/h,
@@ -625,7 +694,7 @@ impl BasicFreeways {
     /// - Multilane highway: BP = 1,400 (constant)
     pub fn calculate_breakpoint(&mut self) -> f64 {
         if self.highway_type == "basic" {
-            self.breakpoint = (1000.0 + 40.0 * (75.0 - self.ffs_adj)) * self.caf.powi(2);
+            self.breakpoint = basic_segment_breakpoint(self.ffs_adj, self.caf);
         } else {
             self.breakpoint = BREAKPOINT_MULTILANE;
         }
@@ -652,26 +721,15 @@ impl BasicFreeways {
             EXPONENT_MULTILANE
         };
 
-        // Speed at capacity = c_adj / D_c
-        let speed_at_capacity = self.capacity_adj / DENSITY_AT_CAPACITY;
-
-        if self.v_p <= self.breakpoint {
-            // Constant speed range
-            self.speed = self.ffs_adj;
-        } else if self.v_p <= self.capacity_adj {
-            // Decreasing speed range (parabolic relationship)
-            let numerator = self.v_p - self.breakpoint;
-            let denominator = self.capacity_adj - self.breakpoint;
-            if denominator > 0.0 {
-                self.speed = self.ffs_adj - (self.ffs_adj - speed_at_capacity)
-                    * (numerator / denominator).powf(exponent);
-            } else {
-                self.speed = speed_at_capacity;
-            }
-        } else {
-            // Demand exceeds capacity - LOS F
-            self.speed = 0.0;  // Indicates breakdown
-        }
+        // Demand above the adjusted capacity returns 0.0, indicating breakdown rather than a
+        // speed on the curve.
+        self.speed = basic_segment_speed(
+            self.v_p,
+            self.ffs_adj,
+            self.capacity_adj,
+            self.breakpoint,
+            exponent,
+        );
 
         self.speed
     }
@@ -712,19 +770,15 @@ impl BasicFreeways {
 
         // Equation 12-6 for basic freeway: c = 2200 + 10 × (FFS - 50)
         // Equation 12-7 for multilane highway: c = 1900 + 20 × (FFS - 45)
+        // Capacity cannot exceed the Exhibit 12-4 maximum: 2,400 pc/h/ln for a basic freeway
+        // (at FFS >= 70 mi/h), 2,300 pc/h/ln for a multilane highway (at FFS = 60 mi/h).
+        // Equations 12-6 and 12-7 read the unadjusted FFS, per the December 2022 corrections;
+        // SAF reaches capacity only through CAF in `estimate_adjusted_capacity`.
         self.capacity = match self.highway_type.as_str() {
-            "basic" => 2200.0 + 10.0 * (self.ffs_adj - 50.0),
-            "multilane" => 1900.0 + 20.0 * (self.ffs_adj - 45.0),
+            "basic" => basic_segment_capacity(self.ffs),
+            "multilane" => (1900.0 + 20.0 * (self.ffs - 45.0)).min(MAX_CAPACITY_MULTILANE),
             _ => 2000.0,
         };
-
-        // Capacity cannot exceed maximum from Exhibit 12-4
-        // Basic freeway: max 2,400 pc/h/ln (at FFS >= 70 mi/h)
-        // Multilane highway: max 2,300 pc/h/ln (at FFS = 60 mi/h)
-        let max_capacity = if self.highway_type == "basic" { 2400.0 } else { 2300.0 };
-        if self.capacity > max_capacity {
-            self.capacity = max_capacity;
-        }
 
         // Calculate adjusted capacity
         let _ = self.estimate_adjusted_capacity();
@@ -1105,5 +1159,45 @@ fn msf_domain_error(
             "FFS {ffs} mi/h (rounded to the nearest 5) is outside the {ffs_min}-{ffs_max} mi/h range \
              tabulated in Exhibit {exhibit} for {segment} segments at LOS {los:?}"
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Equation 12-6 reads the unadjusted FFS, so a speed adjustment factor must not move the
+    /// base capacity; it reaches capacity only through CAF. No published example problem
+    /// exercises this, because they all set SAF = 1.0, which is exactly why it needs a test.
+    #[test]
+    fn speed_adjustment_factor_does_not_move_base_capacity() {
+        let build = |saf: f64| {
+            let mut seg = BasicFreeways::new();
+            seg.highway_type = "basic".to_string();
+            seg.ffs = 65.0;
+            seg.saf = saf;
+            seg.caf = 1.0;
+            seg.ffs_adj = seg.ffs * seg.saf;
+            let _ = seg.estimate_capacity();
+            seg
+        };
+
+        let unadjusted = build(1.0);
+        let slowed = build(0.90);
+
+        assert!(
+            (unadjusted.capacity - slowed.capacity).abs() < 1e-9,
+            "SAF moved base capacity: {} vs {}",
+            unadjusted.capacity,
+            slowed.capacity
+        );
+        // 2,200 + 10(65 - 50), from the unadjusted 65 mi/h rather than the adjusted 58.5.
+        assert!((slowed.capacity - 2350.0).abs() < 1e-9, "c {}", slowed.capacity);
+
+        // The breakpoint is the deliberate asymmetry: it does follow FFS_adj.
+        assert!(
+            basic_segment_breakpoint(65.0, 1.0) != basic_segment_breakpoint(65.0 * 0.90, 1.0),
+            "breakpoint should follow FFS_adj"
+        );
     }
 }

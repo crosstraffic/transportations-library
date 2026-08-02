@@ -1,7 +1,10 @@
 //! Python bindings for HCM Chapter 14 (Freeway Merge and Diverge Segments).
 
+use crate::hcm::common::HcmVersion;
 use crate::hcm::merge_diverge::merge_diverge::{
-    AdjacentRampType, RampLanes, RampSegment as LibRampSegment, RampSide, RampType, TerrainType,
+    ramp_service_flow_rate_ideal as lib_ramp_sfi, ramp_service_volumes as lib_ramp_sv,
+    AdjacentRampType, RampLanes, RampSegment as LibRampSegment, RampSide, RampType,
+    ServiceDemandBasis, TerrainType,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -44,6 +47,7 @@ impl RampSegment {
     ///     adjacent_upstream / adjacent_downstream: "none", "on_ramp", "off_ramp"
     ///     upstream_distance / downstream_distance: ramp spacing, ft
     ///     upstream_ramp_flow / downstream_ramp_flow: adjacent demand, veh/h
+    ///     version: HCM edition, "7" (default) or "7.1"
     ///     caf, saf: capacity/speed adjustment factors
     #[new]
     #[pyo3(signature = (
@@ -53,7 +57,8 @@ impl RampSegment {
         freeway_demand=None, ramp_demand=None, phf=None, heavy_vehicle_pct=None,
         ramp_heavy_vehicle_pct=None, terrain=None, adjacent_upstream=None,
         upstream_distance=None, upstream_ramp_flow=None, adjacent_downstream=None,
-        downstream_distance=None, downstream_ramp_flow=None, caf=None, saf=None
+        downstream_distance=None, downstream_ramp_flow=None, caf=None, saf=None,
+        version=None
     ))]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -81,6 +86,7 @@ impl RampSegment {
         downstream_ramp_flow: Option<f64>,
         caf: Option<f64>,
         saf: Option<f64>,
+        version: Option<String>,
     ) -> PyResult<Self> {
         let mut inner = LibRampSegment::new();
 
@@ -183,6 +189,9 @@ impl RampSegment {
         if let Some(v) = saf {
             inner.saf = v;
         }
+        if let Some(v) = version {
+            inner.version = v.parse::<HcmVersion>().map_err(PyValueError::new_err)?;
+        }
 
         Ok(RampSegment { inner })
     }
@@ -211,10 +220,15 @@ impl RampSegment {
         self.inner.determine_density()
     }
 
-    /// Level of service letter - Exhibit 14-3.
-    pub fn determine_los(&mut self) -> String {
-        let los: char = self.inner.determine_los().into();
-        los.to_string()
+    /// Level of service letter - Exhibit 14-3 (7th Edition) or Exhibit 14-2 (Edition 7.1).
+    ///
+    /// Returns None for a major merge under capacity, where the 7th Edition defines no level of
+    /// service and only the capacity checks apply.
+    pub fn determine_los(&mut self) -> Option<String> {
+        self.inner.determine_los().map(|los| {
+            let c: char = los.into();
+            c.to_string()
+        })
     }
 
     /// Step 5: speeds (S_R, S_O or None, S) in mi/h
@@ -223,10 +237,39 @@ impl RampSegment {
         self.inner.estimate_speed()
     }
 
-    /// Run the full Chapter 14 analysis (Steps 1-5); returns the LOS letter.
-    pub fn run_analysis(&mut self) -> String {
-        let los: char = self.inner.run_analysis().into();
-        los.to_string()
+    /// Run the full Chapter 14 analysis for the junction's selected HCM edition; returns the LOS
+    /// letter, or None for a major merge under capacity, where the 7th Edition defines no level of
+    /// service and only the capacity checks apply. Edition 7.1 always returns a letter, because
+    /// Exhibit 14-2 extends its criteria to major merges and diverges. Under version "7" this is the 7th Edition Steps 1-5; under "7.1" it is the Edition
+    /// 7.1 methodology, whose full result is available from `analysis_v7_1`.
+    pub fn run_analysis(&mut self) -> Option<String> {
+        self.inner.run_analysis().map(|los| {
+            let c: char = los.into();
+            c.to_string()
+        })
+    }
+
+    /// The HCM edition this junction is analyzed under, as "7" or "7.1".
+    #[getter]
+    pub fn version(&self) -> String {
+        self.inner.version.to_string()
+    }
+
+    #[setter]
+    pub fn set_version(&mut self, version: &str) -> PyResult<()> {
+        self.inner.version = version.parse::<HcmVersion>().map_err(PyValueError::new_err)?;
+        Ok(())
+    }
+
+    /// The full Edition 7.1 result as a JSON string, or None if this junction was not analyzed
+    /// under Edition 7.1.
+    pub fn analysis_v7_1(&self) -> PyResult<Option<String>> {
+        match &self.inner.analysis_v7_1 {
+            None => Ok(None),
+            Some(a) => serde_json::to_string(a)
+                .map(Some)
+                .map_err(|e| PyValueError::new_err(format!("serialize error: {e}"))),
+        }
     }
 
     // ── Getters ─────────────────────────────────────────────────────────
@@ -321,7 +364,61 @@ impl RampSegment {
     }
 }
 
+/// Service flow rate under ideal conditions (pc/h) at a target ramp-influence
+/// density - HCM Chapter 28, Example Problem 5.
+///
+/// Provide exactly one of:
+///   - `ramp_fraction`: ramp demand as a fraction of freeway demand; the
+///     returned SFI is the approaching freeway flow v_F (Case 1).
+///   - `fixed_freeway_vf`: fixed approaching freeway flow (pc/h, ideal); the
+///     returned SFI is the ramp flow v_R (Case 2).
+///
+/// Args:
+///     segment: a RampSegment holding the fixed geometry.
+///     target_density: LOS threshold density (pc/mi/ln); 10/20/28/35 for A-D.
+///     ramp_fraction: Case 1 basis (mutually exclusive with fixed_freeway_vf).
+///     fixed_freeway_vf: Case 2 basis (mutually exclusive with ramp_fraction).
+///
+/// Returns:
+///     The SFI (pc/h), or None if that LOS is unachievable (the minimum density
+///     already exceeds the target).
+#[pyfunction]
+#[pyo3(
+    name = "ramp_service_flow_rate_ideal",
+    signature = (segment, target_density, ramp_fraction=None, fixed_freeway_vf=None)
+)]
+pub fn py_ramp_service_flow_rate_ideal(
+    segment: &RampSegment,
+    target_density: f64,
+    ramp_fraction: Option<f64>,
+    fixed_freeway_vf: Option<f64>,
+) -> PyResult<Option<f64>> {
+    let basis = match (ramp_fraction, fixed_freeway_vf) {
+        (Some(f), None) => ServiceDemandBasis::ApproachingFreeway { ramp_fraction: f },
+        (None, Some(vf)) => ServiceDemandBasis::FixedFreeway { v_f: vf },
+        _ => {
+            return Err(PyValueError::new_err(
+                "provide exactly one of ramp_fraction (Case 1) or fixed_freeway_vf (Case 2)",
+            ))
+        }
+    };
+    Ok(lib_ramp_sfi(&segment.inner, &basis, target_density))
+}
+
+/// Convert an ideal-conditions service flow rate (pc/h) to a prevailing-
+/// condition service flow rate and service volume - HCM Chapter 28, EP 5.
+///
+/// Returns:
+///     (sf, sv) in veh/h, where SF = SFI x f_HV x f_p and SV = SF x PHF.
+#[pyfunction]
+#[pyo3(name = "ramp_service_volumes")]
+pub fn py_ramp_service_volumes(sfi: f64, f_hv: f64, f_p: f64, phf: f64) -> (f64, f64) {
+    lib_ramp_sv(sfi, f_hv, f_p, phf)
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<RampSegment>()?;
+    m.add_function(wrap_pyfunction!(py_ramp_service_flow_rate_ideal, m)?)?;
+    m.add_function(wrap_pyfunction!(py_ramp_service_volumes, m)?)?;
     Ok(())
 }

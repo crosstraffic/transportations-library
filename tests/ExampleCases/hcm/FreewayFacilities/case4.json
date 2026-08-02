@@ -1,0 +1,150 @@
+{
+  "_comment": "HCM 7th Edition, Chapter 25, Example Problem 4: Undersaturated Facility with a Work Zone (Exhibits 25-69 through 25-77). Example Problem 1 geometry and demand, with a long-term single-lane-closure work zone on Segment 11 (3 lanes -> 2 open). Work-zone CAF_wz=0.892, SAF_wz=0.982 (Eqs 10-7 to 10-12). The work zone activates a Segment-11 bottleneck; the facility operates oversaturated (all periods LOS F).",
+  "segments": [
+    {
+      "seg_type": "Basic",
+      "length_ft": 5280.0,
+      "lanes": 3
+    },
+    {
+      "seg_type": "Merge",
+      "length_ft": 1500.0,
+      "lanes": 3,
+      "ramp_ffs": 40.0,
+      "accel_lane_ft": 500.0,
+      "on_ramp_demand": [
+        450.0,
+        540.0,
+        630.0,
+        360.0,
+        180.0
+      ]
+    },
+    {
+      "seg_type": "Basic",
+      "length_ft": 2280.0,
+      "lanes": 3
+    },
+    {
+      "seg_type": "Diverge",
+      "length_ft": 1500.0,
+      "lanes": 3,
+      "ramp_ffs": 40.0,
+      "decel_lane_ft": 500.0,
+      "off_ramp_demand": [
+        270.0,
+        360.0,
+        270.0,
+        270.0,
+        270.0
+      ]
+    },
+    {
+      "seg_type": "Basic",
+      "length_ft": 5280.0,
+      "lanes": 3
+    },
+    {
+      "seg_type": "Weaving",
+      "length_ft": 2640.0,
+      "lanes": 4,
+      "ramp_ffs": 40.0,
+      "short_length_ft": 1640.0,
+      "num_weaving_lanes": 2,
+      "lc_rf": 1,
+      "lc_fr": 1,
+      "on_ramp_demand": [
+        540.0,
+        720.0,
+        810.0,
+        360.0,
+        270.0
+      ],
+      "off_ramp_demand": [
+        360.0,
+        360.0,
+        360.0,
+        360.0,
+        180.0
+      ],
+      "ramp_to_ramp_demand": [
+        50.0,
+        100.0,
+        150.0,
+        80.0,
+        50.0
+      ]
+    },
+    {
+      "seg_type": "Basic",
+      "length_ft": 5280.0,
+      "lanes": 3
+    },
+    {
+      "seg_type": "Merge",
+      "length_ft": 1140.0,
+      "lanes": 3,
+      "ramp_ffs": 40.0,
+      "accel_lane_ft": 500.0,
+      "on_ramp_demand": [
+        450.0,
+        540.0,
+        630.0,
+        450.0,
+        270.0
+      ]
+    },
+    {
+      "seg_type": "OverlappingRamp",
+      "length_ft": 360.0,
+      "lanes": 3
+    },
+    {
+      "seg_type": "Diverge",
+      "length_ft": 1140.0,
+      "lanes": 3,
+      "ramp_ffs": 40.0,
+      "decel_lane_ft": 500.0,
+      "off_ramp_demand": [
+        270.0,
+        270.0,
+        450.0,
+        270.0,
+        180.0
+      ]
+    },
+    {
+      "seg_type": "Basic",
+      "length_ft": 5280.0,
+      "lanes": 2,
+      "work_zone": {
+        "total_lanes": 3,
+        "open_lanes": 2,
+        "soft_barrier": true,
+        "rural": false,
+        "lateral_distance_ft": 0.0,
+        "night": false,
+        "speed_ratio": 1.0909090909090908,
+        "speed_limit_mi_h": 55.0,
+        "total_ramp_density": 1.0,
+        "queue_discharge_drop": 0.131
+      }
+    }
+  ],
+  "mainline_demand": [
+    4505.0,
+    4955.0,
+    5225.0,
+    4685.0,
+    3785.0
+  ],
+  "ffs": 60.0,
+  "heavy_vehicle_pct": 0.0225,
+  "terrain": "Level",
+  "city_type": "Urban",
+  "phf": 1.0,
+  "jam_density_pc": 190.0,
+  "queue_discharge_drop": 0.07,
+  "total_ramp_density": 1.0,
+  "interchange_density": 0.8
+}

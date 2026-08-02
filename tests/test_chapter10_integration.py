@@ -87,3 +87,55 @@ class TestFreewayFacilitiesExampleProblem1:
         clone = tl.FreewayFacility(text)
         assert clone.num_segments == 11
         assert repr(facility).startswith("FreewayFacility(")
+
+
+CASE3 = Path(__file__).parent / "ExampleCases" / "hcm" / "FreewayFacilities" / "case3.json"
+CASE4 = Path(__file__).parent / "ExampleCases" / "hcm" / "FreewayFacilities" / "case4.json"
+
+
+class TestFreewayFacilitiesExampleProblem3:
+    """HCM Chapter 25, Example Problem 3: capacity improvements (Exhibit 25-68)."""
+
+    def test_restores_undersaturated(self):
+        fac = tl.FreewayFacility(CASE3.read_text())
+        fac.run_analysis()
+        assert not fac.oversaturated
+        # Peak analysis period 3 demand-to-capacity ratios, all below 1.0.
+        dc = fac.dc_ratio()
+        expected_p3 = [0.86, 0.96, 0.96, 0.96, 0.92, 0.85, 0.74, 0.82, 0.82, 0.82, 0.77]
+        for i, e in enumerate(expected_p3):
+            assert dc[i][2] == pytest.approx(e, abs=0.02)
+
+    def test_facility_performance(self):
+        fac = tl.FreewayFacility(CASE3.read_text())
+        fac.run_analysis()
+        expected = [(57.9, "D"), (57.1, "D"), (55.9, "D"), (57.8, "D"), (58.6, "C")]
+        for p, (speed, los) in enumerate(expected):
+            # SMS carries the small speed-aggregation gap shared with EP2 (+-0.7).
+            assert fac.facility_speed(p) == pytest.approx(speed, abs=0.7)
+            assert fac.facility_los(p) == los
+
+
+class TestFreewayFacilitiesExampleProblem4:
+    """HCM Chapter 25, Example Problem 4: work zone (Exhibit 25-77)."""
+
+    def test_work_zone_drives_oversaturation(self):
+        fac = tl.FreewayFacility(CASE4.read_text())
+        fac.run_analysis()
+        assert fac.oversaturated
+        # The work zone puts every analysis period at LOS F.
+        for p in range(5):
+            assert fac.facility_los(p) == "F"
+
+    def test_facility_speed_per_period(self):
+        fac = tl.FreewayFacility(CASE4.read_text())
+        fac.run_analysis()
+        # Per-period space mean speed reproduces within 0.6 mi/h, except the period 5
+        # queue-recovery cell. Correcting Equation 12-6 to read the unadjusted FFS (December 2022
+        # corrections) raises the work zone segment's capacity by 0.5%, which compounds over five
+        # periods of queueing into 0.6 mi/h here. Reasoning and the full before/after comparison
+        # are in the Rust integration test; keep the two in step.
+        expected = [39.2, 21.8, 11.5, 11.3, 13.7]
+        for p, s in enumerate(expected):
+            tol = 1.2 if p == 4 else 0.6
+            assert fac.facility_speed(p) == pytest.approx(s, abs=tol)

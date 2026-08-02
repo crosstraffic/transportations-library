@@ -173,7 +173,8 @@ fn test_twsc_example_problem_4_upstream_signals() {
     twsc.analyze();
     let m = |mv: Mv| twsc.movements[mv.idx()].clone();
 
-    // Step 3 conflicting flows (movements 7 and 10 via override).
+    // Step 3 conflicting flows (no overrides; movements 7 and 10 reproduce
+    // natively under the corrected Equations 20-14/20-15).
     assert_close(m(Mv::M1).conflicting_flow.unwrap(), 1086.0, 1.0, "v_c,1");
     assert_close(m(Mv::M4).conflicting_flow.unwrap(), 1076.0, 1.0, "v_c,4");
     assert_close(m(Mv::M9).conflicting_flow.unwrap(), 538.0, 1.0, "v_c,9");

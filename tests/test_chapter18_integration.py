@@ -63,3 +63,58 @@ class TestUrbanSegmentExampleProblem1:
         result = json.loads(segment.to_json())
         assert result["los"] == "C"
         assert result["travel_speed_mph"] == pytest.approx(23.67, abs=0.5)
+
+
+class TestUrbanSegmentMultimodalLOS:
+    """HCM Chapter 30 Example Problems 2-4: pedestrian, bicycle, transit LOS
+    through the PyO3 JSON analysis functions."""
+
+    def test_ep2_pedestrian_los(self):
+        cfg = {
+            "length_ft": 1320.0, "num_through_lanes": 2.0, "midseg_flow_rate": 940.0,
+            "ped_flow_rate": 2000.0, "prop_parking_occupied": 0.20,
+            "width_sidewalk_ft": 10.0, "width_buffer_ft": 5.0, "prop_fence": 0.50,
+            "width_outside_lane_ft": 12.0, "width_bike_lane_ft": 5.0,
+            "width_parking_lane_ft": 9.5, "curb_present": True,
+            "motor_running_speed": 33.0, "free_flow_walk_speed": 4.4,
+            "ped_delay_parallel": 40.0, "ped_delay_crossing_signal": 80.0,
+            "ped_delay_crossing_uncontrolled": 740.0, "ped_los_score_intersection": 3.60,
+            "prop_midblock_crossing": 0.35,
+        }
+        r = json.loads(tl.analyze_pedestrian_segment(json.dumps(cfg)))
+        assert r["link_score"] == pytest.approx(2.35, abs=0.02)
+        assert r["pedestrian_space"] == pytest.approx(32.0, abs=0.3)
+        assert r["segment_score"] == pytest.approx(3.62, abs=0.03)
+        assert r["segment_los"] == "D"
+
+    def test_ep3_bicycle_los(self):
+        cfg = {
+            "length_ft": 1320.0, "num_through_lanes": 2.0, "midseg_flow_rate": 940.0,
+            "pct_heavy_vehicles": 8.0, "prop_parking_occupied": 0.20,
+            "width_outside_lane_ft": 12.0, "width_bike_lane_ft": 5.0,
+            "width_parking_lane_ft": 9.5, "curb_present": True,
+            "num_access_points_right": 3.0, "pavement_condition": 2.0,
+            "motor_running_speed": 33.0, "bicycle_running_speed": 15.0,
+            "bicycle_control_delay": 40.0, "bicycle_los_score_intersection": 0.08,
+        }
+        r = json.loads(tl.analyze_bicycle_segment(json.dumps(cfg)))
+        assert r["link_score"] == pytest.approx(3.62, abs=0.02)
+        assert r["link_los"] == "D"
+        assert r["segment_score"] == pytest.approx(2.88, abs=0.02)
+        assert r["segment_los"] == "C"
+
+    def test_ep4_transit_los(self):
+        cfg = {
+            "length_ft": 1320.0, "num_transit_stops": 1.0, "motor_running_speed": 33.0,
+            "dwell_time_s": 20.0, "transit_frequency": 4.0, "g_c_ratio": 0.4729,
+            "near_side_signalized_stop": True, "reentry_delay_s": 16.17,
+            "through_delay_s": 19.4, "passenger_load_factor": 0.83,
+            "prop_stops_bench": 1.0, "passenger_trip_length": 3.7,
+            "on_time_performance": 0.92, "base_travel_time_rate": 4.0,
+            "ped_los_score_link": 3.53,
+        }
+        r = json.loads(tl.analyze_transit_segment(json.dumps(cfg)))
+        assert r["travel_speed"] == pytest.approx(11.3, abs=0.1)
+        assert r["wait_ride_score"] == pytest.approx(2.47, abs=0.02)
+        assert r["segment_score"] == pytest.approx(2.83, abs=0.03)
+        assert r["segment_los"] == "C"

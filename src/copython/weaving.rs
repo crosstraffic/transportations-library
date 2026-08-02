@@ -1,7 +1,10 @@
 //! Python bindings for HCM Chapter 13 (Freeway Weaving Segments).
 
+use crate::hcm::common::HcmVersion;
 use crate::hcm::weaving::weaving::{
-    FacilityType, TerrainType, WeavingSegment as LibWeavingSegment, WeavingType,
+    cross_weave_gp_capacity as lib_cross_weave_gp_capacity, service_flow_rate_ideal as lib_sfi,
+    service_volumes as lib_service_volumes, DemandSplit, FacilityType, TerrainType,
+    WeavingSegment as LibWeavingSegment, WeavingType,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -31,13 +34,19 @@ impl WeavingSegment {
     ///     interchange_density: ID, int/mi
     ///     basic_freeway_capacity: c_IFL, pc/h/ln
     ///     caf, saf: capacity/speed adjustment factors
+    ///     version: HCM edition, "7" (default) or "7.1". Edition 7.1 replaced this chapter with a
+    ///         different methodology, so the two editions give different speeds, capacities, and
+    ///         LOS letters for the same segment.
+    ///     nw_rf, nw_fr, nw_rr: number of lanes from which each weaving maneuver may be made with
+    ///         the minimum number of lane changes. Edition 7.1 only.
     #[new]
     #[pyo3(signature = (
         weaving_type=None, facility_type=None, length_short=None, num_lanes=None,
         num_weaving_lanes=None, ffs=None, v_ff=None, v_fr=None, v_rf=None,
         v_rr=None, phf=None, heavy_vehicle_pct=None, terrain=None, lc_rf=None,
         lc_fr=None, lc_rr=None, interchange_density=None,
-        basic_freeway_capacity=None, caf=None, saf=None
+        basic_freeway_capacity=None, caf=None, saf=None, version=None,
+        nw_rf=None, nw_fr=None, nw_rr=None
     ))]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -61,6 +70,10 @@ impl WeavingSegment {
         basic_freeway_capacity: Option<f64>,
         caf: Option<f64>,
         saf: Option<f64>,
+        version: Option<String>,
+        nw_rf: Option<u32>,
+        nw_fr: Option<u32>,
+        nw_rr: Option<u32>,
     ) -> PyResult<Self> {
         let mut inner = LibWeavingSegment::new();
 
@@ -145,6 +158,18 @@ impl WeavingSegment {
         if let Some(v) = saf {
             inner.saf = v;
         }
+        if let Some(v) = version {
+            inner.version = v.parse::<HcmVersion>().map_err(PyValueError::new_err)?;
+        }
+        if let Some(v) = nw_rf {
+            inner.nw_rf = v;
+        }
+        if let Some(v) = nw_fr {
+            inner.nw_fr = v;
+        }
+        if let Some(v) = nw_rr {
+            inner.nw_rr = v;
+        }
 
         Ok(WeavingSegment { inner })
     }
@@ -193,10 +218,36 @@ impl WeavingSegment {
         los.to_string()
     }
 
-    /// Run the full Chapter 13 analysis (Steps 2-8); returns the LOS letter.
+    /// Run the full Chapter 13 analysis for the segment's selected HCM edition; returns the LOS
+    /// letter. Under version "7" this is the 7th Edition Steps 2-8; under "7.1" it is the Edition
+    /// 7.1 methodology, whose full result is available from `analysis_v7_1`.
     pub fn run_analysis(&mut self) -> String {
         let los: char = self.inner.run_analysis().into();
         los.to_string()
+    }
+
+    /// The HCM edition this segment is analyzed under, as "7" or "7.1".
+    #[getter]
+    pub fn version(&self) -> String {
+        self.inner.version.to_string()
+    }
+
+    #[setter]
+    pub fn set_version(&mut self, version: &str) -> PyResult<()> {
+        self.inner.version = version.parse::<HcmVersion>().map_err(PyValueError::new_err)?;
+        Ok(())
+    }
+
+    /// The full Edition 7.1 result as a JSON string, or None if this segment was not analyzed
+    /// under Edition 7.1. Carries the quantities the 7th Edition does not compute: the equivalent
+    /// basic segment, the speed impedance, and the per-lane capacity C_W in pc/h/ln.
+    pub fn analysis_v7_1(&self) -> PyResult<Option<String>> {
+        match &self.inner.analysis_v7_1 {
+            None => Ok(None),
+            Some(a) => serde_json::to_string(a)
+                .map(Some)
+                .map_err(|e| PyValueError::new_err(format!("serialize error: {e}"))),
+        }
     }
 
     // ── Getters ─────────────────────────────────────────────────────────
@@ -291,7 +342,79 @@ impl WeavingSegment {
     }
 }
 
+/// Cross-weave capacity effect on the general purpose lanes near an ML access
+/// segment - HCM Equations 13-24 and 13-25.
+///
+/// Args:
+///     cw: cross-weave demand flow rate (pc/h), must be > 0.
+///     l_cw_min: cross-weave length L_cw-min (ft).
+///     n_gp: number of general purpose lanes.
+///     c_gp: unadjusted GP-lane capacity from Chapter 12 (veh/h).
+///
+/// Returns:
+///     (crf, caf, c_gpa) - capacity reduction factor, capacity adjustment
+///     factor, and adjusted GP-lane capacity (veh/h).
+///
+/// Raises:
+///     ValueError: if `cw` is not positive (the model takes its natural log).
+#[pyfunction]
+#[pyo3(name = "cross_weave_gp_capacity")]
+pub fn py_cross_weave_gp_capacity(
+    cw: f64,
+    l_cw_min: f64,
+    n_gp: u32,
+    c_gp: f64,
+) -> PyResult<(f64, f64, f64)> {
+    match lib_cross_weave_gp_capacity(cw, l_cw_min, n_gp, c_gp) {
+        Some(e) => Ok((e.crf, e.caf, e.c_gpa)),
+        None => Err(PyValueError::new_err(
+            "cross-weave demand flow rate (cw) must be > 0",
+        )),
+    }
+}
+
+/// Service flow rate under ideal conditions SFI (pc/h) for a target LOS density
+/// - HCM Chapter 27, Example Problem 5.
+///
+/// Args:
+///     segment: a WeavingSegment holding the fixed geometry.
+///     split: (ff, rf, fr, rr) demand fractions of the total flow, summing to 1.
+///     target_density: LOS threshold density (pc/mi/ln); 10/20/28/35 for A-D.
+///
+/// Returns:
+///     SFI (pc/h) - the largest ideal total flow rate held to that density.
+#[pyfunction]
+#[pyo3(name = "service_flow_rate_ideal")]
+pub fn py_service_flow_rate_ideal(
+    segment: &WeavingSegment,
+    split: (f64, f64, f64, f64),
+    target_density: f64,
+) -> f64 {
+    let (ff, rf, fr, rr) = split;
+    lib_sfi(
+        &segment.inner,
+        &DemandSplit { ff, rf, fr, rr },
+        target_density,
+    )
+}
+
+/// Convert an ideal-conditions service flow rate into prevailing service flow
+/// rate, service volume, and daily service volume - HCM Chapter 27, EP 5.
+///
+/// Returns:
+///     (sfi, sf, sv, dsv) where SF = SFI x f_HV, SV = SF x PHF,
+///     DSV = SV / (K x D).
+#[pyfunction]
+#[pyo3(name = "service_volumes")]
+pub fn py_service_volumes(sfi: f64, f_hv: f64, phf: f64, k: f64, d: f64) -> (f64, f64, f64, f64) {
+    let s = lib_service_volumes(sfi, f_hv, phf, k, d);
+    (s.sfi, s.sf, s.sv, s.dsv)
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<WeavingSegment>()?;
+    m.add_function(wrap_pyfunction!(py_cross_weave_gp_capacity, m)?)?;
+    m.add_function(wrap_pyfunction!(py_service_flow_rate_ideal, m)?)?;
+    m.add_function(wrap_pyfunction!(py_service_volumes, m)?)?;
     Ok(())
 }

@@ -7,7 +7,8 @@
 //! 13-22), and density/LOS (Eq. 13-23, Exhibit 13-6).
 
 use serde::{Deserialize, Serialize};
-use crate::hcm::common::LevelOfService;
+use crate::hcm::common::{HcmVersion, LevelOfService};
+use super::v7_1::WeavingAnalysis;
 
 // =============================================================================
 // Constants
@@ -110,6 +111,10 @@ pub fn determine_weaving_los(
 #[serde(default)]
 pub struct WeavingSegment {
     // ── Inputs ──────────────────────────────────────────────────────────
+    /// Which HCM edition to analyze this segment under. Edition 7.1 replaced Chapter 13 with a
+    /// different methodology, so this selects between two sets of results rather than refining
+    /// one. Defaults to the 7th Edition.
+    pub version: HcmVersion,
     /// Type of weaving segment (one-sided or two-sided)
     pub weaving_type: WeavingType,
     /// Facility type for LOS criteria (freeway or multilane/C-D)
@@ -142,6 +147,15 @@ pub struct WeavingSegment {
     pub lc_fr: u32,
     /// Minimum lane changes for one ramp-to-ramp vehicle LC_RR (two-sided), lc
     pub lc_rr: u32,
+    /// Number of lanes from which a ramp-to-freeway weaving maneuver may be made with the minimum
+    /// number of lane changes NW_RF, ln. Edition 7.1 only (Chapter 13, Exhibit 13-5).
+    pub nw_rf: u32,
+    /// Number of lanes from which a freeway-to-ramp weaving maneuver may be made with the minimum
+    /// number of lane changes NW_FR, ln. Edition 7.1 only.
+    pub nw_fr: u32,
+    /// Number of lanes from which a ramp-to-ramp weaving maneuver may be made with the minimum
+    /// number of lane changes NW_RR, ln. Edition 7.1, two-sided segments only (Exhibit 13-6).
+    pub nw_rr: u32,
     /// Interchange density ID, int/mi
     pub interchange_density: f64,
     /// Capacity per lane of a basic freeway segment with the same FFS c_IFL, pc/h/ln
@@ -196,13 +210,20 @@ pub struct WeavingSegment {
     pub density: Option<f64>,
     /// Whether demand exceeds capacity (v/c > 1.0)
     pub demand_exceeds_capacity: Option<bool>,
-    /// Level of service - Exhibit 13-6
+    /// Level of service - Exhibit 13-6 (7th Edition) or Exhibit 13-7 (Edition 7.1)
     pub los: Option<LevelOfService>,
+    /// Full Edition 7.1 result, populated only when the segment's version is
+    /// [`HcmVersion::V7_1`]. The quantities Edition 7.1 computes and the 7th Edition does not -
+    /// the equivalent basic segment, the speed impedance, and the per-lane capacity C_W - live
+    /// here rather than in the shared fields above, so no field carries different units depending
+    /// on which edition produced it.
+    pub analysis_v7_1: Option<WeavingAnalysis>,
 }
 
 impl Default for WeavingSegment {
     fn default() -> Self {
         Self {
+            version: HcmVersion::V7,
             weaving_type: WeavingType::OneSided,
             facility_type: FacilityType::Freeway,
             length_short: 1500.0,
@@ -219,6 +240,9 @@ impl Default for WeavingSegment {
             lc_rf: 1,
             lc_fr: 1,
             lc_rr: 0,
+            nw_rf: 1,
+            nw_fr: 1,
+            nw_rr: 0,
             interchange_density: 0.8,
             basic_freeway_capacity: 2400.0,
             caf: 1.0,
@@ -246,6 +270,7 @@ impl Default for WeavingSegment {
             density: None,
             demand_exceeds_capacity: None,
             los: None,
+            analysis_v7_1: None,
         }
     }
 }
@@ -334,7 +359,10 @@ impl WeavingSegment {
     }
 
     /// Heavy vehicle adjustment factor f_HV using PCEs from Exhibit 12-25.
-    fn calculate_fhv(&self) -> f64 {
+    ///
+    /// Shared by both editions: Edition 7.1 changed the weaving methodology, not the Chapter 12
+    /// heavy-vehicle treatment it draws on.
+    pub(crate) fn calculate_fhv(&self) -> f64 {
         let e_t = match self.terrain {
             TerrainType::Level => 2.0,    // Exhibit 12-25
             TerrainType::Rolling => 3.0,  // Exhibit 12-25
@@ -569,8 +597,18 @@ impl WeavingSegment {
         los
     }
 
-    /// Run the full HCM Chapter 13 analysis (Steps 2-8) and return the LOS.
+    /// Run the full Chapter 13 analysis for the segment's selected HCM edition and return the LOS.
+    ///
+    /// Under [`HcmVersion::V7`] this runs the 7th Edition Steps 2 through 8. Under
+    /// [`HcmVersion::V7_1`] it runs the Edition 7.1 methodology
+    /// ([`WeavingSegment::analyze_v7_1`]) and copies its results into the shared output fields.
+    /// The two editions populate different subsets of those fields, because they compute different
+    /// quantities: Edition 7.1 has no separate weaving and nonweaving speeds and no lane-changing
+    /// rates, and reports capacity per lane in pc/h/ln rather than a whole-segment veh/h value.
     pub fn run_analysis(&mut self) -> LevelOfService {
+        if self.version == HcmVersion::V7_1 {
+            return self.run_analysis_v7_1();
+        }
         self.determine_demand_flow();
         self.determine_configuration_characteristics();
         self.determine_max_weaving_length();
@@ -580,6 +618,165 @@ impl WeavingSegment {
         self.determine_density();
         self.determine_los()
     }
+}
+
+// =============================================================================
+// Managed-lane access segments: cross-weave capacity effect (Eqs. 13-24/13-25)
+// =============================================================================
+
+/// Effect of cross-weaving traffic on the capacity of the general purpose (GP)
+/// lanes adjacent to a managed-lane (ML) access segment - HCM Equations 13-24
+/// and 13-25.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct CrossWeaveEffect {
+    /// Capacity reduction factor CRF (decimal) - Equation 13-24.
+    pub crf: f64,
+    /// Capacity adjustment factor CAF = 1 - CRF (decimal) - Equation 13-24.
+    pub caf: f64,
+    /// Adjusted GP-lane capacity c_GPA = c_GP x CAF (veh/h) - Equation 13-25.
+    pub c_gpa: f64,
+}
+
+/// Cross-weave capacity effect on the general purpose lanes adjacent to an ML
+/// access segment - HCM Chapter 13, Equations 13-24 and 13-25 (developed under
+/// NCHRP Project 03-96).
+///
+/// ```text
+/// CRF   = -0.0897 + 0.0252 ln(CW) - 0.00001453 L_cw_min + 0.002967 N_GP
+/// CAF   = 1 - CRF
+/// c_GPA = c_GP x CAF
+/// ```
+///
+/// Arguments:
+/// - `cw`: cross-weave demand flow rate (pc/h). Must be > 0 (the model takes
+///   its natural logarithm); returns `None` otherwise.
+/// - `l_cw_min`: cross-weave length L_cw-min (ft).
+/// - `n_gp`: number of general purpose lanes.
+/// - `c_gp`: unadjusted GP-lane capacity from Chapter 12 (veh/h).
+///
+/// The HCM states no numeric bounds on the regression. For a small `cw` the raw
+/// CRF can fall at or below zero (implying CAF >= 1); the value is returned
+/// unclamped so callers see the model's actual output, and results outside the
+/// NCHRP 03-96 calibration range should be treated with caution.
+pub fn cross_weave_gp_capacity(
+    cw: f64,
+    l_cw_min: f64,
+    n_gp: u32,
+    c_gp: f64,
+) -> Option<CrossWeaveEffect> {
+    if cw <= 0.0 {
+        return None;
+    }
+    let crf = -0.0897 + 0.0252 * cw.ln() - 0.00001453 * l_cw_min + 0.002967 * (n_gp as f64);
+    let caf = 1.0 - crf;
+    Some(CrossWeaveEffect {
+        crf,
+        caf,
+        c_gpa: c_gp * caf,
+    })
+}
+
+// =============================================================================
+// Service flow rates and service volumes (HCM Chapter 27, Example Problem 5)
+// =============================================================================
+
+/// Demand split of a weaving segment as fractions of the total flow rate v.
+/// The four fractions are expected to sum to 1.0.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct DemandSplit {
+    /// Freeway-to-freeway fraction of v.
+    pub ff: f64,
+    /// Ramp-to-freeway fraction of v.
+    pub rf: f64,
+    /// Freeway-to-ramp fraction of v.
+    pub fr: f64,
+    /// Ramp-to-ramp fraction of v.
+    pub rr: f64,
+}
+
+/// Service flow rates and volumes for one (LOS, geometry) cell - HCM Chapter 27,
+/// Example Problem 5.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ServiceVolumes {
+    /// Service flow rate under ideal conditions SFI (pc/h).
+    pub sfi: f64,
+    /// Service flow rate under prevailing conditions SF = SFI x f_HV (veh/h).
+    pub sf: f64,
+    /// Service volume SV = SF x PHF (veh/h).
+    pub sv: f64,
+    /// Daily service volume DSV = SV / (K x D) (veh/day).
+    pub dsv: f64,
+}
+
+/// Service flow rate under ideal conditions SFI (pc/h) for a target LOS density
+/// - HCM Chapter 27, Example Problem 5.
+///
+/// Holds the segment's geometry (`template`) fixed and searches for the total
+/// ideal flow rate v, apportioned by `split`, whose resulting weaving density
+/// equals `target_density`. The search is done under equivalent ideal
+/// conditions (PHF = 1, no heavy vehicles, CAF = SAF = 1), consistent with the
+/// definition of SFI. Density rises monotonically with v below breakdown, so a
+/// bisection converges. This is the SFI for LOS A through D (density thresholds
+/// of 10/20/28/35 pc/mi/ln); the SFI at LOS E is the segment capacity, obtained
+/// from [`WeavingSegment::determine_capacity`] instead.
+pub fn service_flow_rate_ideal(
+    template: &WeavingSegment,
+    split: &DemandSplit,
+    target_density: f64,
+) -> f64 {
+    // Density of an ideal-conditions probe carrying total flow v.
+    let density_at = |v: f64| -> f64 {
+        let mut seg = template.clone();
+        seg.phf = 1.0;
+        seg.heavy_vehicle_pct = 0.0;
+        seg.caf = 1.0;
+        seg.saf = 1.0;
+        seg.v_ff = split.ff * v;
+        seg.v_rf = split.rf * v;
+        seg.v_fr = split.fr * v;
+        seg.v_rr = split.rr * v;
+        seg.run_analysis();
+        seg.get_density()
+    };
+
+    // Bracket the target, then bisect. `hi` grows until its density overshoots.
+    let mut lo = 0.0_f64;
+    let mut hi = 1000.0_f64;
+    let mut guard = 0;
+    while density_at(hi) < target_density && guard < 60 {
+        lo = hi;
+        hi *= 2.0;
+        guard += 1;
+    }
+    // 40 bisection steps take the bracket well below 1 pc/h wide.
+    for _ in 0..40 {
+        let mid = 0.5 * (lo + hi);
+        if density_at(mid) < target_density {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    0.5 * (lo + hi)
+}
+
+/// Convert a service flow rate under ideal conditions (SFI, pc/h) into the
+/// prevailing-condition service flow rate, service volume, and daily service
+/// volume - HCM Chapter 27, Example Problem 5.
+///
+/// - `f_hv`: heavy-vehicle adjustment factor (SF = SFI x f_HV).
+/// - `phf`: peak hour factor (SV = SF x PHF).
+/// - `k`: K-factor, proportion of AADT in the analysis hour.
+/// - `d`: D-factor, directional proportion (DSV = SV / (K x D)).
+pub fn service_volumes(sfi: f64, f_hv: f64, phf: f64, k: f64, d: f64) -> ServiceVolumes {
+    let sf = sfi * f_hv;
+    let sv = sf * phf;
+    let dsv = if k > 0.0 && d > 0.0 {
+        sv / (k * d)
+    } else {
+        f64::INFINITY
+    };
+    ServiceVolumes { sfi, sf, sv, dsv }
 }
 
 // =============================================================================
@@ -734,5 +931,46 @@ mod tests {
         assert!(seg.get_density() > 0.0);
         // Two-sided segments have no weaving-flow capacity limit
         assert!(seg.capacity_weaving.is_none());
+    }
+
+    #[test]
+    fn test_cross_weave_gp_capacity() {
+        // HCM Chapter 27, Example Problem 6: CW = 400, L_cw-min = 1,000, N_GP = 3.
+        let e = cross_weave_gp_capacity(400.0, 1000.0, 3, 7050.0).unwrap();
+        assert!((e.crf - 0.056).abs() < 0.001);
+        assert!((e.caf - (1.0 - e.crf)).abs() < 1e-12);
+
+        // Example Problem 7: CW = 100, L_cw-min = 1,500, N_GP = 2, c_GP = 4,800.
+        let e = cross_weave_gp_capacity(100.0, 1500.0, 2, 4800.0).unwrap();
+        assert!((e.crf - 0.0105).abs() < 0.0005);
+        assert!((e.c_gpa - 4750.0).abs() < 5.0);
+
+        // ln(CW) is undefined at or below zero demand.
+        assert!(cross_weave_gp_capacity(0.0, 1000.0, 2, 4800.0).is_none());
+    }
+
+    #[test]
+    fn test_service_flow_rate_monotone() {
+        let template = WeavingSegment {
+            num_lanes: 3,
+            num_weaving_lanes: 2,
+            ffs: 65.0,
+            interchange_density: 1.0,
+            lc_rf: 0,
+            lc_fr: 2,
+            length_short: 1500.0,
+            basic_freeway_capacity: 2350.0,
+            ..Default::default()
+        };
+        let split = DemandSplit { ff: 0.65, rf: 0.15, fr: 0.12, rr: 0.08 };
+        // Higher LOS thresholds admit strictly more flow.
+        let sfi_a = service_flow_rate_ideal(&template, &split, 10.0);
+        let sfi_c = service_flow_rate_ideal(&template, &split, 28.0);
+        assert!(sfi_c > sfi_a);
+        // The chain is a straight product; verify the arithmetic.
+        let sv = service_volumes(sfi_c, 0.952, 0.93, 0.08, 0.55);
+        assert!((sv.sf - sfi_c * 0.952).abs() < 1e-9);
+        assert!((sv.sv - sv.sf * 0.93).abs() < 1e-9);
+        assert!((sv.dsv - sv.sv / (0.08 * 0.55)).abs() < 1e-6);
     }
 }

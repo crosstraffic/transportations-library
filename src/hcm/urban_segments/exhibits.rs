@@ -9,6 +9,38 @@
 use crate::hcm::common::LevelOfService;
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Exhibits 18-2 / 18-3: LOS from a LOS score (pedestrian, bicycle, transit)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Segment LOS from a segment LOS score - Exhibits 18-2 and 18-3. The
+/// segment-based pedestrian, bicycle, and transit score bands are identical:
+/// A <=2.00, B <=2.75, C <=3.50, D <=4.25, E <=5.00, F >5.00.
+pub fn segment_los_from_score(score: f64) -> LevelOfService {
+    match score {
+        s if s <= 2.00 => LevelOfService::A,
+        s if s <= 2.75 => LevelOfService::B,
+        s if s <= 3.50 => LevelOfService::C,
+        s if s <= 4.25 => LevelOfService::D,
+        s if s <= 5.00 => LevelOfService::E,
+        _ => LevelOfService::F,
+    }
+}
+
+/// Link LOS from a link LOS score - Exhibits 18-2 and 18-3. The link-based
+/// pedestrian and bicycle score bands are identical:
+/// A <=1.50, B <=2.50, C <=3.50, D <=4.50, E <=5.50, F >5.50.
+pub fn link_los_from_score(score: f64) -> LevelOfService {
+    match score {
+        s if s <= 1.50 => LevelOfService::A,
+        s if s <= 2.50 => LevelOfService::B,
+        s if s <= 3.50 => LevelOfService::C,
+        s if s <= 4.50 => LevelOfService::D,
+        s if s <= 5.50 => LevelOfService::E,
+        _ => LevelOfService::F,
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Exhibit 18-1: LOS Criteria: Motorized Vehicle Mode
 // ═══════════════════════════════════════════════════════════════════════════════
 

@@ -1,4 +1,6 @@
+use crate::hcm::common::HcmVersion;
 use crate::hcm::constraints;
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 /// Get all parameter constraints as a JSON string.
@@ -64,7 +66,33 @@ fn validate_input(
     )
 }
 
+/// The HCM editions this library implements, oldest first, as the labels the manual itself uses.
+///
+/// Use these to build a version picker. Every calculation defaults to "7"; only Chapters 13, 14,
+/// 27, and 28 differ under "7.1", so selecting it elsewhere changes nothing.
+#[pyfunction]
+pub fn hcm_versions() -> Vec<String> {
+    HcmVersion::ALL.iter().map(|v| v.to_string()).collect()
+}
+
+/// The newest HCM edition this library implements.
+#[pyfunction]
+pub fn hcm_latest_version() -> String {
+    HcmVersion::LATEST.to_string()
+}
+
+/// Whether the given HCM edition changed the methodology of the given chapter, relative to the
+/// 7th Edition. Returns false for every chapter under version "7".
+#[pyfunction]
+pub fn hcm_version_changes_chapter(version: &str, chapter: u8) -> PyResult<bool> {
+    let v: HcmVersion = version.parse().map_err(PyValueError::new_err)?;
+    Ok(v.changes_chapter(chapter))
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(hcm_versions, m)?)?;
+    m.add_function(wrap_pyfunction!(hcm_latest_version, m)?)?;
+    m.add_function(wrap_pyfunction!(hcm_version_changes_chapter, m)?)?;
     m.add_function(wrap_pyfunction!(get_constraints, m)?)?;
     m.add_function(wrap_pyfunction!(validate_input, m)?)?;
     Ok(())

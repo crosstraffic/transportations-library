@@ -17,7 +17,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::hcm::urban_segments::exhibits::exhibit_18_1_los;
+use crate::hcm::urban_segments::exhibits::{exhibit_18_1_los, segment_los_from_score};
+use crate::hcm::urban_segments::pedestrian::pedestrian_space_los;
 use crate::hcm::urban_segments::urban_segments::{traveler_perception_score, UrbanSegment};
 use crate::hcm::common::LevelOfService;
 
@@ -87,6 +88,106 @@ fn length_weighted_harmonic_mean(segments: &[(f64, f64)]) -> f64 {
         return 0.0;
     }
     total_length / total_time
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Multimodal facility aggregation (pedestrian, bicycle, transit)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// HCM Equation 16-5: pedestrian space for the facility,
+/// `A_p,F = Σ L_i / Σ (L_i / A_p,i)` (ft^2/p) — the length-weighted harmonic
+/// mean of the segment pedestrian spaces.
+///
+/// * `segments` — `(L_i, A_p,i)` pairs: segment length (ft) and segment
+///   average pedestrian space (ft^2/p)
+pub fn facility_pedestrian_space(segments: &[(f64, f64)]) -> f64 {
+    length_weighted_harmonic_mean(segments)
+}
+
+/// HCM Equation 16-6: pedestrian travel speed for the facility,
+/// `S_Tp,F = Σ L_i / Σ (L_i / S_Tp,seg,i)` (ft/s).
+///
+/// * `segments` — `(L_i, S_Tp,seg,i)` pairs: segment length (ft) and segment
+///   pedestrian travel speed (ft/s)
+pub fn facility_pedestrian_travel_speed(segments: &[(f64, f64)]) -> f64 {
+    length_weighted_harmonic_mean(segments)
+}
+
+/// HCM Equation 16-9: bicycle travel speed for the facility,
+/// `S_Tb,F = Σ L_i / Σ (L_i / S_Tb,seg,i)` (mi/h).
+pub fn facility_bicycle_travel_speed(segments: &[(f64, f64)]) -> f64 {
+    length_weighted_harmonic_mean(segments)
+}
+
+/// HCM Equation 16-12: transit travel speed for the facility,
+/// `S_Tt,F = Σ L_i / Σ (L_i / S_Tt,seg,i)` (mi/h).
+pub fn facility_transit_travel_speed(segments: &[(f64, f64)]) -> f64 {
+    length_weighted_harmonic_mean(segments)
+}
+
+/// HCM Equations 16-7/16-8 (pedestrian) and 16-10/16-11 (bicycle): the
+/// facility LOS score as a travel-time-weighted generalized mean of the
+/// segment LOS scores:
+///
+/// ```text
+/// WTT_i = (L_i / S_seg,i) × ((I_seg,i − 0.125) / 0.75)^3
+/// I_F   = 0.75 × [ Σ WTT_i / Σ (L_i / S_seg,i) ]^(1/3) + 0.125
+/// ```
+///
+/// The denominator `Σ (L_i / S_seg,i)` is the total facility travel time for
+/// the mode. This form (unlike the transit score) preserves the cube-root
+/// weighting used by the segment score equations.
+///
+/// * `segments` — `(L_i, S_seg,i, I_seg,i)` triples: segment length (ft),
+///   the segment travel speed for the mode, and the segment LOS score
+pub fn facility_weighted_los_score(segments: &[(f64, f64, f64)]) -> f64 {
+    let total_time: f64 = segments
+        .iter()
+        .map(|(l, s, _)| if *s > 0.0 { l / s } else { 0.0 })
+        .sum();
+    if total_time <= 0.0 {
+        return 0.0;
+    }
+    let weighted: f64 = segments
+        .iter()
+        .map(|(l, s, i)| {
+            let t = if *s > 0.0 { l / s } else { 0.0 };
+            let inner = (i - 0.125) / 0.75;
+            t * inner.powi(3)
+        })
+        .sum();
+    0.75 * (weighted / total_time).cbrt() + 0.125
+}
+
+/// HCM Equation 16-13: transit LOS score for the facility,
+/// `I_t,F = Σ (I_t,seg,i L_i) / Σ L_i` — the length-weighted arithmetic mean
+/// of the segment transit LOS scores.
+///
+/// * `segments` — `(L_i, I_t,seg,i)` pairs: segment length (ft) and segment
+///   transit LOS score
+pub fn facility_transit_los_score(segments: &[(f64, f64)]) -> f64 {
+    let total_length: f64 = segments.iter().map(|(l, _)| l).sum();
+    if total_length <= 0.0 {
+        return 0.0;
+    }
+    segments.iter().map(|(l, i)| l * i).sum::<f64>() / total_length
+}
+
+/// Facility pedestrian LOS - Exhibit 16-4 (identical bands to Exhibit 18-2):
+/// the worse of the score-based LOS and the average-pedestrian-space LOS.
+pub fn facility_pedestrian_los(score: f64, space: f64) -> LevelOfService {
+    segment_los_from_score(score).max(pedestrian_space_los(space))
+}
+
+/// Facility bicycle LOS - Exhibit 16-5 (identical bands to Exhibit 18-3),
+/// from the segment-based bicycle LOS score.
+pub fn facility_bicycle_los(score: f64) -> LevelOfService {
+    segment_los_from_score(score)
+}
+
+/// Facility transit LOS - Exhibit 16-5, from the transit LOS score.
+pub fn facility_transit_los(score: f64) -> LevelOfService {
+    segment_los_from_score(score)
 }
 
 /// HCM Exhibit 16-3: LOS Criteria: Motorized Vehicle Mode.
