@@ -25,10 +25,7 @@
   "phf": null,
   "analysis_period_h": 0.25,
   "heavy_vehicle_pct": 1.0,
-  "conflicting_flow_overrides": [
-    { "movement": "7", "stage": "total", "value": 1827.0 },
-    { "movement": "10", "stage": "total", "value": 1832.0 }
-  ],
+  "conflicting_flow_overrides": [],
   "platoon_blockage": {
     "pb1": 0.170,
     "pb4": 0.170,

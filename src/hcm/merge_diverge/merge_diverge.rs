@@ -11,7 +11,8 @@
 //! (Eq. 14-28).
 
 use serde::{Deserialize, Serialize};
-use crate::hcm::common::LevelOfService;
+use crate::hcm::common::{HcmVersion, LevelOfService};
+use super::v7_1::RampAnalysis;
 
 // =============================================================================
 // Constants
@@ -232,6 +233,10 @@ pub fn left_hand_adjustment(freeway_lanes: u32, is_on_ramp: bool) -> f64 {
 #[serde(default)]
 pub struct RampSegment {
     // ── Inputs ──────────────────────────────────────────────────────────
+    /// Which HCM edition to analyze this junction under. Edition 7.1 replaced Chapter 14 with a
+    /// different methodology, so this selects between two sets of results rather than refining
+    /// one. Defaults to the 7th Edition.
+    pub version: HcmVersion,
     /// Type of ramp junction
     pub ramp_type: RampType,
     /// Side of the freeway (right or left)
@@ -317,13 +322,19 @@ pub struct RampSegment {
     pub speed_avg: Option<f64>,
     /// Aggregate density across all lanes, pc/mi/ln - Equation 14-24
     pub density_all_lanes: Option<f64>,
-    /// Level of service - Exhibit 14-3
+    /// Level of service - Exhibit 14-3 (7th Edition) or Exhibit 14-2 (Edition 7.1)
     pub los: Option<LevelOfService>,
+    /// Full Edition 7.1 result, populated only when the segment's version is
+    /// [`HcmVersion::V7_1`]. The quantities Edition 7.1 computes and the 7th Edition does not -
+    /// the equivalent basic segment, the speed impedance, and the per-lane influence-area
+    /// capacity - live here rather than in the shared fields above.
+    pub analysis_v7_1: Option<RampAnalysis>,
 }
 
 impl Default for RampSegment {
     fn default() -> Self {
         Self {
+            version: HcmVersion::V7,
             ramp_type: RampType::OnRamp,
             ramp_side: RampSide::Right,
             ramp_lanes: RampLanes::OneLane,
@@ -365,6 +376,7 @@ impl Default for RampSegment {
             speed_avg: None,
             density_all_lanes: None,
             los: None,
+            analysis_v7_1: None,
         }
     }
 }
@@ -432,13 +444,13 @@ impl RampSegment {
         self.saf = saf;
     }
 
-    fn is_on_ramp(&self) -> bool {
+    pub(crate) fn is_on_ramp(&self) -> bool {
         matches!(self.ramp_type, RampType::OnRamp | RampType::MajorMerge)
     }
 
     /// Heavy vehicle adjustment factor for a given HV proportion (Eq. 12-10),
     /// using PCEs from Exhibit 12-25.
-    fn fhv_for(&self, pct: f64) -> f64 {
+    pub(crate) fn fhv_for(&self, pct: f64) -> f64 {
         let e_t = match self.terrain {
             TerrainType::Level => 2.0,    // Exhibit 12-25
             TerrainType::Rolling => 3.0,  // Exhibit 12-25
@@ -502,6 +514,16 @@ impl RampSegment {
 
     // ── Step 2: Flow in Lanes 1 and 2 ────────────────────────────────────
 
+    /// Clamp a modeled proportion into [0, 1].
+    ///
+    /// The Exhibit 14-8 and 14-9 regressions are unbounded polynomials; outside the conditions
+    /// they were fitted on they can return values that are not proportions at all. Clamping keeps
+    /// a non-physical intermediate from propagating into flows and densities that still look
+    /// plausible.
+    fn clamp_proportion(x: f64) -> f64 {
+        x.clamp(0.0, 1.0)
+    }
+
     /// P_FM selection for one-lane, right-side on-ramps - Exhibit 14-8.
     fn calculate_pfm(&self, v_f: f64, v_r: f64) -> f64 {
         let l_a = self.effective_la();
@@ -564,11 +586,20 @@ impl RampSegment {
                 // 8-lane freeway (Exhibit 14-8):
                 // v_F/S_FR <= 72: P_FM = 0.2178 - 0.000125 v_R + 0.01115 (L_A / S_FR)
                 // v_F/S_FR  > 72: P_FM = 0.2178 - 0.000125 v_R
-                if v_f / self.ramp_ffs <= 72.0 {
+                //
+                // VERIFY-HCM: both forms fall below zero once v_R passes roughly 1,742 pc/h
+                // (0.2178/0.000125), and the second form has no other term to hold it up. A
+                // negative P_FM would put a negative flow in Lanes 1 and 2 and a negative density
+                // downstream. The exhibit states no domain for the regression, so the result is
+                // clamped to a proportion rather than passed through. A clamp here means the
+                // input is outside the range the regression was fitted on; treat the result as
+                // an extrapolation.
+                let pfm = if v_f / self.ramp_ffs <= 72.0 {
                     0.2178 - 0.000125 * v_r + 0.01115 * (l_a / self.ramp_ffs)
                 } else {
                     0.2178 - 0.000125 * v_r
-                }
+                };
+                Self::clamp_proportion(pfm)
             }
         }
     }
@@ -582,7 +613,7 @@ impl RampSegment {
             3 => {
                 // Equation 14-9 (base case):
                 // P_FD = 0.760 - 0.000025 v_F - 0.000046 v_R
-                let pfd_base = 0.760 - 0.000025 * v_f - 0.000046 * v_r;
+                let pfd_base = Self::clamp_proportion(0.760 - 0.000025 * v_f - 0.000046 * v_r);
 
                 let mut candidates: Vec<f64> = Vec::new();
 
@@ -824,20 +855,26 @@ impl RampSegment {
     /// Level of service - Exhibit 14-3. HCM defines no LOS for major merge
     /// areas (capacity checks only): `los` stays `None` unless a capacity
     /// checkpoint fails, in which case LOS F is reported.
-    pub fn determine_los(&mut self) -> LevelOfService {
+    /// Returns `None` for a major merge operating under capacity, where the 7th Edition defines
+    /// no level of service and only the capacity checks apply. Every other case returns a letter.
+    ///
+    /// This previously returned `LevelOfService::E` in the undefined case while setting
+    /// `self.los = None`, so a caller reading the return value got a letter the HCM does not
+    /// sanction while a caller reading the field got the truth. Edition 7.1 closes the hole from
+    /// the other side: Exhibit 14-2 states its criteria "apply to all ramp-freeway junctions and
+    /// may also be applied to major merges and diverges", so the 7.1 path always yields a letter.
+    pub fn determine_los(&mut self) -> Option<LevelOfService> {
         let over = self.demand_exceeds_capacity.unwrap_or(false);
         if self.ramp_type == RampType::MajorMerge && !over {
             self.los = None;
-            // No defined LOS; report E as the most conservative stable letter
-            // is not HCM-sanctioned, so callers should consult `get_los()`.
-            return LevelOfService::E;
+            return None;
         }
         let los = match self.density {
             Some(d) => determine_ramp_los(d, over),
             None => determine_ramp_los(f64::INFINITY, over),
         };
         self.los = Some(los);
-        los
+        Some(los)
     }
 
     // ── Step 5: Speeds ───────────────────────────────────────────────────
@@ -934,7 +971,10 @@ impl RampSegment {
     }
 
     /// Run the full HCM Chapter 14 analysis (Steps 1-5) and return the LOS.
-    pub fn run_analysis(&mut self) -> LevelOfService {
+    pub fn run_analysis(&mut self) -> Option<LevelOfService> {
+        if self.version == HcmVersion::V7_1 {
+            return Some(self.run_analysis_v7_1());
+        }
         self.determine_demand_flow();
         self.estimate_v12();
         self.determine_capacity();
@@ -1148,5 +1188,38 @@ mod tests {
         assert!(seg.get_flow_ramp() > 0.0);
         assert!(seg.get_density() > 0.0);
         assert!(seg.get_speed_ramp() > 0.0);
+    }
+
+    /// The Exhibit 14-8 eight-lane regression goes negative past roughly 1,742 pc/h of ramp
+    /// demand. A negative proportion would put a negative flow in Lanes 1 and 2, so it is clamped.
+    #[test]
+    fn eight_lane_pfm_stays_a_proportion_at_high_ramp_demand() {
+        let mut seg = RampSegment {
+            ramp_type: RampType::OnRamp,
+            ramp_side: RampSide::Right,
+            // One-lane ramp: a two-lane on-ramp routes through the constant
+            // `pfm_two_lane_onramp` and never reaches the clamped regression.
+            ramp_lanes: RampLanes::OneLane,
+            freeway_lanes: 4,
+            freeway_ffs: 70.0,
+            ramp_ffs: 45.0,
+            accel_lane_length: Some(500.0),
+            freeway_demand: 7000.0,
+            ramp_demand: 2400.0,
+            phf: 1.0,
+            heavy_vehicle_pct: 0.0,
+            terrain: TerrainType::Level,
+            ..Default::default()
+        };
+        seg.determine_demand_flow();
+        seg.estimate_v12();
+
+        let p_f = seg.p_f.expect("P_FM computed");
+        assert!(
+            (0.0..=1.0).contains(&p_f),
+            "P_FM {p_f} is not a proportion"
+        );
+        // A non-negative proportion keeps the derived flow non-negative too.
+        assert!(seg.v_12.unwrap() >= 0.0, "v_12 {:?}", seg.v_12);
     }
 }

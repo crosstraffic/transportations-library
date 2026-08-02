@@ -10,6 +10,9 @@ pub mod los_tables;
 pub mod pce_table;
 pub mod reliability;
 pub mod time_period;
+pub mod version;
+
+pub use version::HcmVersion;
 
 use serde::{Deserialize, Serialize};
 

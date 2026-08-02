@@ -130,8 +130,12 @@ class TestFreewayFacilitiesExampleProblem4:
     def test_facility_speed_per_period(self):
         fac = tl.FreewayFacility(CASE4.read_text())
         fac.run_analysis()
-        # Per-period space mean speed reproduces within 0.6 mi/h; the deep-queue
-        # density gap is documented in the Rust integration test.
+        # Per-period space mean speed reproduces within 0.6 mi/h, except the period 5
+        # queue-recovery cell. Correcting Equation 12-6 to read the unadjusted FFS (December 2022
+        # corrections) raises the work zone segment's capacity by 0.5%, which compounds over five
+        # periods of queueing into 0.6 mi/h here. Reasoning and the full before/after comparison
+        # are in the Rust integration test; keep the two in step.
         expected = [39.2, 21.8, 11.5, 11.3, 13.7]
         for p, s in enumerate(expected):
-            assert fac.facility_speed(p) == pytest.approx(s, abs=0.6)
+            tol = 1.2 if p == 4 else 0.6
+            assert fac.facility_speed(p) == pytest.approx(s, abs=tol)

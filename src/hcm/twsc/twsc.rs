@@ -250,6 +250,15 @@ pub enum MajorRightTurnConfig {
     Channelized,
 }
 
+/// Conflicting flow factor applied to the opposing minor-street through movement in the Stage II
+/// conflicting flow of a minor-street left turn - Exhibit 20-16 as corrected December 2022
+/// (`f_c,7,11` and `f_c,10,8`).
+///
+/// The exhibit gives 0 when that movement runs in a STOP- or YIELD-controlled channelized lane and
+/// 0.5 otherwise. Only the 0.5 case is reachable, because [`MinorLaneConfig`] has no channelized
+/// variant.
+pub const MINOR_THROUGH_VS_MINOR_LEFT: f64 = 0.5;
+
 /// Lane allocation on a minor-street approach.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum MinorLaneConfig {
@@ -864,26 +873,30 @@ impl Twsc {
     /// Stage II conflicting flows; the one-stage value is their sum.
     ///
     /// Any [`ConflictingFlowOverride`]s are applied afterwards.
-    // VERIFY-HCM: the Chapter 32 TWSC Example Problem 3 worked values apply
-    // the HCM 6th Edition equation forms for movements 8/11 (v6 or v3 with
-    // factor 1.0 in Stage II/Stage I of the crossing movement instead of the
-    // Exhibit 20-14 shared-lane factor 0.5) and movements 7/10 (one-half of
-    // the *opposing minor-street through* flow in Stage II instead of the
-    // Exhibit 20-16 factor 0.5 on the major-street right turn). This
-    // implementation follows the 7th Edition exhibits; use
-    // `conflicting_flow_overrides` to reproduce the published example.
-    // The same class of discrepancy appears in Example Problem 4: its
-    // published v_c,7 = 1,827 and v_c,10 = 1,832 drop the major-street
-    // right-turn term (0.5 v_6 for movement 7, 0.5 v_3 for movement 10) in
-    // Stage II, where the Exhibit 20-16 factors used here give 1,874 and
-    // 1,879; case3.json overrides the totals to match.
+    // The two-stage movements follow the December 2022 corrections to the 7th Edition, which
+    // amend Chapter 20's Step 3 in two places. First, Equation 20-14 changed from `f_c,7,6 v_6`
+    // to `f_c,7,11 v_11`, Equation 20-15 from `f_c,10,3 v_3` to `f_c,10,8 v_8`, and the matching
+    // Exhibit 20-16 rows: the minor-street left turns' Stage II conflicting movement is the
+    // *opposing minor-street through*, not the major-street right turn. Second, Exhibit 20-14
+    // (page 20-18) swaps the conflicting-movement-6 entries between movement 8 Stage II and
+    // movement 11 Stage I, so f(8,6) is the "channelized 0 / all others 1" form and f(11,6) the
+    // shared-lane 0.5 form. The Chapter 32 worked examples always used the corrected forms,
+    // which is why Example Problems 3 and 4 previously needed `conflicting_flow_overrides` to
+    // reproduce; they no longer do, and the fixtures carry none.
+    //
+    // VERIFY-HCM: the corrected Exhibit 20-16 gives f_c,7,11 = f_c,10,8 = 0 when the conflicting
+    // minor-street movement runs in a STOP- or YIELD-controlled channelized lane, and 0.5
+    // otherwise. `MinorLaneConfig` cannot express a channelized minor-street lane, so only the
+    // 0.5 case is reachable. No published example exercises the 0 case.
     pub fn step3_conflicting_flows(&mut self) {
         let d = &self.demand;
         let (v13, v14, v15, v16) = (d.v13, d.v14, d.v15, d.v16);
         let f = |mv: Mv| self.m(mv).flow_rate;
         let (v1, v1u, v2, v3) = (f(Mv::M1), f(Mv::M1U), f(Mv::M2), f(Mv::M3));
         let (v4, v4u, v5, v6) = (f(Mv::M4), f(Mv::M4U), f(Mv::M5), f(Mv::M6));
+        let v8 = f(Mv::M8);
         let v9 = f(Mv::M9);
+        let v11 = f(Mv::M11);
         let v12 = f(Mv::M12);
         let cfg_eb = self.geometry.major_right_turn_eb;
         let cfg_wb = self.geometry.major_right_turn_wb;
@@ -912,44 +925,39 @@ impl Twsc {
         // v_c,4U = f(4U,2) v2 + f(4U,3) v3 + 0 v9
         let vc4u = self.f_uturn_vs_major_through() * v2 + self.f_uturn_vs_major_right(cfg_eb) * v3;
 
-        // HCM Equations 20-8 and 20-10 (Exhibit 20-14), minor through 8:
+        // HCM Equations 20-8 and 20-10 (corrected Exhibit 20-14), minor through 8:
         // Stage I:  v_c,I,8  = 2 v1 + 2 v1U + v2 + f(8,3) v3 + v15
         // Stage II: v_c,II,8 = 2 v4 + 2 v4U + v5 + f(8,6) v6 + v16
+        // The December 2022 corrections swap the f(8,6) Stage II entry with the f(11,6) Stage I
+        // entry below: f(8,6) is the "channelized 0 / all others 1" form, f(11,6) the
+        // "shared 0.5 / separate right-turn lane 0" form.
         let vc8_s1 = 2.0 * v1 + 2.0 * v1u + v2 + Self::f_shared_half(cfg_eb) * v3 + v15;
-        let vc8_s2 = 2.0 * v4 + 2.0 * v4u + v5 + Self::f_shared_half(cfg_wb) * v6 + v16;
+        let vc8_s2 = 2.0 * v4 + 2.0 * v4u + v5 + Self::f_channelized_zero(cfg_wb) * v6 + v16;
 
-        // HCM Equations 20-9 and 20-11 (Exhibit 20-14), minor through 11:
+        // HCM Equations 20-9 and 20-11 (corrected Exhibit 20-14), minor through 11:
         // Stage I:  v_c,I,11  = 2 v4 + 2 v4U + v5 + f(11,6) v6 + v16
         // Stage II: v_c,II,11 = 2 v1 + 2 v1U + v2 + f(11,3) v3 + v15
-        let vc11_s1 = 2.0 * v4 + 2.0 * v4u + v5 + Self::f_channelized_zero(cfg_wb) * v6 + v16;
+        let vc11_s1 = 2.0 * v4 + 2.0 * v4u + v5 + Self::f_shared_half(cfg_wb) * v6 + v16;
         let vc11_s2 = 2.0 * v1 + 2.0 * v1u + v2 + Self::f_channelized_zero(cfg_eb) * v3 + v15;
 
         // HCM Equations 20-12 and 20-14 (Exhibit 20-16), minor left 7:
         // Stage I:  v_c,I,7  = 2 v1 + 2 v1U + v2 + f(7,3) v3 + v15
-        // Stage II: v_c,II,7 = 2 v4 + 2 v4U + f(7,5) v5 + f(7,6) v6 + v13
+        // Stage II: v_c,II,7 = 2 v4 + 2 v4U + f(7,5) v5 + f(7,11) v11 + v13
         let vc7_s1 = 2.0 * v1 + 2.0 * v1u + v2 + Self::f_shared_half(cfg_eb) * v3 + v15;
         let vc7_s2 = 2.0 * v4
             + 2.0 * v4u
             + self.f_minor_lt_vs_major_through() * v5
-            + (if cfg_wb == MajorRightTurnConfig::Channelized {
-                0.0
-            } else {
-                0.5
-            }) * v6
+            + MINOR_THROUGH_VS_MINOR_LEFT * v11
             + v13;
 
         // HCM Equations 20-13 and 20-15 (Exhibit 20-16), minor left 10:
         // Stage I:  v_c,I,10  = 2 v4 + 2 v4U + v5 + f(10,6) v6 + v16
-        // Stage II: v_c,II,10 = 2 v1 + 2 v1U + f(10,2) v2 + f(10,3) v3 + v14
+        // Stage II: v_c,II,10 = 2 v1 + 2 v1U + f(10,2) v2 + f(10,8) v8 + v14
         let vc10_s1 = 2.0 * v4 + 2.0 * v4u + v5 + Self::f_shared_half(cfg_wb) * v6 + v16;
         let vc10_s2 = 2.0 * v1
             + 2.0 * v1u
             + self.f_minor_lt_vs_major_through() * v2
-            + (if cfg_eb == MajorRightTurnConfig::Channelized {
-                0.0
-            } else {
-                0.5
-            }) * v3
+            + MINOR_THROUGH_VS_MINOR_LEFT * v8
             + v14;
 
         self.m_mut(Mv::M1).conflicting_flow = Some(vc1);

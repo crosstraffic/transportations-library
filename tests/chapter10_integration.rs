@@ -713,9 +713,23 @@ fn ep4_facility_performance_matches_exhibit_25_77() {
     ];
     for (p, (s, k)) in expected.iter().enumerate() {
         let perf = &fac.facility_performance[p];
-        assert_approx(perf.space_mean_speed, *s, 0.6, &format!("facility SMS p{}", p + 1));
-        // Deep-queue density gap (see the doc comment); tolerance +-3.5.
-        assert_approx(perf.avg_density_veh, *k, 3.5, &format!("facility density p{}", p + 1));
+        // Period 5 is the queue-recovery period, where both facility measures are most
+        // sensitive to the discharge capacity. Correcting Equation 12-6 to read the unadjusted
+        // FFS (December 2022 corrections) raises this segment's capacity by 10 pc/h/ln, 0.5%,
+        // because the work zone's SAF_wz of 0.982 no longer suppresses it on top of its CAF_wz.
+        // Over five periods of queueing that compounds: p5 moves from (14.20 mi/h, 90.4
+        // veh/mi/ln) to (14.82, 88.3) against a published (13.7, 93.4), so both measures move
+        // further from the book here. Across the other periods the effect is mixed rather than
+        // systematic (p3 moves closer on both measures, p4 closer on speed, p1-p2 marginally
+        // further), which is consistent with the oversaturated-regime reproduction gap this
+        // problem already carries - its overall facility speed computes 16.5 against a published
+        // 19.5 - rather than with the book having used FFS_adj. The p5 tolerances are widened
+        // deliberately to keep the errata-correct capacity, not to silence a regression; reverting
+        // the Equation 12-6 change would restore the tighter bounds.
+        let (speed_tol, density_tol) = if p == 4 { (1.2, 5.5) } else { (0.6, 3.5) };
+        assert_approx(perf.space_mean_speed, *s, speed_tol, &format!("facility SMS p{}", p + 1));
+        // Deep-queue density gap (see the doc comment).
+        assert_approx(perf.avg_density_veh, *k, density_tol, &format!("facility density p{}", p + 1));
         let got: char = perf.los.into();
         assert_eq!(got, 'F', "facility LOS p{} should be F", p + 1);
     }
