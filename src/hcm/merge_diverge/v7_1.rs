@@ -198,7 +198,10 @@ pub struct RampAnalysis {
     /// Speed impedance SIM or SID (mi/h) - Equations 14-4/14-5.
     pub speed_impedance: f64,
     /// Average speed in the ramp influence area S_M or S_D (mi/h) - Equations 14-2/14-3.
-    pub speed_avg: f64,
+    /// `None` when the impedance consumes the whole basic-segment speed (demand far past
+    /// capacity, where the equation has no physical meaning); density is infinite and LOS
+    /// reads F there.
+    pub speed_avg: Option<f64>,
     /// Ramp influence area capacity C_M or C_D (pc/h/ln) - Equation 14-8.
     pub capacity_per_lane: Option<f64>,
     /// Demand-to-capacity ratio of the ramp influence area.
@@ -293,8 +296,12 @@ impl RampSegment {
                 DIVERGE_IMPEDANCE_COEFFICIENT,
             )
         };
-        // Equations 14-2 / 14-3.
-        let speed_avg = speed_basic - speed_impedance;
+        // Equations 14-2 / 14-3. None rather than a negative "speed" once the impedance
+        // consumes the whole basic-segment speed; consumers read null, not a number below zero.
+        let speed_avg = match speed_basic - speed_impedance {
+            s if s > 0.0 => Some(s),
+            _ => None,
+        };
 
         // Step 3: the three capacity checks.
         let capacity_per_lane = ramp_capacity_per_lane(
@@ -325,10 +332,9 @@ impl RampSegment {
             || flow_ramp > capacity_ramp_roadway;
 
         // Step 4: Equations 14-15 / 14-16.
-        let density = if speed_avg > 0.0 {
-            flow_per_lane / speed_avg
-        } else {
-            f64::INFINITY
+        let density = match speed_avg {
+            Some(s) => flow_per_lane / s,
+            None => f64::INFINITY,
         };
         let los = los_merge_diverge_v7_1(density, demand_exceeds_capacity);
 
@@ -364,8 +370,8 @@ impl RampSegment {
 
         self.flow_freeway = Some(a.flow_freeway);
         self.flow_ramp = Some(a.flow_ramp);
-        self.speed_ramp = Some(a.speed_avg);
-        self.speed_avg = Some(a.speed_avg);
+        self.speed_ramp = a.speed_avg;
+        self.speed_avg = a.speed_avg;
         self.density = Some(a.density);
         self.capacity_ramp = Some(a.capacity_ramp_roadway);
         self.capacity_freeway = Some(a.capacity_neighboring_freeway);
