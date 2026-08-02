@@ -56,6 +56,12 @@ jobs:
 
             - name: Check cross-traffic-middleware against this branch
               run: |
-                git clone --depth 1 https://github.com/crosstraffic/cross-traffic-middleware.git
+                # A breaking change here should ship with a companion middleware branch of the
+                # SAME NAME as this branch; the job checks against it when it exists, so a
+                # coordinated pair proves itself green. Otherwise it checks middleware main.
+                BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+                git clone --depth 1 --branch "$BRANCH" https://github.com/crosstraffic/cross-traffic-middleware.git \
+                  && echo "checked out companion branch $BRANCH" \
+                  || git clone --depth 1 https://github.com/crosstraffic/cross-traffic-middleware.git
                 cd cross-traffic-middleware
                 cargo check
