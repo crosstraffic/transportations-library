@@ -252,9 +252,12 @@ pub fn weaving_capacity_per_lane(
     if denom <= 0.0 {
         return None;
     }
-    // Equation 13-17.
+    // Equation 13-17. A non-positive `a` is off the model's fitted domain (it needs
+    // FFS_adj > C_b,adj/45, which SAF below roughly 0.71 violates); the larger quadratic root
+    // the method wants is `(-b + sqrt)/(2a)` only while `a` is positive, so bail out rather
+    // than return the wrong root.
     let a = WEAVING_BREAKDOWN_DENSITY * (ffs_adj - capacity_basic_adj / 45.0) / denom;
-    if a == 0.0 {
+    if a <= 0.0 {
         return None;
     }
     // Equation 13-18.
@@ -491,6 +494,17 @@ impl WeavingSegment {
 mod tests {
     use super::*;
     use crate::hcm::common::HcmVersion;
+
+    /// Below FFS_adj = C_b,adj/45 the Equation 13-17 leading coefficient goes non-positive and
+    /// the closed-form larger root no longer is `(-b + sqrt)/(2a)`; the solver must refuse
+    /// rather than return the wrong root. FFS 75 with SAF 0.70 sits past that edge.
+    #[test]
+    fn capacity_solver_refuses_offdomain_negative_leading_coefficient() {
+        let ffs_adj = 75.0 * 0.70;
+        let c_b_adj = crate::hcm::basicfreeways::basicfreeways::basic_segment_capacity(75.0);
+        let bp_adj = crate::hcm::basicfreeways::basicfreeways::basic_segment_breakpoint(ffs_adj, 1.0);
+        assert!(weaving_capacity_per_lane(0.4, ffs_adj, c_b_adj, bp_adj).is_none());
+    }
 
     /// Exhibit 27-2: the Example Problem 1 complex weaving segment.
     fn example_problem_1() -> WeavingSegment {
