@@ -19,3 +19,6 @@ test_pdf.py
 
 # Build artifacts (wheels/sdists are produced by CI, never committed)
 /dist/
+
+# Test runner artifacts
+/test-results/
