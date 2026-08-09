@@ -2,6 +2,8 @@
 
 A comprehensive Rust-based library implementing transportation engineering methodologies (e.g. the Highway Capacity Manual (HCM)) with Python bindings.
 
+Transportation engineering knowledge is siloed. The methods live in PDF manuals, agency spreadsheets, and closed desktop tools, and every consumer re-implements them, so the same HCM procedure yields different numbers in different shops with no way to trace which one follows the book. This library is the source-of-truth layer of the CrossTraffic stack. Each methodology is implemented once, with the equation or exhibit it implements cited at the definition, validated against the manual's published example problems, and released under a matched version line so the downstream surfaces (the Python bindings here, the WASM middleware, the MCP server, the web calculator) integrate one canonical computation instead of maintaining diverging copies. Data management concerns that usually stay implicit are handled explicitly. Edition differences are selectable rather than silently mixed, published errata are applied and documented, and the places where the manual is ambiguous or not reproducible from its printed procedure are recorded rather than papered over.
+
 ## What this covers
 
 Highway Capacity Manual 7th Edition computational chapters 10 through 24, with the supplemental
