@@ -1,3 +1,80 @@
+//! HCM Chapter 15 (two-lane highways) tests.
+//!
+//! # Fixture-to-example-problem mapping
+//!
+//! `read_test_files` sorts the `caseN.json` fixtures by name, so the index into
+//! every `ans_*` table below is the fixture number minus one. Each fixture is a
+//! faithful transcription of one published example problem in HCM Chapter 26,
+//! Section 8, and the correspondence is one-to-one:
+//!
+//! | Index | Fixture | Chapter 26 example problem | Input source |
+//! |-------|---------|----------------------------|--------------|
+//! | 0 | `case1.json` | EP1, level straight Passing Constrained segment | The Facts (0.75 mi, 752 veh/h, PHF 0.94, 50 mi/h, 5% HV, 0% grade) |
+//! | 1 | `case2.json` | EP2, Passing Constrained segment with horizontal curves | EP1 inputs plus the 11 subsegments of Exhibit 26-23 |
+//! | 2 | `case3.json` | EP3, facility analysis in level terrain | Exhibit 26-26 |
+//! | 3 | `case4.json` | EP4, facility analysis on a mountain road | Exhibits 26-29 (volumes, segment types) and 26-30 (grades, curves) |
+//!
+//! No fixture in this directory is synthetic. The two non-`caseN` fixtures are
+//! also published: `bicycle_widening.json` is EP5 (two-lane highway bicycle
+//! LOS), exercised separately by `bicycle_los_widening_example_test`, and
+//! `case_study1.json` is the River Falls corridor rather than an HCM example.
+//! Both are excluded from `read_test_files` by shape.
+//!
+//! Input transcription was checked against the exhibits and conserves: the
+//! case2 subsegment lengths sum to the 3,960-ft segment (Exhibit 26-23), the
+//! case3 segment lengths sum to the 5.5-mi facility (Exhibit 26-26), and each
+//! case4 segment's subsegment lengths sum to its own length, totalling the
+//! 5.1-mi facility (Exhibit 26-30).
+//!
+//! # Which expected values are published, and which are not
+//!
+//! Not every number in the `ans_*` tables has a published counterpart, because
+//! the example problems report different measures. Read them as follows.
+//!
+//! * Average speed (`ans_s`): case1 seg 1 = 53.7 and case2 seg 1 = 49.5 are the
+//!   published EP1 and EP2 results, the latter being the length-weighted
+//!   average over Exhibit 26-25. The case4 row reproduces the "Adjusted S" row
+//!   of Exhibit 26-34 exactly (47.9 / 43.9 / 50.8 / 49.2 / 56.0 / 58.3). EP3
+//!   publishes no per-segment speed table, so the case3 row is engine output.
+//! * Follower density (`ans_fd`): this test computes the UNADJUSTED per-segment
+//!   density, before the Step 9 passing-lane adjustment. For case4 that is the
+//!   FD row of Exhibit 26-35, which the fixture matches on five of six
+//!   segments; segment 6 expects 16.4 against a published 16.5. For case1,
+//!   10.1 is the published EP1 result. EP2 stops at average speed and EP3
+//!   publishes only adjusted densities, so case2's 10.9 and case3's segments
+//!   2-5 have no published counterpart.
+//! * Adjusted follower density (`ans_fd_adj`): case3 segments 4 and 5 (8.2 and
+//!   8.8) and case4 segment 6 (13.2) match Exhibits 26-27 and 26-36 exactly.
+//!   case3 segment 3 expects 8.3 against a published 8.2. The passing-lane
+//!   entries (case3 index 1, case4 index 4) are not comparable to the exhibits:
+//!   the book reports the passing-lane midpoint density there (2.9 and 6.2),
+//!   whereas this test calls `determine_adjustment_to_follower_density` on
+//!   every segment uniformly.
+//! * Segment LOS (`ans_los`): every entry matches the published LOS column of
+//!   Exhibit 26-27 (case3: D, B, D, D, D) and Exhibit 26-36 (case4: E, E, E, E,
+//!   C, E). Note that the case4 row follows Exhibit 26-36, not the EP4 Step 10
+//!   prose, which claims "all segments operate at LOS E" while its own exhibit
+//!   puts the passing-lane segment 5 at 6.2 followers/mi and LOS C. The exhibit
+//!   is the consistent reading, since 6.2 cannot be LOS E under Exhibit 15-6.
+//!
+//! # Known deviation from a published value
+//!
+//! `determine_facility_los_test` expects LOS D for case3, where Exhibit 26-27
+//! publishes facility LOS C at 7.3 followers/mi. This is not a rounding
+//! difference. The harness in that test aggregates the UNADJUSTED segment
+//! densities, so it drops both the passing-lane midpoint density and the Step 9
+//! downstream benefit that EP3 spends most of its length computing. Weighting
+//! the published per-segment column of Exhibit 26-27 by segment length gives
+//! (10.7)(0.75) + (2.9)(1.5) + (8.2)(1.0) + (8.2)(0.5) + (8.8)(1.75) = 40.075
+//! over 5.5 mi = 7.3 followers/mi, hence LOS C; weighting the unadjusted
+//! densities the harness actually uses gives about 9.8, hence LOS D. The same
+//! omission is present for case4 but is masked, because both the adjusted
+//! (20.0) and unadjusted aggregates fall in the LOS E band.
+//!
+//! The expected values are left as they are, since correcting this means
+//! changing what the facility harness aggregates rather than retuning a
+//! constant, and that is a behavioral change rather than a test fix.
+
 use assert_approx_eq::assert_approx_eq;
 use transportations_library::math;
 use transportations_library::twolanehighways::{BicycleLOS, Segment, SubSegment, TwoLaneHighways};
