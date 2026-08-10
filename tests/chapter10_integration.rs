@@ -9,8 +9,16 @@
 //! intermediates and reports whole vehicles); LOS letters exact. The book
 //! prints speeds/densities to 0.1 and volumes to whole veh/h; LOS is
 //! assigned from integer-rounded densities (see VERIFY-HCM notes in
-//! src/hcm/freeway_facilities). Known reproduction gaps in Example Problem 2 are
-//! asserted at their computed values and annotated with the published ones.
+//! src/hcm/freeway_facilities). Known reproduction gaps in Example Problems 2
+//! and 4 are asserted at their computed values and annotated with the published
+//! ones.
+//!
+//! Chapter 25 example problem inventory, so the coverage picture lives in one
+//! place. Example Problems 1-6 are here. Example Problems 7-9 are in
+//! tests/chapter11_integration.rs and Example Problem 10 in the
+//! freeway_reliability::exhibits unit tests. Example Problem 11 (composite
+//! grade, mixed-flow model) is NOT covered; the reason and its published target
+//! values are recorded in the header of tests/chapter12_integration.rs.
 
 use std::fs::File;
 use std::io::BufReader;
@@ -612,7 +620,41 @@ fn ep6_facility_performance_matches_exhibit_25_96() {
 
 // ═════════════════════════════════════════════════════════════════════════
 // Example Problem 3: capacity improvements to the oversaturated facility
+//
+// case3.json differs from case2.json in two places, not one: Segments 7-11
+// gain a lane, and weaving Segment 6 drops to lc_rf = 0. The second is easy to
+// miss because the exhibit of facility geometry does not show it, but the
+// Comments call it out - the added continuous lane downstream means ramp
+// traffic no longer has to change lanes to reach the freeway. All five EP3
+// exhibits below reproduce only with both changes in place.
 // ═════════════════════════════════════════════════════════════════════════
+
+/// Segment capacities (Exhibit 25-63). Segments 1-5 keep the three-lane cross
+/// section at 6,748 veh/h; Segments 7-11 gain the fourth lane and rise to 8,998
+/// veh/h. Weaving Segment 6 depends on the period's weaving pattern, so its
+/// capacity varies across the five periods.
+#[test]
+fn ep3_segment_capacities_match_exhibit_25_63() {
+    let mut fac = load_case("case3.json");
+    fac.run_analysis().unwrap();
+    let weaving_by_period = [8273.0, 8281.0, 8323.0, 8403.0, 8463.0];
+    for p in 0..5 {
+        for i in 0..11 {
+            let expected = match i {
+                0..=4 => 6748.0,
+                5 => weaving_by_period[p],
+                _ => 8998.0,
+            };
+            // The book rounds capacities to whole veh/h; +-1 absorbs that.
+            assert_approx(
+                fac.capacity[i][p],
+                expected,
+                1.0,
+                &format!("capacity seg {} p{}", i + 1, p + 1),
+            );
+        }
+    }
+}
 
 /// Adding a fourth lane to Segments 7-11 (a continuous four-lane cross section
 /// from Segment 6) removes every bottleneck: all demand-to-capacity ratios fall
@@ -655,20 +697,89 @@ fn ep3_facility_performance_matches_exhibit_25_68() {
         (57.8, 26.9, 'D'),
         (58.6, 20.8, 'C'),
     ];
-    // Space mean speed carries the same small speed-aggregation gap documented
-    // for Example Problem 2 (whose engine this shares): the computed SMS runs
-    // 0.2-0.6 mi/h below the published values. Density (within 0.5 veh/mi/ln)
-    // and LOS (exact) reproduce the book, so SMS is checked at +-0.7 mi/h.
+    // This test previously ran at +-0.7 mi/h on space mean speed, attributed to
+    // the Example Problem 2 speed-aggregation gap. That attribution was wrong.
+    // The gap came from the fixture leaving weaving Segment 6 at lc_rf = 1: the
+    // added continuous lane downstream drops the required ramp-to-freeway lane
+    // changes to zero (Chapter 13; stated in the Example Problem 3 Comments),
+    // and Example Problem 3 is the only case where that differs from Example
+    // Problems 1 and 2. With the fixture corrected, every period reproduces
+    // within 0.03 mi/h, so the tolerance is back to the file default.
     for (p, (s, k, l)) in expected.iter().enumerate() {
         let perf = &fac.facility_performance[p];
-        assert_approx(perf.space_mean_speed, *s, 0.7, &format!("facility SMS p{}", p + 1));
+        assert_approx(perf.space_mean_speed, *s, 0.1, &format!("facility SMS p{}", p + 1));
         assert_approx(perf.avg_density_veh, *k, 0.5, &format!("facility density p{}", p + 1));
         let got: char = perf.los.into();
         assert_eq!(got, *l, "facility LOS p{}", p + 1);
     }
-    // Exhibit 25-68 totals: 57.5 mi/h, 27.7 veh/mi/ln.
-    assert_approx(fac.overall_space_mean_speed(), 57.5, 0.7, "overall SMS");
+    // Exhibit 25-68 totals: 57.5 mi/h, 27.7 veh/mi/ln. The overall space mean
+    // speed is demand-weighted across periods and computes 57.34, so it keeps a
+    // 0.2 band where the per-period values do not need one.
+    assert_approx(fac.overall_space_mean_speed(), 57.5, 0.2, "overall SMS");
     assert_approx(fac.overall_density_veh(), 27.7, 0.5, "overall density");
+}
+
+/// Full demand-to-capacity matrix (Exhibit 25-64), all 55 cells.
+#[test]
+fn ep3_dc_ratios_match_exhibit_25_64() {
+    let mut fac = load_case("case3.json");
+    fac.run_analysis().unwrap();
+    let expected = [
+        [0.74, 0.82, 0.82, 0.82, 0.77, 0.70, 0.60, 0.66, 0.66, 0.66, 0.62],
+        [0.82, 0.90, 0.90, 0.90, 0.84, 0.78, 0.68, 0.74, 0.74, 0.74, 0.71],
+        [0.86, 0.96, 0.96, 0.96, 0.92, 0.85, 0.74, 0.82, 0.82, 0.82, 0.77],
+        [0.77, 0.83, 0.83, 0.83, 0.79, 0.68, 0.59, 0.64, 0.64, 0.64, 0.61],
+        [0.62, 0.65, 0.65, 0.65, 0.61, 0.52, 0.47, 0.50, 0.50, 0.50, 0.48],
+    ];
+    assert_matrix(&fac.dc_ratio, &expected, 0.01, "d/c ratio");
+}
+
+/// Speed matrix (Exhibit 25-65), all 55 cells, +-0.5 mi/h. The facility is
+/// globally undersaturated here, so every cell comes from the Chapter 12/13/14
+/// segment methods directly rather than from the oversaturated engine.
+#[test]
+fn ep3_speed_matrix_matches_exhibit_25_65() {
+    let mut fac = load_case("case3.json");
+    fac.run_analysis().unwrap();
+    let expected = [
+        [59.8, 53.2, 58.6, 55.9, 59.5, 50.5, 60.0, 54.9, 54.9, 58.1, 60.0],
+        [58.6, 52.1, 55.8, 55.5, 57.9, 50.1, 60.0, 54.3, 54.3, 57.7, 60.0],
+        [57.4, 51.1, 53.1, 53.1, 55.2, 49.7, 59.8, 53.6, 53.6, 57.2, 59.5],
+        [59.5, 53.0, 58.3, 55.8, 59.2, 50.8, 60.0, 55.0, 55.0, 58.1, 60.0],
+        [60.0, 54.5, 59.7, 56.2, 60.0, 53.4, 60.0, 55.9, 55.9, 58.8, 60.0],
+    ];
+    assert_matrix(&fac.speed, &expected, 0.5, "speed (mi/h)");
+}
+
+/// Density matrix (Exhibit 25-66), all 55 cells, +-0.5 veh/mi/ln.
+#[test]
+fn ep3_density_matrix_matches_exhibit_25_66() {
+    let mut fac = load_case("case3.json");
+    fac.run_analysis().unwrap();
+    let expected = [
+        [27.9, 34.5, 31.3, 32.8, 29.2, 28.7, 22.5, 26.8, 26.8, 25.4, 23.3],
+        [31.3, 39.0, 36.4, 36.7, 32.8, 32.5, 25.4, 30.9, 30.9, 29.0, 26.7],
+        [33.7, 42.4, 40.8, 40.8, 37.4, 35.7, 28.0, 34.5, 34.5, 32.4, 29.0],
+        [29.2, 35.2, 32.0, 33.4, 29.8, 28.1, 22.1, 26.4, 26.4, 24.9, 22.9],
+        [23.3, 26.9, 24.5, 26.1, 22.8, 20.6, 17.5, 20.1, 20.1, 19.1, 17.9],
+    ];
+    assert_matrix(&fac.density_veh, &expected, 0.5, "density (veh/mi/ln)");
+}
+
+/// Segment LOS matrix (Exhibit 25-67), all 55 cells exact. The improvement
+/// pulls Segments 7-11 out of the D/E band that Example Problem 2 produced.
+#[test]
+fn ep3_los_matrix_matches_exhibit_25_67() {
+    let mut fac = load_case("case3.json");
+    fac.run_analysis().unwrap();
+    let expected = [
+        ['D', 'D', 'D', 'D', 'D', 'D', 'C', 'C', 'D', 'C', 'C'],
+        ['D', 'D', 'E', 'D', 'D', 'D', 'C', 'C', 'D', 'C', 'D'],
+        ['D', 'D', 'E', 'D', 'E', 'E', 'D', 'D', 'D', 'D', 'D'],
+        ['D', 'D', 'D', 'D', 'D', 'D', 'C', 'C', 'D', 'C', 'C'],
+        ['C', 'C', 'C', 'C', 'C', 'C', 'B', 'B', 'C', 'B', 'B'],
+    ];
+    assert_los_matrix(&fac.los, &expected, "LOS");
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -733,4 +844,171 @@ fn ep4_facility_performance_matches_exhibit_25_77() {
         let got: char = perf.los.into();
         assert_eq!(got, 'F', "facility LOS p{} should be F", p + 1);
     }
+}
+
+/// Segment capacities (Exhibit 25-71). Segments 1-5 and 7-10 keep the
+/// three-lane 6,748 veh/h cross section and weaving Segment 6 varies by period,
+/// exactly as in Example Problem 3.
+///
+/// Segment 11 is the stage trap. Exhibit 25-71 prints 4,499 veh/h, which is the
+/// Step A-7 value carrying only the lane closure (two of three lanes open,
+/// "reduces its base capacity by 33%"). The book then applies CAF_wz = 0.892 in
+/// Step A-8, and the facility's capacity matrix holds that post-CAF value.
+/// The book's own Exhibit 25-72 confirms the later stage is the one that
+/// governs: its Segment 11 demand-to-capacity ratios only reproduce when the
+/// period demands are divided by the post-CAF capacity, not by 4,499.
+#[test]
+fn ep4_segment_capacities_match_exhibit_25_71() {
+    let mut fac = load_case("case4.json");
+    fac.run_analysis().unwrap();
+    let weaving_by_period = [8273.0, 8281.0, 8323.0, 8403.0, 8463.0];
+    for p in 0..5 {
+        for i in 0..10 {
+            let expected = if i == 5 { weaving_by_period[p] } else { 6748.0 };
+            assert_approx(
+                fac.capacity[i][p],
+                expected,
+                1.0,
+                &format!("capacity seg {} p{}", i + 1, p + 1),
+            );
+        }
+        // Exhibit 25-71 Segment 11 (4,499) x CAF_wz (0.892) = 4,013 veh/h.
+        assert_approx(
+            fac.capacity[10][p],
+            4499.0 * 0.892,
+            5.0,
+            &format!("work zone capacity seg 11 p{}", p + 1),
+        );
+    }
+}
+
+/// Demand-to-capacity matrix (Exhibit 25-72), all 55 cells. Segment 11 exceeds
+/// 1.0 in every period except the last, which is what activates the
+/// oversaturated engine from Analysis Period 1 onward.
+#[test]
+fn ep4_dc_ratios_match_exhibit_25_72() {
+    let mut fac = load_case("case4.json");
+    fac.run_analysis().unwrap();
+    let expected = [
+        [0.67, 0.73, 0.73, 0.73, 0.69, 0.63, 0.72, 0.79, 0.79, 0.79, 1.26],
+        [0.73, 0.81, 0.81, 0.81, 0.76, 0.71, 0.81, 0.89, 0.89, 0.89, 1.44],
+        [0.77, 0.87, 0.87, 0.87, 0.83, 0.77, 0.89, 0.99, 0.99, 0.99, 1.56],
+        [0.69, 0.75, 0.75, 0.75, 0.71, 0.61, 0.71, 0.77, 0.77, 0.77, 1.24],
+        [0.56, 0.59, 0.59, 0.59, 0.55, 0.47, 0.56, 0.60, 0.60, 0.60, 0.97],
+    ];
+    // +-0.02: the book's Segment 11 period-3 ratio prints 1.56 where the
+    // unrounded quotient is 1.548, so its own rounding needs more than 0.01.
+    assert_matrix(&fac.dc_ratio, &expected, 0.02, "d/c ratio");
+}
+
+/// Volume-served matrix (Exhibit 25-73) for the cells this implementation
+/// reproduces: Analysis Period 1 across all eleven segments, and the work zone
+/// (Segment 11) in every period, where the bottleneck meters throughput at the
+/// work zone discharge rate of ~3,714 veh/h.
+///
+/// VERIFY-HCM (documented reproduction gap): Segments 1-10 in Analysis Periods
+/// 2-5 are not asserted. Once the Segment 11 queue reaches back through the
+/// facility the engine distributes stored demand differently from the published
+/// FREEVAL run, and the cell-level differences reach ~250 veh/h (for instance
+/// period 4 Segment 1 computes 2,586 against a published 2,831, and period 5
+/// Segment 1 computes 3,808 against a published 3,589). The published rows are
+/// Exhibit 25-73 periods 2-5:
+///   p2: 4,955  5,495  5,495  5,446  3,947  3,701  3,325  3,878  3,882  3,895
+///   p3: 3,275  3,476  3,094  3,031  2,912  3,391  3,250  3,899  3,905  3,929
+///   p4: 2,831  3,398  3,474  3,416  3,424  3,914  3,597  4,014  4,004  3,965
+///   p5: 3,589  3,991  4,096  3,957  3,452  3,912  3,675  3,923  3,916  3,897
+/// This is the same oversaturated-regime gap already documented for Example
+/// Problem 2, not a work-zone-specific defect: the work zone segment itself and
+/// the whole pre-queue period reproduce within tolerance.
+#[test]
+fn ep4_volume_served_reproduced_cells_match_exhibit_25_73() {
+    let mut fac = load_case("case4.json");
+    fac.run_analysis().unwrap();
+
+    let p1 = [4505., 4955., 4955., 4955., 4685., 5225., 3924., 4185., 4126., 3929., 3719.];
+    for (i, e) in p1.iter().enumerate() {
+        assert_approx(fac.volume_served[i][0], *e, 40.0, &format!("volume served seg {} p1", i + 1));
+    }
+
+    let wz_by_period = [3719., 3714., 3714., 3714., 3714.];
+    for (p, e) in wz_by_period.iter().enumerate() {
+        assert_approx(
+            fac.volume_served[10][p],
+            *e,
+            40.0,
+            &format!("work zone volume served seg 11 p{}", p + 1),
+        );
+    }
+}
+
+/// Work zone segment speed and density (Exhibits 25-74 and 25-75, Segment 11)
+/// plus the still-uncongested Analysis Period 1 approach (Segments 1-6).
+///
+/// Segment 11 is the cell the work-zone methodology actually governs. It never
+/// queues (it is the bottleneck, discharging at its own reduced capacity), so
+/// its operating point is set entirely by the Step A-8 work zone adjustments
+/// rather than by the queue engine, and it holds 50.4-50.5 mi/h and 36.8-36.9
+/// veh/mi/ln across all five periods. This is the cell that would move if
+/// CAF_wz or SAF_wz were wrong, which makes it the real regression guard for
+/// Equations 10-7 through 10-12 downstream of the unit-level check above.
+///
+/// VERIFY-HCM (documented reproduction gap): the queued cells upstream of the
+/// work zone are not asserted. Speeds there differ from Exhibit 25-74 by up to
+/// ~10 mi/h (period 5 Segment 2 computes 26.7 against a published 16.4) and
+/// densities from Exhibit 25-75 by up to ~48 veh/mi/ln (period 4 Segment 6
+/// computes 69.8 against a published 117.3), because the engine holds the
+/// residual queue in different segments than the published FREEVAL run does.
+/// The facility aggregates and every LOS letter still reproduce, so the
+/// disagreement is in how the same total queue is distributed, not in its size.
+/// Analysis Period 1 Segment 9 is likewise excluded (computed 15.0 mi/h and
+/// 91.7 veh/mi/ln against a published 13.0 and 100.6), since the queue reaches
+/// Segment 9 within that first period.
+#[test]
+fn ep4_work_zone_segment_matches_exhibits_25_74_and_25_75() {
+    let mut fac = load_case("case4.json");
+    fac.run_analysis().unwrap();
+
+    let wz_speed = [50.4, 50.5, 50.5, 50.5, 50.5];
+    let wz_density = [36.9, 36.8, 36.8, 36.8, 36.8];
+    for p in 0..5 {
+        assert_approx(fac.speed[10][p], wz_speed[p], 0.5, &format!("work zone speed p{}", p + 1));
+        assert_approx(
+            fac.density_veh[10][p],
+            wz_density[p],
+            0.5,
+            &format!("work zone density p{}", p + 1),
+        );
+    }
+
+    let p1_speed = [60.0, 53.9, 59.7, 56.1, 60.0, 48.0];
+    let p1_density = [25.0, 30.6, 27.6, 29.4, 26.0, 27.2];
+    for i in 0..6 {
+        assert_approx(fac.speed[i][0], p1_speed[i], 0.5, &format!("speed seg {} p1", i + 1));
+        assert_approx(
+            fac.density_veh[i][0],
+            p1_density[i],
+            0.5,
+            &format!("density seg {} p1", i + 1),
+        );
+    }
+}
+
+/// Segment LOS matrix (Exhibit 25-76), all 55 cells exact. Every queued segment
+/// reaches LOS F while the work zone itself stays at LOS E, because Segment 11
+/// discharges at its own reduced capacity rather than queueing. This is the
+/// strongest reproduction check available for Example Problem 4: the LOS
+/// letters bin the densities the speed and density matrices only partly
+/// reproduce, and every bin lands where the book puts it.
+#[test]
+fn ep4_los_matrix_matches_exhibit_25_76() {
+    let mut fac = load_case("case4.json");
+    fac.run_analysis().unwrap();
+    let expected = [
+        ['C', 'C', 'D', 'C', 'D', 'C', 'F', 'F', 'F', 'F', 'E'],
+        ['D', 'D', 'D', 'D', 'F', 'F', 'F', 'F', 'F', 'F', 'E'],
+        ['F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'E'],
+        ['F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'E'],
+        ['F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'E'],
+    ];
+    assert_los_matrix(&fac.los, &expected, "LOS");
 }

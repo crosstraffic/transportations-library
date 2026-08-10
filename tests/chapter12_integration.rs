@@ -1,3 +1,55 @@
+//! Integration tests for HCM Chapter 12 (Basic Freeway and Highway Segments),
+//! including the Chapter 26 supplemental example problems that extend it.
+//!
+//! NOT COVERED: HCM Chapter 25, Example Problem 11 (Estimating Freeway
+//! Composite Grade Operations with the Mixed-Flow Model). The mixed-flow model
+//! is not implemented anywhere in this library, so there is nothing to assert
+//! against. Every module that could reach it instead refuses the input or
+//! substitutes an approximation and says so:
+//!   - src/hcm/basicfreeways/basicfreeways.rs:780 returns 2.5 as a non-HCM PCE
+//!     stand-in for mountainous terrain, and :786 rejects any other terrain
+//!     name, both pointing at the Chapter 25/26 mixed-flow model;
+//!   - src/hcm/common/pce_table.rs:327 rejects grades steeper than the
+//!     Exhibit 12-26/27/28 maximum for the same reason;
+//!   - src/hcm/merge_diverge/merge_diverge.rs:458,
+//!     src/hcm/weaving/weaving.rs:370, and
+//!     src/hcm/freeway_facilities/freeway_facilities.rs:108 carry the same
+//!     mountainous-terrain approximation.
+//!
+//! Closing the gap needs Equations 25-53 through 25-70 (mixed-flow CAF, truck
+//! and auto spot and space-based travel time rates, the traffic interaction
+//! term, and the mixed-flow aggregation) plus the Exhibit 25-20/25-21 truck
+//! spot-rate curves and the Exhibit 25-A7/25-A16 space-based travel time
+//! curves. The last two are the harder half: the published solution reads
+//! truck kinematic rates off nomographs by eye ("its spot rate can be read at
+//! 6,780 ft and is approximately 75 s/mi"), so a faithful reproduction needs
+//! those curve families digitized, not just the equations transcribed.
+//!
+//! Published target values for Example Problem 11, so a future implementation
+//! has something to hit. Facts: three basic segments (1.5 mi at 3%, 2.0 mi at
+//! 2%, 1.0 mi at 5%), six-lane freeway, 5% SUTs and 10% TTs, FFS 65 mi/h,
+//! 1,500 veh/h/ln at PHF 1.0.
+//!   - Governing mixed-flow capacity across the three segments: 1,746 veh/h/ln.
+//!   - Mixed-flow space mean speed by segment (Equation 25-68): 57.7, 58.7,
+//!     and 47.9 mi/h.
+//!   - Mixed-flow travel time by segment (Equation 25-69): 93.6, 122.7, and
+//!     75.2 s.
+//!   - Overall mixed-flow speed (Equation 25-70): 55.6 mi/h.
+//!   - Spot speeds at the end of each segment (Exhibit 25-109), autos / SUTs /
+//!     TTs: 59.5 / 56.1 / 56.4, then 60.9 / 60.9 / 54.0, then 45.2 / 42.2 /
+//!     31.8 mi/h. The facility entry values are 59.5 for all three modes.
+//!   - Space mean speeds by segment (Exhibit 25-110): 58.7 / 57.0 / 50.6, then
+//!     59.5 / 60.9 / 51.8, then 49.9 / 46.6 / 36.3 mi/h.
+//!   - Overall space mean speeds (Exhibit 25-111): autos 56.8, SUTs 55.8, TTs
+//!     47.0 mi/h.
+//!
+//! One inconsistency in the source, so a future implementation does not chase
+//! it: the Step 7 prose states the overall mixed-flow travel time "equals
+//! 294 s", but the three published segment travel times sum to 291.5 s, and it
+//! is 291.5 that the book substitutes into Equation 25-70 to get 55.6 mi/h
+//! (3,600 x 4.5 / 291.5 = 55.6; 3,600 x 4.5 / 294 would give 55.1). Target
+//! 291.5 s, not 294 s.
+
 use transportations_library::math;
 use transportations_library::basicfreeways::BasicFreeways;
 use transportations_library::common::LevelOfService;

@@ -111,8 +111,12 @@ class TestFreewayFacilitiesExampleProblem3:
         fac.run_analysis()
         expected = [(57.9, "D"), (57.1, "D"), (55.9, "D"), (57.8, "D"), (58.6, "C")]
         for p, (speed, los) in enumerate(expected):
-            # SMS carries the small speed-aggregation gap shared with EP2 (+-0.7).
-            assert fac.facility_speed(p) == pytest.approx(speed, abs=0.7)
+            # This ran at +-0.7 on the theory that EP3 shared EP2's speed-aggregation gap.
+            # It did not; case3.json was leaving weaving Segment 6 at lc_rf = 1 when the
+            # added downstream lane drops the required ramp-to-freeway lane changes to
+            # zero. With the fixture corrected every period lands within 0.03 mi/h. The
+            # Rust integration test carries the full reasoning; keep the two in step.
+            assert fac.facility_speed(p) == pytest.approx(speed, abs=0.1)
             assert fac.facility_los(p) == los
 
 
