@@ -7,6 +7,44 @@
 //! reproduces the shared-major-left case; the two oversaturated minor-street
 //! left-turn delays use a wider, documented tolerance because Equation 20-61
 //! is steep near v/c = 1.7 and the book rounds c_m to an integer.
+//!
+//! Chapter 32, TWSC Example Problem 2 (pedestrian crossing at a TWSC
+//! intersection) is deliberately NOT covered here, because the pedestrian mode
+//! is not implemented. What `src/hcm/twsc/` provides is the pedestrian
+//! *impedance* extension of the vehicular method, Equations 20-67 through
+//! 20-75, in which pedestrian volumes v13-v16 reduce vehicular movement
+//! capacity. That is a different procedure from Chapter 20 Section 5, which is
+//! the pedestrian mode proper and computes a service measure for the
+//! pedestrian. Reproducing Example Problem 2 needs all seven of its steps, and
+//! none of the following surface exists:
+//!
+//! * pedestrian critical headway from crossing length, walking speed, and
+//!   start-up/clearance time (Equation 20-76), and the platoon-adjusted form
+//!   (Equations 20-77 through 20-79);
+//! * probability of a blocked lane and of a delayed crossing (Equations 20-80
+//!   and 20-81);
+//! * average gap delay and gap delay given nonzero delay (Equations 20-82 and
+//!   20-83);
+//! * delay reduction from yielding motorists (Equations 20-84 through 20-94),
+//!   including the per-lane-count yield-event probabilities P(Y_i) that the
+//!   example selects by number of lanes crossed (Equation 20-89 for a two-lane
+//!   crossing, Equation 20-92 for a four-lane crossing);
+//! * the pedestrian satisfaction model that produces LOS - satisfaction odds
+//!   with indicator variables for RRFBs, marked crosswalk, and median refuge
+//!   plus the AADT term (Equation 20-95), the satisfaction and dissatisfaction
+//!   probabilities (Equations 20-96 through 20-98), the average proportion
+//!   dissatisfied (Equation 20-99), and the Exhibit 20-3 pedestrian-mode LOS
+//!   bands keyed on proportion dissatisfied rather than on delay.
+//!
+//! There is also no two-stage-crossing decomposition (Step 1) and no input
+//! surface for crosswalk length, walking speed, motorist yield rate, K-factor,
+//! or the countermeasure indicators. Landing this example therefore means
+//! implementing Chapter 20 Section 5, not extending a fixture. For the record,
+//! the published answers to reproduce once it exists are: critical headway
+//! t_c = 12.5 s (Scenario A, 46-ft single-stage crossing) and 6.0 s (Scenarios
+//! B and C, 20-ft stages); total pedestrian delay 761 s (A), 6.0 s (B), 3.0 s
+//! (C); P_d = 0.758 for the two-stage scenarios; and LOS F (A), C (B), A (C),
+//! with the Scenario B and C intermediates tabulated in Exhibit 32-7.
 
 use std::fs;
 
