@@ -51,7 +51,7 @@
       "ramp_ffs": 40.0,
       "short_length_ft": 1640.0,
       "num_weaving_lanes": 2,
-      "lc_rf": 1,
+      "lc_rf": 0,
       "lc_fr": 1,
       "on_ramp_demand": [
         599.0,
