@@ -367,3 +367,81 @@ fn pce_lookup_rejects_non_finite_inputs() {
     // A well-formed lookup still works: Exhibit 12-27, 2.5% grade, 0.625 mi, 6% trucks.
     assert_eq!(3.03, table.lookup(2.5, 0.625, 0.06).unwrap());
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Chapter 26, Example Problem 7: basic managed lane segment
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// HCM 7th Edition Chapter 26, Example Problem 7: six-lane freeway, two
+/// general purpose lanes plus one continuous-access managed lane per
+/// direction, FFS 60 mi/h both, PHF 0.92, 7.5% trucks on level terrain
+/// (E_T = 2.0, f_HV = 0.93). The example's Step 4 prose says "5%" but its
+/// own Equation 12-10 substitution uses 0.075; the printed flow rates
+/// (1,169 / 2,221 / 1,519 pc/h/ln) confirm 7.5%.
+///
+/// Published chain: GP capacity 2,300 pc/h/ln, GP breakpoint 1,600; managed
+/// lane capacity 1,650 (C_75 = 1,800, lambda_c = 10), breakpoint 500
+/// (BP_75 = 500, lambda_BP = 0), S_1 = 60, S_2 = 3.7, S_3 = 14.4 mi/h.
+#[test]
+fn test_ch26_ep7_managed_lane_case1_low_gp_density() {
+    use transportations_library::basicfreeways::managed_lanes::{ManagedLaneSegment, ManagedLaneType};
+
+    // General purpose side, Case 1: v_p = 2,000/(0.92 x 2 x 0.93) = 1,169
+    // pc/h/ln, below the 1,600 breakpoint, so S = FFS = 60 mi/h and
+    // D = 1,169/60 = 19.5 pc/mi/ln (LOS C). Below the 35 pc/mi/ln friction
+    // threshold, so I_c = 0 for the managed lane.
+    let f_hv: f64 = 1.0 / (1.0 + 0.075 * (2.0 - 1.0));
+    let vp_gp = 2000.0 / (0.92 * 2.0 * f_hv);
+    assert!((vp_gp - 1169.0).abs() < 1.0, "GP Case 1 flow {vp_gp}");
+    let d_gp = vp_gp / 60.0;
+    assert!((d_gp - 19.5).abs() < 0.05, "GP Case 1 density {d_gp}");
+
+    // Managed lane: v_p = 1,300/(0.92 x 1 x 0.93) = 1,519 pc/h/ln.
+    let vp_ml = 1300.0 / (0.92 * 1.0 * f_hv);
+    assert!((vp_ml - 1519.0).abs() < 1.0, "ML flow {vp_ml}");
+
+    let mut ml = ManagedLaneSegment::new(ManagedLaneType::ContinuousAccess, 60.0);
+    ml.set_demand(vp_ml);
+    ml.set_gp_density(d_gp);
+    let los = ml.run_analysis();
+
+    assert!((ml.capacity_adj - 1650.0).abs() < 1.0, "ML capacity {}", ml.capacity_adj);
+    assert!((ml.breakpoint - 500.0).abs() < 1.0, "ML breakpoint {}", ml.breakpoint);
+    // I_c = 0: S_ML = S_1 - S_2 = 60 - 3.7 = 56.3 mi/h, D = 27.0 pc/mi/ln,
+    // published LOS D (just past the 26 pc/mi/ln LOS C boundary).
+    assert!((ml.speed - 56.3).abs() < 0.1, "ML Case 1 speed {}", ml.speed);
+    assert!((ml.density - 27.0).abs() < 0.1, "ML Case 1 density {}", ml.density);
+    assert_eq!(los, LevelOfService::D, "ML Case 1 LOS");
+}
+
+/// Case 2 of the same example: GP demand rises to 3,800 veh/h, putting the
+/// adjacent general purpose lanes past the 35 pc/mi/ln friction threshold,
+/// which activates I_c and drops the managed lane a full LOS letter.
+#[test]
+fn test_ch26_ep7_managed_lane_case2_gp_friction() {
+    use transportations_library::basicfreeways::managed_lanes::{ManagedLaneSegment, ManagedLaneType};
+
+    // GP Case 2: v_p = 3,800/(0.92 x 2 x 0.93) = 2,221 pc/h/ln, above the
+    // breakpoint; Equation 12-1 with a = 2 gives S = 53.0 mi/h and
+    // D = 41.9 pc/mi/ln (LOS E).
+    let f_hv: f64 = 1.0 / (1.0 + 0.075 * (2.0 - 1.0));
+    let vp_gp = 3800.0 / (0.92 * 2.0 * f_hv);
+    assert!((vp_gp - 2221.0).abs() < 1.0, "GP Case 2 flow {vp_gp}");
+    let c_gp: f64 = 2300.0;
+    let bp_gp: f64 = 1600.0;
+    let s_gp = 60.0 - (60.0 - c_gp / 45.0) * (vp_gp - bp_gp).powi(2) / (c_gp - bp_gp).powi(2);
+    assert!((s_gp - 53.0).abs() < 0.1, "GP Case 2 speed {s_gp}");
+    let d_gp = vp_gp / s_gp;
+    assert!((d_gp - 41.9).abs() < 0.1, "GP Case 2 density {d_gp}");
+
+    let vp_ml = 1300.0 / (0.92 * 1.0 * f_hv);
+    let mut ml = ManagedLaneSegment::new(ManagedLaneType::ContinuousAccess, 60.0);
+    ml.set_demand(vp_ml);
+    ml.set_gp_density(d_gp);
+    let los = ml.run_analysis();
+
+    // I_c = 1: S_ML = 60 - 3.7 - 14.4 = 41.9 mi/h, D = 36.3 pc/mi/ln, LOS E.
+    assert!((ml.speed - 41.9).abs() < 0.1, "ML Case 2 speed {}", ml.speed);
+    assert!((ml.density - 36.3).abs() < 0.1, "ML Case 2 density {}", ml.density);
+    assert_eq!(los, LevelOfService::E, "ML Case 2 LOS");
+}
