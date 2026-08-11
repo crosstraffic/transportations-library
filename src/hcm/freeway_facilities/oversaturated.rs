@@ -143,6 +143,10 @@ pub struct OversaturatedEngine {
     hist_mo3: Vec<Vec<f64>>,
     hist_ofrf: Vec<Vec<f64>>,
     hist_sc: Vec<Vec<f64>>,
+    /// Time steps elapsed on each segment since front clearing began, used
+    /// to hold the Equation 25-15 lookback until the recovery wave has had
+    /// WTT steps to travel the segment.
+    fc_steps: Vec<usize>,
     /// Whether `init_period` has run at least once.
     started: bool,
 }
@@ -191,6 +195,7 @@ impl OversaturatedEngine {
             hist_mo3: vec![Vec::new(); n + 1],
             hist_ofrf: vec![Vec::new(); n + 1],
             hist_sc: vec![Vec::new(); n],
+            fc_steps: vec![0; n],
             started: false,
         }
     }
@@ -315,6 +320,15 @@ impl OversaturatedEngine {
             })
             .collect();
 
+        // A segment that is no longer clearing from the front restarts the
+        // recovery-wave clock, so the next clearing episode again waits WTT
+        // steps before Equation 25-15 constrains anything.
+        for i in 0..n {
+            if !input.front_clearing[i] {
+                self.fc_steps[i] = 0;
+            }
+        }
+
         // Accumulators
         let mut sum_sf = vec![0.0; n];
         let mut sum_nv = vec![0.0; n];
@@ -417,7 +431,14 @@ impl OversaturatedEngine {
                 }
 
                 // ── MO3 (Equations 25-13 through 25-15): front-clearing ──
-                if let Some(wtt_steps) = wtt[node] {
+                // Equation 25-13's text: "the clearing does not affect the
+                // segment throughput until the recovery wave has reached the
+                // upstream end of the segment". The history buffers span
+                // earlier analysis periods, so without this clock the
+                // lookback would reach back into the fully congested period
+                // and impose its throughput from step 0 of the recovery.
+                let armed = wtt[node].filter(|w| (self.fc_steps[node] as f64) >= *w);
+                if let Some(wtt_steps) = armed {
                     let m1 = Self::lookback(&self.hist_mo1[node + 1], wtt_steps);
                     let m2 = Self::lookback(&self.hist_mo2[node + 1], wtt_steps);
                     let m3 = Self::lookback(&self.hist_mo3[node + 1], wtt_steps);
@@ -449,6 +470,20 @@ impl OversaturatedEngine {
                 // capacity is therefore used in the KQ ratio (queue storage
                 // density), while the reduced (queue discharge) capacity
                 // governs node throughput (MO1/MF; Equation 25-16).
+                //
+                // Re-tested against the literal in-place reading after the
+                // front-clearing scope fix, on the theory that the starved
+                // upstream segments had been masking it. They had not. Over
+                // the 110 published Example Problem 2 and 4 cells the
+                // literal reading is worse on every matrix: Example Problem
+                // 2 speed 0.77 to 1.70 mi/h mean absolute error, density
+                // 0.70 to 1.52 veh/mi/ln, volume served 2.6 to 122.5 veh/h,
+                // and its period 3, which currently reproduces all eleven
+                // LOS letters, loses five of them. Example Problem 4 moves
+                // the same way, 0.91 to 1.28, 5.81 to 7.16, and 56 to 71.
+                // Only the two Example Problem 4 facility aggregates favor
+                // it, by 0.06 mi/h and 1.2 veh/mi/ln, which does not carry
+                // against the cells. The deviation stays.
                 let kq = self.queue_density(self.sf_prev[node], base_sc_step[node]);
                 kq_last[node] = kq;
                 let max_veh = kq * self.lanes[node] * self.length_mi[node];
@@ -511,6 +546,9 @@ impl OversaturatedEngine {
             }
             for i in 0..n {
                 Self::push_hist(&mut self.hist_sc[i], sc_step[i]);
+                if input.front_clearing[i] {
+                    self.fc_steps[i] += 1;
+                }
             }
         }
 
@@ -568,9 +606,14 @@ impl OversaturatedEngine {
         hist.push(value);
     }
 
-    /// Front-clearing-queue test (Equation 25-12): a queue clears from the
-    /// front when this period's capacity net of on-ramp demand exceeds both
-    /// the preceding period's net capacity and this period's segment demand.
+    /// Front-clearing-queue test (Equation 25-12) as printed: a queue clears
+    /// from the front when this period's capacity net of on-ramp demand
+    /// exceeds both the preceding period's net capacity and this period's
+    /// segment demand.
+    ///
+    /// This is the bare inequality. Callers driving the engine want
+    /// [`Self::front_clearing_active`], which adds the scope the surrounding
+    /// text puts on it.
     pub fn front_clearing_queue(
         sc_now: f64,
         onrd_now: f64,
@@ -579,6 +622,47 @@ impl OversaturatedEngine {
         sd_now: f64,
     ) -> bool {
         (sc_now - onrd_now) > (sc_prev - onrd_prev) && (sc_now - onrd_now) > sd_now
+    }
+
+    /// Whether segment `i` actually clears from the front this period, which
+    /// is what arms the Equation 25-15 MO3 constraint on its upstream node.
+    ///
+    /// VERIFY-HCM: Equation 25-12 tests `SC − ONRD` alone, so read as a bare
+    /// inequality it fires on any period where on-ramp demand falls, on any
+    /// segment, whether or not that segment has a queue to clear. The prose
+    /// around it does not read that way. It introduces MO3 as the constraint
+    /// "caused by downstream queues clearing from their downstream end" and
+    /// says these "are typically caused by incidents in which there is a
+    /// temporary reduction in capacity", which the restored capacity then
+    /// ends. Two conditions carry that scope here: the segment was its own
+    /// active bottleneck in the preceding period (`dc_prev` > 1), so there is
+    /// a queue standing on it, and its own capacity was restored (`sc_now` >
+    /// `sc_prev`), so the restoration is what released that queue. A
+    /// demand-driven queue, or a queue spilling back from a bottleneck
+    /// somewhere downstream, does not clear from its front, and keeps the
+    /// ordinary Equation 25-16 node constraints instead.
+    ///
+    /// This scoping is an interpretation, not a printed rule, and it is
+    /// load-bearing. Chapter 25 Example Problems 2 and 4 both have on-ramp
+    /// demand falling in analysis periods 4 and 5 on segments carrying
+    /// queues that spilled back from elsewhere. Under the bare inequality
+    /// MO3 arms on those segments and starves them, and Example Problem 4
+    /// mean absolute error against the published matrices runs 1.23 mi/h,
+    /// 7.93 veh/mi/ln and 62 veh/h; under this scope none of the four
+    /// example-problem segments arms and the same errors run 0.91, 5.81 and
+    /// 56, with Example Problem 4's period 4 Segment 6 density moving from
+    /// 69.8 to 112.9 against a published 117.3.
+    pub fn front_clearing_active(
+        sc_now: f64,
+        onrd_now: f64,
+        sc_prev: f64,
+        onrd_prev: f64,
+        sd_now: f64,
+        dc_prev: f64,
+    ) -> bool {
+        dc_prev > 1.0
+            && sc_now > sc_prev
+            && Self::front_clearing_queue(sc_now, onrd_now, sc_prev, onrd_prev, sd_now)
     }
 }
 
@@ -764,5 +848,86 @@ mod tests {
         assert!(!OversaturatedEngine::front_clearing_queue(
             5000.0, 0.0, 4000.0, 0.0, 5500.0
         ));
+    }
+
+    #[test]
+    fn test_front_clearing_scoped_to_a_restored_bottleneck() {
+        // An incident segment whose capacity comes back, having been over
+        // its own capacity while the incident was in place: this is the case
+        // the MO3 prose describes, and it arms.
+        assert!(OversaturatedEngine::front_clearing_active(
+            6000.0, 0.0, 4000.0, 0.0, 5000.0, 1.25
+        ));
+
+        // Same restored capacity, but the segment was not its own bottleneck
+        // last period, so it has no front to clear.
+        assert!(!OversaturatedEngine::front_clearing_active(
+            6000.0, 0.0, 4000.0, 0.0, 5000.0, 0.9
+        ));
+
+        // The defect this scope closes: capacity is unchanged and only the
+        // on-ramp demand fell, which raises SC - ONRD and satisfies the bare
+        // Equation 25-12 inequality on a segment queued from downstream.
+        assert!(OversaturatedEngine::front_clearing_queue(
+            6748.0, 200.0, 6748.0, 700.0, 5000.0
+        ));
+        assert!(!OversaturatedEngine::front_clearing_active(
+            6748.0, 200.0, 6748.0, 700.0, 5000.0, 1.4
+        ));
+    }
+
+    #[test]
+    fn test_front_clearing_waits_for_the_recovery_wave() {
+        // Segment 2 loses capacity to an incident, standing a queue on
+        // Segment 1, then gets its capacity back. The recovery period must
+        // not be held to the incident period's throughput from its first
+        // time step: Equation 25-13's text says "the clearing does not
+        // affect the segment throughput until the recovery wave has reached
+        // the upstream end".
+        let mut eng = simple_engine(2);
+
+        let mut incident = simple_input(2, 5000.0, 4500.0);
+        incident.capacity[1] = 3000.0;
+        incident.demand = vec![4500.0, 4500.0];
+        let blocked = eng.run_period(&incident);
+        assert!(blocked.had_queue[0], "the incident must queue Segment 1");
+
+        let mut restored = simple_input(2, 5000.0, 4500.0);
+        restored.demand = vec![4500.0, 4500.0];
+        restored.front_clearing[1] = OversaturatedEngine::front_clearing_active(
+            5000.0,
+            0.0,
+            3000.0,
+            0.0,
+            4500.0,
+            4500.0 / 3000.0,
+        );
+        assert!(restored.front_clearing[1], "capacity was restored on a bottleneck");
+        let recovery = eng.run_period(&restored);
+
+        // WTT here is T x L / WS = 240 x 1.0 / [5,000 / (2 x 145)] = 13.9
+        // steps, so MO3 stays disarmed for the first 14 of the 60 steps and
+        // the stored queue discharges over them. The incident period serves
+        // 2,793 veh/h and this one 4,621. Deleting the clock, so that the
+        // lookback runs from step 0 against the fully congested history,
+        // holds this period to 4,187, which is what the bound below is
+        // placed to catch: the difference is the 14 held steps at the
+        // 9.2 veh/step gap between the restored and incident rates.
+        assert!(
+            recovery.segment_flow[1] > 4400.0,
+            "recovery period should not be held to the incident history, got {}",
+            recovery.segment_flow[1]
+        );
+        assert!(
+            recovery.segment_flow[1] > blocked.segment_flow[1] + 800.0,
+            "recovery must clearly exceed the incident throughput ({} vs {})",
+            recovery.segment_flow[1],
+            blocked.segment_flow[1]
+        );
+
+        // The clock resets once clearing ends, so a later episode waits again.
+        let quiet = simple_input(2, 5000.0, 2000.0);
+        eng.run_period(&quiet);
+        assert_eq!(eng.fc_steps[1], 0, "the recovery-wave clock resets");
     }
 }

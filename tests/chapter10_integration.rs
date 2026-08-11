@@ -55,6 +55,41 @@ fn assert_matrix(actual: &[Vec<f64>], expected: &[[f64; 11]; 5], tol: f64, label
     }
 }
 
+/// Assert a full 5x11 matrix against the published exhibit, cell by cell.
+///
+/// `published` is the exhibit. `engine` is what this implementation computes
+/// for the same cells. Where the two agree within `tol` the cell is asserted
+/// at its published value, which is the real reproduction check. Where they
+/// do not, the cell is a documented reproduction gap and is asserted at the
+/// engine value within `pin_tol`, so that no cell of the matrix is left
+/// unasserted and a gap that closes or widens shows up as a failure rather
+/// than passing unnoticed.
+fn assert_matrix_against_published(
+    actual: &[Vec<f64>],
+    published: &[[f64; 11]; 5],
+    engine: &[[f64; 11]; 5],
+    tol: f64,
+    pin_tol: f64,
+    label: &str,
+) {
+    for (i, segment) in actual.iter().enumerate().take(11) {
+        for (p, got) in segment.iter().enumerate().take(5) {
+            let (book, mine) = (published[p][i], engine[p][i]);
+            let cell = format!("{label} seg {} period {}", i + 1, p + 1);
+            if (mine - book).abs() <= tol {
+                assert_approx(*got, book, tol, &cell);
+            } else {
+                assert_approx(
+                    *got,
+                    mine,
+                    pin_tol,
+                    &format!("{cell} (VERIFY-HCM gap, published {book})"),
+                );
+            }
+        }
+    }
+}
+
 fn assert_los_matrix(actual: &[Vec<LevelOfService>], expected: &[[char; 11]; 5], label: &str) {
     for (p, row) in expected.iter().enumerate() {
         for (i, e) in row.iter().enumerate() {
@@ -223,11 +258,14 @@ fn ep2_volume_served_matches_exhibit_25_56() {
 /// VERIFY-HCM (documented reproduction gaps, computed vs published):
 /// - p3 seg 5: 44.0 vs 45.3 mi/h — the engine stores slightly more of the
 ///   Segment 8 queue in Segment 5 late in period 3;
-/// - p4 segs 1-6: 59.5/53.0/58.3/53.9/48.2/21.5 vs
+/// - p4 segs 1-6: 59.5/53.0/58.2/52.2/48.5/21.5 vs
 ///   47.2/47.5/51.5/48.3/56.5/24.7 mi/h — the published engine spills the
 ///   residual queue back into Segments 1-4 during period 4 while this
 ///   implementation holds it in Segments 5-6 (the facility-aggregate
 ///   speed/density still match within 0.2, see the performance test).
+///   Scoping the Equation 25-12 front-clearing test to a restored bottleneck
+///   moved Segments 3-5 of this row a little toward the book (58.3/53.9/48.2
+///   before) without closing the gap.
 #[test]
 fn ep2_speed_matrix_reproduced_cells_match_exhibit_25_57() {
     let mut fac = load_case("case2.json");
@@ -304,14 +342,32 @@ fn ep2_density_matrix_reproduced_cells_match_exhibit_25_58() {
             &format!("density seg {} period 3", i + 1),
         );
     }
+    // Period 4 (Exhibit 25-58 row 4), Segments 8-11, downstream of the
+    // bottleneck and unaffected by the queue-redistribution gap. Segments 1-7
+    // of this row compute 29.2/35.2/32.1/35.8/39.2/73.4/63.5 against a
+    // published 36.7/39.3/36.3/38.6/33.4/63.9/65.1 and are covered by the
+    // VERIFY-HCM note in the speed test.
+    let p4_tail = [40.4, 40.4, 38.2, 34.8];
+    for (k, e) in p4_tail.iter().enumerate() {
+        let i = 7 + k;
+        assert_approx(
+            fac.density_veh[i][3],
+            *e,
+            0.5,
+            &format!("density seg {} period 4", i + 1),
+        );
+    }
 }
 
 /// Expanded LOS matrix (Exhibit 25-59): density-based LOS exact for
 /// periods 1, 2, 3, and 5 (all 44 cells) and for segments 6-11 of period 4;
 /// demand-based LOS F for segments 8-11 in period 3.
 ///
-/// VERIFY-HCM: period 4, segments 1-5 computed D/D/D/D/E vs published
-/// E/E/E/E/D — same queue-redistribution gap documented in the speed test.
+/// VERIFY-HCM: period 4, segments 1-3 and 5 computed D/D/D and E vs published
+/// E/E/E and D — the same queue-redistribution gap documented in the speed
+/// test. Segment 4 of that row now reads the published E; it was D before the
+/// Equation 25-12 front-clearing test was scoped to a restored bottleneck, and
+/// it is asserted below rather than left in this note.
 #[test]
 fn ep2_los_matrix_reproduced_cells_match_exhibit_25_59() {
     let mut fac = load_case("case2.json");
@@ -328,7 +384,9 @@ fn ep2_los_matrix_reproduced_cells_match_exhibit_25_59() {
             assert_eq!(got, *e, "LOS seg {} period {}", i + 1, p + 1);
         }
     }
-    // Period 4, segments 6-11 (published F F D E D E).
+    // Period 4, Segment 4 and Segments 6-11 (published E, then F F D E D E).
+    let got: char = fac.los[3][3].into();
+    assert_eq!(got, 'E', "LOS seg 4 period 4");
     let p4_tail = ['F', 'F', 'D', 'E', 'D', 'E'];
     for (k, e) in p4_tail.iter().enumerate() {
         let i = 5 + k;
@@ -802,13 +860,15 @@ fn ep4_work_zone_caf_saf_match_equations_10_7_to_10_12() {
 /// Segment-11 bottleneck and the facility operates oversaturated in every
 /// analysis period (LOS F throughout).
 ///
-/// Space mean speed reproduces the published values within 0.6 mi/h per period.
-/// In the deep-queue periods (3-5) the oversaturated engine's queue densities
-/// run up to ~3 veh/mi/ln from the book, and the demand-weighted overall speed
-/// carries a correspondingly larger gap (computed 16.5 vs. published 19.5
-/// mi/h) - the same oversaturated-regime reproduction gap documented for
-/// Example Problem 2, amplified by the far deeper queues here. LOS (F in every
-/// cell) and the per-period speeds are exact within tolerance.
+/// Space mean speed reproduces the published values within 0.7 mi/h per period
+/// and average density within 1.0 veh/mi/ln in the first four. Period 5 is the
+/// queue-recovery period and its density still runs 4.9 veh/mi/ln light.
+///
+/// The demand-weighted overall speed carries a larger gap (computed 16.2
+/// against a published 19.5 mi/h) while the overall density is close (81.6
+/// against 80.5) - the same oversaturated-regime reproduction gap documented
+/// for Example Problem 2, amplified by the far deeper queues here. LOS is F in
+/// every cell.
 #[test]
 fn ep4_facility_performance_matches_exhibit_25_77() {
     let mut fac = load_case("case4.json");
@@ -825,19 +885,14 @@ fn ep4_facility_performance_matches_exhibit_25_77() {
     for (p, (s, k)) in expected.iter().enumerate() {
         let perf = &fac.facility_performance[p];
         // Period 5 is the queue-recovery period, where both facility measures are most
-        // sensitive to the discharge capacity. Correcting Equation 12-6 to read the unadjusted
-        // FFS (December 2022 corrections) raises this segment's capacity by 10 pc/h/ln, 0.5%,
-        // because the work zone's SAF_wz of 0.982 no longer suppresses it on top of its CAF_wz.
-        // Over five periods of queueing that compounds: p5 moves from (14.20 mi/h, 90.4
-        // veh/mi/ln) to (14.82, 88.3) against a published (13.7, 93.4), so both measures move
-        // further from the book here. Across the other periods the effect is mixed rather than
-        // systematic (p3 moves closer on both measures, p4 closer on speed, p1-p2 marginally
-        // further), which is consistent with the oversaturated-regime reproduction gap this
-        // problem already carries - its overall facility speed computes 16.5 against a published
-        // 19.5 - rather than with the book having used FFS_adj. The p5 tolerances are widened
-        // deliberately to keep the errata-correct capacity, not to silence a regression; reverting
-        // the Equation 12-6 change would restore the tighter bounds.
-        let (speed_tol, density_tol) = if p == 4 { (1.2, 5.5) } else { (0.6, 3.5) };
+        // sensitive to the discharge capacity, and it keeps a wider density bound. Scoping the
+        // Equation 25-12 front-clearing test to a restored bottleneck moved it from (14.82 mi/h,
+        // 88.3 veh/mi/ln) to (13.03, 98.3) against a published (13.7, 93.4), so its speed is now
+        // close and its density overshoots by about as much as it used to undershoot. That is the
+        // same residual oversaturated-regime gap the segment matrices carry; the earlier note here
+        // attributing the p5 spread to the Equation 12-6 errata correction is superseded, since
+        // the correction is worth 0.5% of one segment's capacity and this is worth 10 veh/mi/ln.
+        let (speed_tol, density_tol) = if p == 4 { (0.8, 5.2) } else { (0.7, 1.0) };
         assert_approx(perf.space_mean_speed, *s, speed_tol, &format!("facility SMS p{}", p + 1));
         // Deep-queue density gap (see the doc comment).
         assert_approx(perf.avg_density_veh, *k, density_tol, &format!("facility density p{}", p + 1));
@@ -901,44 +956,47 @@ fn ep4_dc_ratios_match_exhibit_25_72() {
     assert_matrix(&fac.dc_ratio, &expected, 0.02, "d/c ratio");
 }
 
-/// Volume-served matrix (Exhibit 25-73) for the cells this implementation
-/// reproduces: Analysis Period 1 across all eleven segments, and the work zone
-/// (Segment 11) in every period, where the bottleneck meters throughput at the
-/// work zone discharge rate of ~3,714 veh/h.
+/// Volume-served matrix (Exhibit 25-73), all 55 cells. 33 of them reproduce
+/// within +-40 veh/h and are asserted at their published values: the whole of
+/// Analysis Period 1, the work zone (Segment 11) in every period, where the
+/// bottleneck meters throughput at the work zone discharge rate of ~3,714
+/// veh/h, and Analysis Period 2 everywhere but Segment 4.
 ///
-/// VERIFY-HCM (documented reproduction gap): Segments 1-10 in Analysis Periods
-/// 2-5 are not asserted. Once the Segment 11 queue reaches back through the
-/// facility the engine distributes stored demand differently from the published
-/// FREEVAL run, and the cell-level differences reach ~250 veh/h (for instance
-/// period 4 Segment 1 computes 2,586 against a published 2,831, and period 5
-/// Segment 1 computes 3,808 against a published 3,589). The published rows are
-/// Exhibit 25-73 periods 2-5:
-///   p2: 4,955  5,495  5,495  5,446  3,947  3,701  3,325  3,878  3,882  3,895
-///   p3: 3,275  3,476  3,094  3,031  2,912  3,391  3,250  3,899  3,905  3,929
-///   p4: 2,831  3,398  3,474  3,416  3,424  3,914  3,597  4,014  4,004  3,965
-///   p5: 3,589  3,991  4,096  3,957  3,452  3,912  3,675  3,923  3,916  3,897
-/// This is the same oversaturated-regime gap already documented for Example
-/// Problem 2, not a work-zone-specific defect: the work zone segment itself and
-/// the whole pre-queue period reproduce within tolerance.
+/// VERIFY-HCM (documented reproduction gap): the remaining 22 cells are the
+/// upstream segments of Analysis Periods 3-5. Once the Segment 11 queue reaches
+/// back through the facility the engine distributes stored demand differently
+/// from the published FREEVAL run. They are pinned at the values this engine
+/// computes, with the published ones alongside in `published` below, so the
+/// gap cannot move silently. This is the same oversaturated-regime gap
+/// documented for Example Problem 2, not a work-zone-specific defect: the work
+/// zone segment itself and the whole pre-queue period reproduce.
 #[test]
-fn ep4_volume_served_reproduced_cells_match_exhibit_25_73() {
+fn ep4_volume_served_matches_exhibit_25_73() {
     let mut fac = load_case("case4.json");
     fac.run_analysis().unwrap();
 
-    let p1 = [4505., 4955., 4955., 4955., 4685., 5225., 3924., 4185., 4126., 3929., 3719.];
-    for (i, e) in p1.iter().enumerate() {
-        assert_approx(fac.volume_served[i][0], *e, 40.0, &format!("volume served seg {} p1", i + 1));
-    }
-
-    let wz_by_period = [3719., 3714., 3714., 3714., 3714.];
-    for (p, e) in wz_by_period.iter().enumerate() {
-        assert_approx(
-            fac.volume_served[10][p],
-            *e,
-            40.0,
-            &format!("work zone volume served seg 11 p{}", p + 1),
-        );
-    }
+    let published = [
+        [4505., 4955., 4955., 4955., 4685., 5225., 3924., 4185., 4126., 3929., 3719.],
+        [4955., 5495., 5495., 5446., 3947., 3701., 3325., 3878., 3882., 3895., 3714.],
+        [3275., 3476., 3094., 3031., 2912., 3391., 3250., 3899., 3905., 3929., 3714.],
+        [2831., 3398., 3474., 3416., 3424., 3914., 3597., 4014., 4004., 3965., 3714.],
+        [3589., 3991., 4096., 3957., 3452., 3912., 3675., 3923., 3916., 3897., 3714.],
+    ];
+    let engine = [
+        [4505., 4955., 4955., 4955., 4685., 5225., 3925., 4193., 4133., 3948., 3738.],
+        [4955., 5495., 5495., 5397., 3935., 3686., 3348., 3901., 3905., 3915., 3733.],
+        [3434., 3712., 3215., 3184., 2894., 3337., 3242., 3891., 3898., 3921., 3733.],
+        [3138., 3570., 3625., 3469., 3449., 3961., 3627., 4048., 4036., 4006., 3733.],
+        [3632., 3801., 3787., 3777., 3543., 4044., 3721., 3967., 3960., 3938., 3733.],
+    ];
+    assert_matrix_against_published(
+        &fac.volume_served,
+        &published,
+        &engine,
+        40.0,
+        2.0,
+        "volume served (veh/h)",
+    );
 }
 
 /// Work zone segment speed and density (Exhibits 25-74 and 25-75, Segment 11)
@@ -952,45 +1010,66 @@ fn ep4_volume_served_reproduced_cells_match_exhibit_25_73() {
 /// CAF_wz or SAF_wz were wrong, which makes it the real regression guard for
 /// Equations 10-7 through 10-12 downstream of the unit-level check above.
 ///
-/// VERIFY-HCM (documented reproduction gap): the queued cells upstream of the
-/// work zone are not asserted. Speeds there differ from Exhibit 25-74 by up to
-/// ~10 mi/h (period 5 Segment 2 computes 26.7 against a published 16.4) and
-/// densities from Exhibit 25-75 by up to ~48 veh/mi/ln (period 4 Segment 6
-/// computes 69.8 against a published 117.3), because the engine holds the
-/// residual queue in different segments than the published FREEVAL run does.
-/// The facility aggregates and every LOS letter still reproduce, so the
-/// disagreement is in how the same total queue is distributed, not in its size.
-/// Analysis Period 1 Segment 9 is likewise excluded (computed 15.0 mi/h and
-/// 91.7 veh/mi/ln against a published 13.0 and 100.6), since the queue reaches
-/// Segment 9 within that first period.
+/// VERIFY-HCM (documented reproduction gap): 34 of the 55 speed cells and 15 of
+/// the 55 density cells reproduce within +-0.5 and are asserted at their
+/// published values. The rest are the queued segments upstream of the work
+/// zone, and they are pinned at the values this engine computes. Speeds there
+/// differ from Exhibit 25-74 by up to 6.2 mi/h (period 5 Segment 3 computes
+/// 12.4 against a published 18.6) and densities from Exhibit 25-75 by up to
+/// 28.6 veh/mi/ln (the same cell, 102.1 against 73.5), because the engine holds
+/// the residual queue in different segments than the published FREEVAL run
+/// does. Every LOS letter still reproduces, so the disagreement is in how the
+/// same total queue is distributed, not in its size.
 #[test]
 fn ep4_work_zone_segment_matches_exhibits_25_74_and_25_75() {
     let mut fac = load_case("case4.json");
     fac.run_analysis().unwrap();
 
-    let wz_speed = [50.4, 50.5, 50.5, 50.5, 50.5];
-    let wz_density = [36.9, 36.8, 36.8, 36.8, 36.8];
-    for p in 0..5 {
-        assert_approx(fac.speed[10][p], wz_speed[p], 0.5, &format!("work zone speed p{}", p + 1));
-        assert_approx(
-            fac.density_veh[10][p],
-            wz_density[p],
-            0.5,
-            &format!("work zone density p{}", p + 1),
-        );
-    }
+    let published_speed = [
+        [60.0, 53.9, 59.7, 56.1, 60.0, 48.0, 24.2, 15.9, 13.0, 13.0, 50.4],
+        [59.9, 53.2, 54.5, 52.3, 22.2, 8.9, 9.4, 12.3, 12.2, 12.2, 50.5],
+        [12.9, 12.8, 13.1, 9.7, 8.0, 6.5, 9.1, 12.4, 12.4, 12.4, 50.5],
+        [5.9, 11.0, 12.9, 12.8, 11.5, 8.3, 11.0, 13.1, 12.7, 12.7, 50.5],
+        [11.0, 16.4, 18.6, 16.4, 12.3, 8.3, 11.2, 12.5, 12.3, 12.3, 50.5],
+    ];
+    let engine_speed = [
+        [60.0, 53.9, 59.7, 56.1, 60.0, 48.0, 24.1, 16.3, 15.0, 13.4, 50.2],
+        [59.9, 53.2, 58.6, 53.2, 22.0, 8.9, 9.7, 12.6, 12.5, 12.6, 50.2],
+        [16.6, 13.9, 10.0, 8.9, 7.4, 6.8, 9.2, 12.5, 12.5, 12.6, 50.2],
+        [7.7, 12.2, 11.4, 10.7, 9.6, 8.8, 11.0, 13.5, 13.3, 13.1, 50.2],
+        [12.2, 14.1, 12.4, 12.3, 10.1, 9.1, 11.5, 13.0, 12.9, 12.7, 50.2],
+    ];
+    assert_matrix_against_published(
+        &fac.speed,
+        &published_speed,
+        &engine_speed,
+        0.5,
+        0.1,
+        "speed (mi/h)",
+    );
 
-    let p1_speed = [60.0, 53.9, 59.7, 56.1, 60.0, 48.0];
-    let p1_density = [25.0, 30.6, 27.6, 29.4, 26.0, 27.2];
-    for i in 0..6 {
-        assert_approx(fac.speed[i][0], p1_speed[i], 0.5, &format!("speed seg {} p1", i + 1));
-        assert_approx(
-            fac.density_veh[i][0],
-            p1_density[i],
-            0.5,
-            &format!("density seg {} p1", i + 1),
-        );
-    }
+    let published_density = [
+        [25.0, 30.6, 27.6, 29.4, 26.0, 27.2, 54.1, 87.5, 100.6, 100.6, 36.9],
+        [27.6, 34.5, 33.6, 34.7, 59.1, 104.2, 117.8, 105.5, 106.2, 106.2, 36.8],
+        [84.6, 90.6, 78.7, 104.6, 121.4, 130.1, 119.1, 104.4, 105.4, 105.4, 36.8],
+        [159.3, 103.4, 89.8, 88.7, 99.4, 117.3, 109.0, 102.5, 104.2, 104.2, 36.8],
+        [108.6, 81.0, 73.5, 80.4, 93.5, 118.2, 109.2, 105.0, 106.0, 106.0, 36.8],
+    ];
+    let engine_density = [
+        [25.0, 30.6, 27.7, 29.4, 26.0, 27.2, 54.4, 86.0, 91.7, 98.4, 37.2],
+        [27.6, 34.5, 31.2, 33.8, 59.7, 103.9, 115.3, 103.5, 103.8, 103.5, 37.1],
+        [69.1, 89.2, 106.9, 118.8, 131.1, 121.9, 117.9, 103.5, 103.9, 103.4, 37.1],
+        [136.0, 97.5, 105.7, 108.1, 120.1, 112.9, 110.0, 99.8, 101.0, 101.6, 37.1],
+        [99.4, 89.9, 102.1, 102.5, 116.8, 111.6, 108.3, 101.9, 102.6, 103.0, 37.1],
+    ];
+    assert_matrix_against_published(
+        &fac.density_veh,
+        &published_density,
+        &engine_density,
+        0.5,
+        0.2,
+        "density (veh/mi/ln)",
+    );
 }
 
 /// Segment LOS matrix (Exhibit 25-76), all 55 cells exact. Every queued segment
