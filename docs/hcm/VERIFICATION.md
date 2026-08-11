@@ -167,7 +167,10 @@ implemented (EPUB `235_Ch30_03.xhtml`, `236_Ch30_04.xhtml`; EP1 intermediates in
 5. Ch 34 Ex. 5 published DDI uniform delays inconsistent with Eq 19-19 under any arrival type;
    equation-based results asserted (9/10 LOS letters still match).
 6. Ex. 5 applied through-form traffic pressure to ramp lefts; left form implemented (~1% delta).
-7. Exhibit 34-9 CGRD=34 counts only the phase-3 overlap; interval-intersection gives 39 (no outcome effect).
+7. Common green is scoped to a phase pair, per Exhibit 23-28. A movement green twice per cycle
+   contributes one candidate overlap per window and the largest governs; the book does not say which
+   pair governs when several qualify. Exhibits 34-9 and 34-89 both print CG_RD = 34 (a union of the
+   two windows gives 39, and Exhibit 34-10's 4.1-ft queue only follows from 34).
 8. Shared-group f_RT convention: flow-weighted f_R via Eq 23-23 (Exhibit 34-7 convention) used.
 
 ## Chapter 23 Part C (feat/hcm-ch23-alternative-intersections)

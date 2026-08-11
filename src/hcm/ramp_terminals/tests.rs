@@ -183,6 +183,12 @@ fn test_exhibit_34_9_common_green() {
     // EB EXT THRU [0, 63] vs. EB INT THRU [150, 63] + [116, 34] -> 53 s.
     let eb_int = [g(150.0, 63.0), g(116.0, 34.0)];
     assert!(near(common_green_time(&[g(0.0, 63.0)], &eb_int, c), 53.0, 1e-9));
+    // SB RAMP [116, 39] vs. EB INT THRU -> CG_RD = 34 s. The internal
+    // through is green twice per cycle and its two windows are contiguous,
+    // so this is the row that distinguishes the phase-pair scope (34 s,
+    // the overlap with the [116, 34] window) from a movement-level union
+    // (39 s, the whole ramp green).
+    assert!(near(common_green_time(&[g(116.0, 39.0)], &eb_int, c), 34.0, 1e-9));
     // WB EXT THRU [150, 63] vs. WB INT THRU [0, 111] -> 53 s.
     let wb_int = [g(0.0, 111.0)];
     assert!(near(common_green_time(&[g(150.0, 63.0)], &wb_int, c), 53.0, 1e-9));

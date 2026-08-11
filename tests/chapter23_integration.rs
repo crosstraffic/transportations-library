@@ -1222,31 +1222,22 @@ fn test_ep8_adjacent_intersection_queues_and_lost_time() {
         assert_near!(common_green_time(a, b, C), cg_pub, 1e-9, format!("CG {what}"));
     }
 
-    // The SB RAMP / EB INT-TH row is where `common_green_time` and the
-    // published exhibits part company, and the split is worth pinning
-    // because the eastbound internal through is the one movement in these
-    // examples that receives green twice per cycle. The exhibit prints its
-    // two windows as 150-53 and 116-150, which are contiguous, so unioning
-    // them makes the movement green continuously from 116 to 53 and the
-    // overlap with the 116-155 ramp phase is the whole 39-s ramp green.
-    // Both Exhibit 34-89 here and Exhibit 34-9 in Example Problem 1 print
-    // 34 s, which is the overlap with the second window alone. Example
-    // Problem 1 corroborates its own number downstream: Exhibit 34-10
-    // publishes a 4.1-ft SB-L queue, and Equation 23-34 returns 4.1 ft at
-    // CG = 34 s and 0 ft at CG = 39 s. The engine value is asserted, the
-    // published reading is asserted alongside it, and nothing downstream of
-    // either changes an answer in the fixtures (both lost times are zero).
+    // The SB RAMP / EB INT-TH row is the one that pins the phase-pair
+    // scope of `common_green_time`, because the eastbound internal through
+    // is the only movement in these examples that receives green twice per
+    // cycle. Its two windows, 150-53 and 116-150, are contiguous, so
+    // unioning them first would make the movement green continuously from
+    // 116 to 53 and the overlap with the 116-155 ramp phase would be the
+    // whole 39-s ramp green. Both Exhibit 34-89 here and Exhibit 34-9 in
+    // Example Problem 1 print 34 s, the overlap with the 116-150 window
+    // alone, and Example Problem 1 corroborates that downstream: Exhibit
+    // 34-10 publishes a 4.1-ft SB-L queue, which Equation 23-34 returns at
+    // CG = 34 s and not at 39 s.
     assert_near!(
         common_green_time(&sb_ramp, &eb_int, C),
-        39.0,
-        1e-9,
-        "CG SB RAMP / EB INT-TH (published 34)"
-    );
-    assert_near!(
-        common_green_time(&sb_ramp, &eb_int[1..], C),
         34.0,
         1e-9,
-        "CG SB RAMP / EB INT-TH second window only"
+        "CG SB RAMP / EB INT-TH"
     );
 
     // Exhibit 34-90, upper block: (label, feeding flow, feeding lanes,

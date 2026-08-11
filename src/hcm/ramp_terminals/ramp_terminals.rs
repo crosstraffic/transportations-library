@@ -561,38 +561,61 @@ pub struct GreenInterval {
 /// Common green time between two sets of green intervals on a common
 /// cycle (HCM Chapter 23, Step 4: "the amount of time during which both
 /// phases have a green indication"; Exhibit 23-28).
+///
+/// The scope is a *phase pair*, not a movement. Exhibit 23-28 draws each
+/// common green as the overlap of one upstream phase's green window with
+/// one downstream phase's green window, and the Step 4 text defines CG
+/// "between Phase A ... and Phase B". A movement served twice per cycle
+/// therefore contributes one candidate overlap per window rather than a
+/// unioned window, and the governing value is the largest single-pair
+/// overlap. Wrapping is resolved inside a pair, so a window that crosses
+/// the cycle boundary still counts as one phase.
+///
+/// VERIFY-HCM: the book never states which pair governs when more than
+/// one qualifies, because its worked examples never have two competing
+/// overlaps of comparable size. The maximum is used, which reproduces
+/// both published exhibits that exercise a twice-served movement:
+/// Exhibit 34-9 (Example Problem 1) and Exhibit 34-89 (Example Problem 8)
+/// both print CG_RD = 34 s for the southbound ramp against the eastbound
+/// internal through, the overlap with that movement's 116-150 window
+/// alone. Summing the pairs instead gives 39 s, and Example Problem 1
+/// corroborates 34 downstream: Exhibit 34-10's published 4.1-ft
+/// southbound-left queue comes out of Equation 23-34 only at CG = 34 s
+/// (39 s gives 0 ft).
 pub fn common_green_time(a: &[GreenInterval], b: &[GreenInterval], cycle_s: f64) -> f64 {
     if cycle_s <= 0.0 {
         return 0.0;
     }
-    // Unroll wrapped intervals onto [0, 2C) and intersect on [0, C) by
-    // splitting at the cycle boundary.
-    let split = |ivs: &[GreenInterval]| -> Vec<(f64, f64)> {
-        let mut out = Vec::new();
-        for iv in ivs {
-            if iv.duration_s <= 0.0 {
-                continue;
-            }
-            let b0 = iv.begin_s.rem_euclid(cycle_s);
-            let e0 = b0 + iv.duration_s.min(cycle_s);
-            if e0 <= cycle_s {
-                out.push((b0, e0));
-            } else {
-                out.push((b0, cycle_s));
-                out.push((0.0, e0 - cycle_s));
-            }
+    // Unroll one wrapped interval onto [0, C) as one or two pieces.
+    let split = |iv: &GreenInterval| -> Vec<(f64, f64)> {
+        if iv.duration_s <= 0.0 {
+            return Vec::new();
         }
-        out
+        let b0 = iv.begin_s.rem_euclid(cycle_s);
+        let e0 = b0 + iv.duration_s.min(cycle_s);
+        if e0 <= cycle_s {
+            vec![(b0, e0)]
+        } else {
+            vec![(b0, cycle_s), (0.0, e0 - cycle_s)]
+        }
     };
-    let sa = split(a);
-    let sb = split(b);
-    let mut total = 0.0;
-    for &(ab, ae) in &sa {
-        for &(bb, be) in &sb {
-            total += (ae.min(be) - ab.max(bb)).max(0.0);
+    let mut best: f64 = 0.0;
+    for ia in a {
+        let sa = split(ia);
+        for ib in b {
+            // Within one phase pair the pieces of a wrapped window are
+            // parts of the same green, so they add.
+            let overlap: f64 = split(ib)
+                .iter()
+                .flat_map(|&(bb, be)| {
+                    sa.iter()
+                        .map(move |&(ab, ae)| (ae.min(be) - ab.max(bb)).max(0.0))
+                })
+                .sum();
+            best = best.max(overlap);
         }
     }
-    total
+    best
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
