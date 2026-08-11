@@ -1,6 +1,6 @@
 //! Full-pipeline integration tests for HCM Chapter 20 (TWSC intersections)
 //! against the published answers of HCM Chapter 32, TWSC Example Problems 1,
-//! 3, and 4.
+//! 2, 3, and 4.
 //!
 //! Tolerances: LOS exact; control delays within +-0.5 s/veh; capacities
 //! within +-5 veh/h of the published (rounded) values. Example Problem 4
@@ -8,46 +8,19 @@
 //! left-turn delays use a wider, documented tolerance because Equation 20-61
 //! is steep near v/c = 1.7 and the book rounds c_m to an integer.
 //!
-//! Chapter 32, TWSC Example Problem 2 (pedestrian crossing at a TWSC
-//! intersection) is deliberately NOT covered here, because the pedestrian mode
-//! is not implemented. What `src/hcm/twsc/` provides is the pedestrian
-//! *impedance* extension of the vehicular method, Equations 20-67 through
-//! 20-75, in which pedestrian volumes v13-v16 reduce vehicular movement
-//! capacity. That is a different procedure from Chapter 20 Section 5, which is
-//! the pedestrian mode proper and computes a service measure for the
-//! pedestrian. Reproducing Example Problem 2 needs all seven of its steps, and
-//! none of the following surface exists:
-//!
-//! * pedestrian critical headway from crossing length, walking speed, and
-//!   start-up/clearance time (Equation 20-76), and the platoon-adjusted form
-//!   (Equations 20-77 through 20-79);
-//! * probability of a blocked lane and of a delayed crossing (Equations 20-80
-//!   and 20-81);
-//! * average gap delay and gap delay given nonzero delay (Equations 20-82 and
-//!   20-83);
-//! * delay reduction from yielding motorists (Equations 20-84 through 20-94),
-//!   including the per-lane-count yield-event probabilities P(Y_i) that the
-//!   example selects by number of lanes crossed (Equation 20-89 for a two-lane
-//!   crossing, Equation 20-92 for a four-lane crossing);
-//! * the pedestrian satisfaction model that produces LOS - satisfaction odds
-//!   with indicator variables for RRFBs, marked crosswalk, and median refuge
-//!   plus the AADT term (Equation 20-95), the satisfaction and dissatisfaction
-//!   probabilities (Equations 20-96 through 20-98), the average proportion
-//!   dissatisfied (Equation 20-99), and the Exhibit 20-3 pedestrian-mode LOS
-//!   bands keyed on proportion dissatisfied rather than on delay.
-//!
-//! There is also no two-stage-crossing decomposition (Step 1) and no input
-//! surface for crosswalk length, walking speed, motorist yield rate, K-factor,
-//! or the countermeasure indicators. Landing this example therefore means
-//! implementing Chapter 20 Section 5, not extending a fixture. For the record,
-//! the published answers to reproduce once it exists are: critical headway
-//! t_c = 12.5 s (Scenario A, 46-ft single-stage crossing) and 6.0 s (Scenarios
-//! B and C, 20-ft stages); total pedestrian delay 761 s (A), 6.0 s (B), 3.0 s
-//! (C); P_d = 0.758 for the two-stage scenarios; and LOS F (A), C (B), A (C),
-//! with the Scenario B and C intermediates tabulated in Exhibit 32-7.
+//! Example Problem 2 covers the Chapter 20 Section 5 pedestrian mode
+//! (`src/hcm/twsc/pedestrian.rs`), which is a distinct procedure from the
+//! Section 4 pedestrian-*impedance* extension in `src/hcm/twsc/twsc.rs` where
+//! pedestrian volumes v13-v16 reduce vehicular movement capacity. All three of
+//! its scenarios are asserted against the Step 2-7 prose and Exhibit 32-7. The
+//! Scenario A gap delay carries a proportional tolerance rather than the
+//! +-0.5 s used elsewhere, because d_g = 761 s is published to three
+//! significant figures and Equation 20-82 is exponential in v * t_c,G.
 
 use std::fs;
 
+use transportations_library::hcm::common::LevelOfService;
+use transportations_library::hcm::twsc::pedestrian::PedestrianCrossing;
 use transportations_library::hcm::twsc::twsc::{Mv, Twsc};
 
 const DELAY_TOL: f64 = 0.5;
@@ -57,6 +30,19 @@ fn load(case: &str) -> Twsc {
     let path = format!("tests/ExampleCases/hcm/Twsc/{case}.json");
     let json = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
     Twsc::from_json(&json).unwrap_or_else(|e| panic!("parse {path}: {e}"))
+}
+
+/// Load one scenario out of the multi-scenario Example Problem 2 fixture.
+fn load_pedestrian(scenario: &str) -> PedestrianCrossing {
+    let path = "tests/ExampleCases/hcm/Twsc/case4_pedestrian.json";
+    let json = fs::read_to_string(path).unwrap_or_else(|e| panic!("read {path}: {e}"));
+    let root: serde_json::Value =
+        serde_json::from_str(&json).unwrap_or_else(|e| panic!("parse {path}: {e}"));
+    let node = root
+        .get(scenario)
+        .unwrap_or_else(|| panic!("{path} has no {scenario}"));
+    serde_json::from_value(node.clone())
+        .unwrap_or_else(|e| panic!("parse {scenario} of {path}: {e}"))
 }
 
 fn assert_close(value: f64, expected: f64, tol: f64, what: &str) {
@@ -304,5 +290,175 @@ fn test_twsc_fixture_roundtrip() {
     assert_eq!(
         back.movements[Mv::M7.idx()].movement_capacity,
         twsc.movements[Mv::M7.idx()].movement_capacity
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Example Problem 2: pedestrian mode (Chapter 20, Section 5)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// HCM Chapter 32, TWSC Example Problem 2, Scenario A: 46-ft unmarked
+/// single-stage crossing of four through lanes, 0% motorist yield rate.
+/// Published answers: t_c = 12.5 s; P_b = 0.771; P_d = 0.997; d_g = 761 s;
+/// d_gd = 763 s; d_p = 761 s; O(S/D) = 1.066 and 0.159 for the no-delay and
+/// delay cases; P(D, no delay) = 48.4%; P(D, delay) = 86.3%; P(Y_1) = 0;
+/// P_nd = 0.003; LOS F.
+#[test]
+fn test_twsc_example_problem_2_scenario_a() {
+    let r = load_pedestrian("scenario_a").analyze();
+    assert_eq!(r.stages.len(), 1, "Scenario A is a single-stage crossing");
+    let s = &r.stages[0];
+
+    // Steps 2 and 3 (Equations 20-76, 20-80, 20-81).
+    assert_close(s.critical_headway, 12.5, 0.05, "t_c");
+    // No platooning, so N_p = 1 row and t_c,G collapses to t_c (Equation 20-79).
+    assert_close(s.spatial_distribution, 1.0, 1e-9, "N_p");
+    assert_close(s.group_critical_headway, 12.5, 0.05, "t_c,G");
+    assert_close(s.prob_blocked_lane, 0.771, 0.001, "P_b");
+    assert_close(s.prob_delayed_crossing, 0.997, 0.001, "P_d");
+
+    // Step 4 (Equations 20-82 and 20-83). Published to three significant
+    // figures; Equation 20-82 is exponential in v * t_c,G.
+    assert_close(s.gap_delay, 761.0, 761.0 * 0.005, "d_g");
+    assert_close(s.gap_delay_when_delayed, 763.0, 763.0 * 0.005, "d_gd");
+
+    // Step 5: with M_y = 0 every P(Y_i) is zero, so Equation 20-84 reduces to
+    // P_d * d_gd = d_g. The book labels this "d_p,1 = d_gd = 761 s", which is a
+    // mislabel of d_gd = 763 s; the value 761 s is what Equation 20-84 yields.
+    assert!(
+        s.prob_yield.iter().all(|p| *p == 0.0),
+        "Scenario A has a 0% yield rate, so every P(Y_i) must be 0"
+    );
+    assert_close(r.delay, 761.0, 761.0 * 0.005, "d_p");
+
+    // Step 7 (Equations 20-95 through 20-99, Exhibit 20-3).
+    assert_close(r.odds_satisfied_no_delay, 1.066, 0.005, "O(S/D, no delay)");
+    assert_close(r.prob_satisfied_no_delay, 0.516, 0.001, "P(S, no delay)");
+    assert_close(r.prob_dissatisfied_no_delay, 0.484, 0.001, "P(D, no delay)");
+    assert_close(r.odds_satisfied_delay, 0.159, 0.001, "O(S/D, delay)");
+    assert_close(r.prob_satisfied_delay, 0.137, 0.001, "P(S, delay)");
+    assert_close(r.prob_dissatisfied_delay, 0.863, 0.001, "P(D, delay)");
+    assert_close(r.prob_yield_first_event, 0.0, 1e-9, "P(Y_1)");
+    assert_close(r.prob_non_delayed, 0.003, 0.001, "P_nd");
+    // Equation 20-99 with the published components: 0.003(0.484) + 0.997(0.863).
+    assert_close(r.proportion_dissatisfied, 0.862, 0.005, "P_D");
+    assert_eq!(r.los, LevelOfService::F, "Scenario A LOS");
+}
+
+/// HCM Chapter 32, TWSC Example Problem 2, Scenario B: two-stage crossing,
+/// 20 ft and two through lanes per stage, marked crosswalk and median refuge,
+/// 50% motorist yield rate. Published answers: t_c = 6.0 s; P_b = 0.508;
+/// P_d = 0.758; d_g = 7.2 s; d_gd = 9.5 s; h = 2.3 s; n = 4; P(Y_1) = 0.314;
+/// d_p,1 = d_p,2 = 3.0 s; d_p = 6.0 s. Exhibit 32-7: O(S/D) = 13.44 / 2.00,
+/// P(D) = 6.9% / 33.4%, P_nd = 0.481, P(D) = 0.207, LOS C.
+#[test]
+fn test_twsc_example_problem_2_scenario_b() {
+    let r = load_pedestrian("scenario_b").analyze();
+    assert_eq!(r.stages.len(), 2, "Scenario B is a two-stage crossing");
+    let s = &r.stages[0];
+
+    assert_close(s.critical_headway, 6.0, 0.05, "t_c");
+    assert_close(s.prob_blocked_lane, 0.508, 0.001, "P_b");
+    assert_close(s.prob_delayed_crossing, 0.758, 0.001, "P_d");
+    assert_close(s.gap_delay, 7.2, 0.05, "d_g");
+    assert_close(s.gap_delay_when_delayed, 9.5, 0.05, "d_gd");
+
+    // Step 5 (Equations 20-85, 20-84, and the two-lane Equation 20-89).
+    assert_close(s.average_short_headway, 2.3, 0.05, "h");
+    assert_eq!(s.yield_events, 4, "n = int(d_gd / h)");
+    // The book prints the running cumulative sums inside the P(Y_i) brackets:
+    // 0, 0.314, 0.498, 0.606.
+    assert_close(s.prob_yield[1], 0.314, 0.001, "P(Y_1)");
+    let cum2: f64 = s.prob_yield[1] + s.prob_yield[2];
+    assert_close(cum2, 0.498, 0.001, "P(Y_1) + P(Y_2)");
+    let cum3: f64 = cum2 + s.prob_yield[3];
+    assert_close(cum3, 0.606, 0.001, "P(Y_1..3) cumulative");
+
+    // Both stages are identical by construction, so d_p,2 = d_p,1 = 3.0 s.
+    assert_close(s.delay, 3.0, DELAY_TOL, "d_p,1");
+    assert_close(r.stages[1].delay, 3.0, DELAY_TOL, "d_p,2");
+    // Step 6 (Equation 20-94).
+    assert_close(r.delay, 6.0, DELAY_TOL, "d_p");
+
+    // Step 7, Exhibit 32-7.
+    assert_close(r.odds_satisfied_no_delay, 13.44, 0.05, "O(S/D, no delay)");
+    assert_close(r.prob_satisfied_no_delay, 0.931, 0.001, "P(S, no delay)");
+    assert_close(r.prob_dissatisfied_no_delay, 0.069, 0.001, "P(D, no delay)");
+    assert_close(r.odds_satisfied_delay, 2.00, 0.01, "O(S/D, delay)");
+    assert_close(r.prob_satisfied_delay, 0.666, 0.001, "P(S, delay)");
+    assert_close(r.prob_dissatisfied_delay, 0.334, 0.001, "P(D, delay)");
+    assert_close(r.prob_yield_first_event, 0.314, 0.001, "P(Y_1)");
+    assert_close(r.prob_non_delayed, 0.481, 0.001, "P_nd");
+    assert_close(r.proportion_dissatisfied, 0.207, 0.001, "P_D");
+    assert_eq!(r.los, LevelOfService::C, "Scenario B LOS");
+}
+
+/// HCM Chapter 32, TWSC Example Problem 2, Scenario C: Scenario B plus RRFBs
+/// and an 80% motorist yield rate. Published answers: P(Y_1) = 0.565;
+/// d_p,1 = d_p,2 = 1.5 s; d_p = 3.0 s. Exhibit 32-7: O(S/D) = 95.15 / 14.15,
+/// P(D) = 1.0% / 6.6%, P_nd = 0.670, P(D) = 0.029, LOS A.
+#[test]
+fn test_twsc_example_problem_2_scenario_c() {
+    let r = load_pedestrian("scenario_c").analyze();
+    assert_eq!(r.stages.len(), 2, "Scenario C is a two-stage crossing");
+    let s = &r.stages[0];
+
+    // Only the yield rate changes from Scenario B, so Steps 2-4 are unchanged.
+    assert_close(s.prob_delayed_crossing, 0.758, 0.001, "P_d");
+    assert_close(s.average_short_headway, 2.3, 0.05, "h");
+    assert_eq!(s.yield_events, 4, "n = int(d_gd / h)");
+
+    // The book's cumulative sums for Scenario C: 0, 0.565, 0.709, 0.746.
+    assert_close(s.prob_yield[1], 0.565, 0.001, "P(Y_1)");
+    let cum2: f64 = s.prob_yield[1] + s.prob_yield[2];
+    assert_close(cum2, 0.709, 0.001, "P(Y_1) + P(Y_2)");
+    let cum3: f64 = cum2 + s.prob_yield[3];
+    assert_close(cum3, 0.746, 0.001, "P(Y_1..3) cumulative");
+
+    assert_close(s.delay, 1.5, DELAY_TOL, "d_p,1");
+    assert_close(r.delay, 3.0, DELAY_TOL, "d_p");
+
+    assert_close(r.odds_satisfied_no_delay, 95.15, 0.15, "O(S/D, no delay)");
+    assert_close(r.prob_satisfied_no_delay, 0.990, 0.001, "P(S, no delay)");
+    assert_close(r.prob_dissatisfied_no_delay, 0.010, 0.001, "P(D, no delay)");
+    assert_close(r.odds_satisfied_delay, 14.15, 0.05, "O(S/D, delay)");
+    assert_close(r.prob_satisfied_delay, 0.934, 0.001, "P(S, delay)");
+    assert_close(r.prob_dissatisfied_delay, 0.066, 0.001, "P(D, delay)");
+    assert_close(r.prob_yield_first_event, 0.565, 0.001, "P(Y_1)");
+    assert_close(r.prob_non_delayed, 0.670, 0.001, "P_nd");
+    assert_close(r.proportion_dissatisfied, 0.029, 0.001, "P_D");
+    assert_eq!(r.los, LevelOfService::A, "Scenario C LOS");
+}
+
+/// The three scenarios reproduce the Example Problem 2 discussion: adding a
+/// marked crosswalk and median refuge moves the crossing from LOS F to C, and
+/// adding RRFBs moves it to A.
+#[test]
+fn test_twsc_example_problem_2_countermeasure_progression() {
+    let a = load_pedestrian("scenario_a").analyze();
+    let b = load_pedestrian("scenario_b").analyze();
+    let c = load_pedestrian("scenario_c").analyze();
+    assert!(
+        a.proportion_dissatisfied > b.proportion_dissatisfied
+            && b.proportion_dissatisfied > c.proportion_dissatisfied,
+        "P_D must fall monotonically as countermeasures are added: {} -> {} -> {}",
+        a.proportion_dissatisfied,
+        b.proportion_dissatisfied,
+        c.proportion_dissatisfied
+    );
+    assert!(a.delay > b.delay && b.delay > c.delay, "d_p must fall too");
+}
+
+/// Serde round-trip of the pedestrian crossing config (binding-layer contract).
+#[test]
+fn test_twsc_pedestrian_roundtrip() {
+    let crossing = load_pedestrian("scenario_b");
+    let json = crossing.to_json().unwrap();
+    let back = PedestrianCrossing::from_json(&json).unwrap();
+    assert_close(
+        back.analyze().proportion_dissatisfied,
+        crossing.analyze().proportion_dissatisfied,
+        1e-12,
+        "P_D after round-trip",
     );
 }

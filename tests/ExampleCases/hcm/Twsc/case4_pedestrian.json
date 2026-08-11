@@ -1,0 +1,67 @@
+{
+  "_source": "HCM 7th Edition, Chapter 32, TWSC Example Problem 2: pedestrian crossing at a TWSC intersection. Four-lane major street, 1,700 veh/h bidirectional peak hour, K-factor 0.08, walking speed 4.0 ft/s, start-up and end clearance 1.0 s, no pedestrian platooning. Three scenarios share these facts and differ only in crossing staging, countermeasures, and motorist yield rate: A is a 46-ft unmarked single-stage crossing of all four lanes with a 0% yield rate; B and C are two-stage crossings of 20 ft and two lanes per stage, with half the volume (850 veh/h) conflicting at each stage, a marked crosswalk and median refuge, and yield rates of 50% and 80% respectively. C adds RRFBs. Scenario keys map to the PedestrianCrossing schema of src/hcm/twsc/pedestrian.rs.",
+  "scenario_a": {
+    "stages": [
+      {
+        "crossing_length_ft": 46.0,
+        "conflicting_flow_veh_h": 1700.0,
+        "through_lanes": 4
+      }
+    ],
+    "walk_speed_fps": 4.0,
+    "startup_clearance_s": 1.0,
+    "motorist_yield_rate": 0.0,
+    "pedestrian_platooning": false,
+    "peak_hour_volume_veh_h": 1700.0,
+    "k_factor": 0.08,
+    "has_rrfb": false,
+    "has_marked_crosswalk": false,
+    "has_median_refuge": false
+  },
+  "scenario_b": {
+    "stages": [
+      {
+        "crossing_length_ft": 20.0,
+        "conflicting_flow_veh_h": 850.0,
+        "through_lanes": 2
+      },
+      {
+        "crossing_length_ft": 20.0,
+        "conflicting_flow_veh_h": 850.0,
+        "through_lanes": 2
+      }
+    ],
+    "walk_speed_fps": 4.0,
+    "startup_clearance_s": 1.0,
+    "motorist_yield_rate": 0.5,
+    "pedestrian_platooning": false,
+    "peak_hour_volume_veh_h": 1700.0,
+    "k_factor": 0.08,
+    "has_rrfb": false,
+    "has_marked_crosswalk": true,
+    "has_median_refuge": true
+  },
+  "scenario_c": {
+    "stages": [
+      {
+        "crossing_length_ft": 20.0,
+        "conflicting_flow_veh_h": 850.0,
+        "through_lanes": 2
+      },
+      {
+        "crossing_length_ft": 20.0,
+        "conflicting_flow_veh_h": 850.0,
+        "through_lanes": 2
+      }
+    ],
+    "walk_speed_fps": 4.0,
+    "startup_clearance_s": 1.0,
+    "motorist_yield_rate": 0.8,
+    "pedestrian_platooning": false,
+    "peak_hour_volume_veh_h": 1700.0,
+    "k_factor": 0.08,
+    "has_rrfb": true,
+    "has_marked_crosswalk": true,
+    "has_median_refuge": true
+  }
+}

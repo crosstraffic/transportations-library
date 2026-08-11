@@ -326,7 +326,37 @@ impl Twsc {
     }
 }
 
+/// Evaluate the pedestrian mode at a TWSC or midblock crossing - HCM
+/// Chapter 20, Section 5 (Steps 1-7, Equations 20-76 through 20-99).
+///
+/// This is the pedestrian mode proper, not the Section 4 pedestrian-impedance
+/// adjustment to vehicular capacity that `Twsc` applies.
+///
+/// Args:
+///     config_json: JSON `PedestrianCrossing` config - `stages` (one entry per
+///         crossing stage, each with `crossing_length_ft`,
+///         `conflicting_flow_veh_h`, and `through_lanes`), `walk_speed_fps`,
+///         `startup_clearance_s`, `motorist_yield_rate` (decimal),
+///         `peak_hour_volume_veh_h` and `k_factor` (or `aadt_veh` directly) for
+///         Equation 20-95, the `has_rrfb` / `has_marked_crosswalk` /
+///         `has_median_refuge` indicators, and the optional platooning inputs
+///         `pedestrian_platooning`, `crosswalk_width_ft`, and
+///         `pedestrian_flow_p_h`.
+///
+/// Returns:
+///     JSON `PedestrianCrossingAnalysis` - per-stage intermediates, total
+///     pedestrian delay, the satisfaction probabilities, the average proportion
+///     dissatisfied, and the Exhibit 20-3 LOS.
+#[pyfunction]
+pub fn analyze_twsc_pedestrian(config_json: &str) -> PyResult<String> {
+    let crossing = crate::hcm::twsc::pedestrian::PedestrianCrossing::from_json(config_json)
+        .map_err(|e| PyValueError::new_err(format!("invalid pedestrian crossing config: {e}")))?;
+    serde_json::to_string(&crossing.analyze())
+        .map_err(|e| PyValueError::new_err(format!("serialize error: {e}")))
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Twsc>()?;
+    m.add_function(wrap_pyfunction!(analyze_twsc_pedestrian, m)?)?;
     Ok(())
 }
