@@ -1,0 +1,380 @@
+{
+  "_source": "HCM 7th Edition, Chapter 34 (Interchange Ramp Terminals: Supplemental), Example Problem 6: Diverging Diamond Interchange with YIELD Control (Exhibits 34-66 through 34-71). The interchange, demands, geometry, and signal timing are those of Example Problem 5 (case2.json); the only change is that the four off-ramp turns M3, M4, M7, and M8 are YIELD-controlled instead of signalized. The YieldTurnInput fields are transcribed from Exhibit 34-67 (opposing green and red, opposing flow and saturation flow per lane, clearance distance and speed) and Exhibit 34-68 (critical gap, follow-up time, conflicting flow rate). Each opposing green is the effective green of the crossover movement the YIELD turn conflicts with (M7 opposes M6, M8 opposes M5, M3 opposes M2, M4 opposes M1), and each per-lane opposing flow and saturation flow is that movement's Exhibit 34-64 lane group value divided by its lane count. The displayed greens, overlap lost times, and turn radii of the four YIELD groups are carried over from Example Problem 5 and are inert under YIELD control: Step 6 replaces the signalized capacity, and Step 8 replaces the signalized delay. VERIFY-HCM: Exhibit 34-70 publishes control delays (34.7 / 13.4 / 31.0 / 16.3 s/veh) that are not reproducible from Equation 22-17 at the capacities the same exhibit's v/c row confirms; see the integration test for the measurement. Exhibit 34-71 reprints the Exhibit 34-65 control delay, ETT, and LOS columns unchanged for O-Ds A through D, but its demand-x-ETT column and its totals row carry the recomputed YIELD values; the integration test uses the recomputed ones.",
+  "form": "Ddi",
+  "cycle_length_s": 70.0,
+  "analysis_period_h": 0.25,
+  "base_saturation_flow": 1900.0,
+  "area_type_cbd": false,
+  "peak_hour_factor": 1.0,
+  "distance_between_intersections_ft": 500.0,
+  "queue_spacing_ft": 25.0,
+  "od": {
+    "a": 350.0,
+    "b": 200.0,
+    "c": 200.0,
+    "d": 300.0,
+    "e": 600.0,
+    "f": 200.0,
+    "g": 300.0,
+    "h": 300.0,
+    "i": 700.0,
+    "j": 150.0,
+    "k": 0.0,
+    "l": 0.0,
+    "m": 0.0,
+    "n": 0.0
+  },
+  "eb_external_right_shared": false,
+  "wb_external_right_shared": false,
+  "ddi_eb_lane_config": "ThreeLaneExclusive",
+  "ddi_wb_lane_config": "TwoLaneShared",
+  "extra_distances": [
+    {
+      "distance_ft": 100.0,
+      "accel_decel_s": 0.0
+    },
+    {
+      "distance_ft": -100.0,
+      "accel_decel_s": 0.0
+    },
+    {
+      "distance_ft": -100.0,
+      "accel_decel_s": 0.0
+    },
+    {
+      "distance_ft": 100.0,
+      "accel_decel_s": 0.0
+    },
+    {
+      "distance_ft": 100.0,
+      "accel_decel_s": 0.0
+    },
+    {
+      "distance_ft": 0.0,
+      "accel_decel_s": 0.0
+    },
+    {
+      "distance_ft": 0.0,
+      "accel_decel_s": 0.0
+    },
+    {
+      "distance_ft": 100.0,
+      "accel_decel_s": 0.0
+    },
+    {
+      "distance_ft": 40.0,
+      "accel_decel_s": 0.0
+    },
+    {
+      "distance_ft": 40.0,
+      "accel_decel_s": 0.0
+    },
+    {
+      "distance_ft": 0.0,
+      "accel_decel_s": 0.0
+    },
+    {
+      "distance_ft": 0.0,
+      "accel_decel_s": 0.0
+    },
+    {
+      "distance_ft": 0.0,
+      "accel_decel_s": 0.0
+    },
+    {
+      "distance_ft": 0.0,
+      "accel_decel_s": 0.0
+    }
+  ],
+  "extra_distance_speed_mph": 35.0,
+  "lane_groups": [
+    {
+      "movement": "EbExtThrough",
+      "lanes": 3,
+      "greens": [
+        {
+          "begin_s": 0.0,
+          "duration_s": 35.0
+        }
+      ],
+      "yellow_all_red_s": 5.0,
+      "control": "Signalized",
+      "turn_radius_ft": null,
+      "shared_right_turn_radius_ft": null,
+      "pct_heavy_vehicles": 6.1,
+      "grade_pct": 0.0,
+      "lane_width_ft": 12.0,
+      "parking_maneuvers_h": null,
+      "bus_stops_h": 0.0,
+      "arrival_type": 3,
+      "storage_ft": null,
+      "lane_utilization_override": null,
+      "downstream_queue_lost_time_s": 4.0,
+      "overlap_lost_time_s": 0.0,
+      "start_up_lost_time_s": 2.0,
+      "extension_of_green_s": 2.0,
+      "upstream_filtering_override": null,
+      "speed_limit_mph": 35.0,
+      "initial_queue_veh": 0.0,
+      "demand_override_veh_h": null
+    },
+    {
+      "movement": "EbIntThrough",
+      "lanes": 2,
+      "greens": [
+        {
+          "begin_s": 0.0,
+          "duration_s": 35.0
+        }
+      ],
+      "yellow_all_red_s": 5.0,
+      "control": "Signalized",
+      "turn_radius_ft": null,
+      "shared_right_turn_radius_ft": null,
+      "pct_heavy_vehicles": 6.1,
+      "grade_pct": 0.0,
+      "lane_width_ft": 12.0,
+      "parking_maneuvers_h": null,
+      "bus_stops_h": 0.0,
+      "arrival_type": 3,
+      "storage_ft": null,
+      "lane_utilization_override": 1.0,
+      "downstream_queue_lost_time_s": null,
+      "overlap_lost_time_s": 0.0,
+      "start_up_lost_time_s": 2.0,
+      "extension_of_green_s": 2.0,
+      "upstream_filtering_override": null,
+      "speed_limit_mph": 35.0,
+      "initial_queue_veh": 0.0,
+      "demand_override_veh_h": null
+    },
+    {
+      "movement": "WbExtThrough",
+      "lanes": 2,
+      "greens": [
+        {
+          "begin_s": 35.0,
+          "duration_s": 25.0
+        }
+      ],
+      "yellow_all_red_s": 5.0,
+      "control": "Signalized",
+      "turn_radius_ft": null,
+      "shared_right_turn_radius_ft": null,
+      "pct_heavy_vehicles": 6.1,
+      "grade_pct": 0.0,
+      "lane_width_ft": 12.0,
+      "parking_maneuvers_h": null,
+      "bus_stops_h": 0.0,
+      "arrival_type": 3,
+      "storage_ft": null,
+      "lane_utilization_override": null,
+      "downstream_queue_lost_time_s": 4.0,
+      "overlap_lost_time_s": 0.0,
+      "start_up_lost_time_s": 2.0,
+      "extension_of_green_s": 2.0,
+      "upstream_filtering_override": null,
+      "speed_limit_mph": 35.0,
+      "initial_queue_veh": 0.0,
+      "demand_override_veh_h": null
+    },
+    {
+      "movement": "WbIntThrough",
+      "lanes": 2,
+      "greens": [
+        {
+          "begin_s": 35.0,
+          "duration_s": 25.0
+        }
+      ],
+      "yellow_all_red_s": 5.0,
+      "control": "Signalized",
+      "turn_radius_ft": null,
+      "shared_right_turn_radius_ft": null,
+      "pct_heavy_vehicles": 6.1,
+      "grade_pct": 0.0,
+      "lane_width_ft": 12.0,
+      "parking_maneuvers_h": null,
+      "bus_stops_h": 0.0,
+      "arrival_type": 3,
+      "storage_ft": null,
+      "lane_utilization_override": 1.0,
+      "downstream_queue_lost_time_s": null,
+      "overlap_lost_time_s": 0.0,
+      "start_up_lost_time_s": 2.0,
+      "extension_of_green_s": 2.0,
+      "upstream_filtering_override": null,
+      "speed_limit_mph": 35.0,
+      "initial_queue_veh": 0.0,
+      "demand_override_veh_h": null
+    },
+    {
+      "movement": "NbRampLeft",
+      "lanes": 1,
+      "greens": [
+        {
+          "begin_s": 35.0,
+          "duration_s": 35.0
+        }
+      ],
+      "yellow_all_red_s": 5.0,
+      "control": {
+        "YieldControlled": {
+          "critical_headway_s": 3.9,
+          "follow_up_headway_s": 2.6,
+          "conflicting_flow_veh_h": 450.0,
+          "conflicting_flow_per_lane": 225.0,
+          "conflicting_sat_flow_per_lane": 1022.0,
+          "conflicting_green_s": 20.0,
+          "clearance_distance_ft": 200.0,
+          "clearance_speed_mph": 25.0,
+          "proportion_on_green": null
+        }
+      },
+      "turn_radius_ft": 150.0,
+      "shared_right_turn_radius_ft": null,
+      "pct_heavy_vehicles": 6.1,
+      "grade_pct": 0.0,
+      "lane_width_ft": 12.0,
+      "parking_maneuvers_h": null,
+      "bus_stops_h": 0.0,
+      "arrival_type": 3,
+      "storage_ft": null,
+      "lane_utilization_override": null,
+      "downstream_queue_lost_time_s": 4.0,
+      "overlap_lost_time_s": 6.5,
+      "start_up_lost_time_s": 2.0,
+      "extension_of_green_s": 2.0,
+      "upstream_filtering_override": null,
+      "speed_limit_mph": 35.0,
+      "initial_queue_veh": 0.0,
+      "demand_override_veh_h": null
+    },
+    {
+      "movement": "NbRampRight",
+      "lanes": 1,
+      "greens": [
+        {
+          "begin_s": 0.0,
+          "duration_s": 25.0
+        }
+      ],
+      "yellow_all_red_s": 5.0,
+      "control": {
+        "YieldControlled": {
+          "critical_headway_s": 1.8,
+          "follow_up_headway_s": 2.4,
+          "conflicting_flow_veh_h": 1200.0,
+          "conflicting_flow_per_lane": 500.0,
+          "conflicting_sat_flow_per_lane": 1615.0,
+          "conflicting_green_s": 35.0,
+          "clearance_distance_ft": 100.0,
+          "clearance_speed_mph": 25.0,
+          "proportion_on_green": null
+        }
+      },
+      "turn_radius_ft": 75.0,
+      "shared_right_turn_radius_ft": null,
+      "pct_heavy_vehicles": 6.1,
+      "grade_pct": 0.0,
+      "lane_width_ft": 12.0,
+      "parking_maneuvers_h": null,
+      "bus_stops_h": 0.0,
+      "arrival_type": 3,
+      "storage_ft": null,
+      "lane_utilization_override": null,
+      "downstream_queue_lost_time_s": null,
+      "overlap_lost_time_s": 4.9,
+      "start_up_lost_time_s": 2.0,
+      "extension_of_green_s": 2.0,
+      "upstream_filtering_override": null,
+      "speed_limit_mph": 35.0,
+      "initial_queue_veh": 0.0,
+      "demand_override_veh_h": null
+    },
+    {
+      "movement": "SbRampLeft",
+      "lanes": 1,
+      "greens": [
+        {
+          "begin_s": 0.0,
+          "duration_s": 25.0
+        }
+      ],
+      "yellow_all_red_s": 5.0,
+      "control": {
+        "YieldControlled": {
+          "critical_headway_s": 3.9,
+          "follow_up_headway_s": 2.6,
+          "conflicting_flow_veh_h": 1300.0,
+          "conflicting_flow_per_lane": 433.0,
+          "conflicting_sat_flow_per_lane": 1188.0,
+          "conflicting_green_s": 31.0,
+          "clearance_distance_ft": 200.0,
+          "clearance_speed_mph": 25.0,
+          "proportion_on_green": null
+        }
+      },
+      "turn_radius_ft": 150.0,
+      "shared_right_turn_radius_ft": null,
+      "pct_heavy_vehicles": 6.1,
+      "grade_pct": 0.0,
+      "lane_width_ft": 12.0,
+      "parking_maneuvers_h": null,
+      "bus_stops_h": 0.0,
+      "arrival_type": 3,
+      "storage_ft": null,
+      "lane_utilization_override": null,
+      "downstream_queue_lost_time_s": 4.0,
+      "overlap_lost_time_s": 6.5,
+      "start_up_lost_time_s": 2.0,
+      "extension_of_green_s": 2.0,
+      "upstream_filtering_override": null,
+      "speed_limit_mph": 35.0,
+      "initial_queue_veh": 0.0,
+      "demand_override_veh_h": null
+    },
+    {
+      "movement": "SbRampRight",
+      "lanes": 1,
+      "greens": [
+        {
+          "begin_s": 35.0,
+          "duration_s": 35.0
+        }
+      ],
+      "yellow_all_red_s": 5.0,
+      "control": {
+        "YieldControlled": {
+          "critical_headway_s": 1.8,
+          "follow_up_headway_s": 2.4,
+          "conflicting_flow_veh_h": 500.0,
+          "conflicting_flow_per_lane": 250.0,
+          "conflicting_sat_flow_per_lane": 1578.0,
+          "conflicting_green_s": 25.0,
+          "clearance_distance_ft": 100.0,
+          "clearance_speed_mph": 25.0,
+          "proportion_on_green": null
+        }
+      },
+      "turn_radius_ft": 75.0,
+      "shared_right_turn_radius_ft": null,
+      "pct_heavy_vehicles": 6.1,
+      "grade_pct": 0.0,
+      "lane_width_ft": 12.0,
+      "parking_maneuvers_h": null,
+      "bus_stops_h": 0.0,
+      "arrival_type": 3,
+      "storage_ft": null,
+      "lane_utilization_override": null,
+      "downstream_queue_lost_time_s": null,
+      "overlap_lost_time_s": 4.9,
+      "start_up_lost_time_s": 2.0,
+      "extension_of_green_s": 2.0,
+      "upstream_filtering_override": null,
+      "speed_limit_mph": 35.0,
+      "initial_queue_veh": 0.0,
+      "demand_override_veh_h": null
+    }
+  ]
+}
