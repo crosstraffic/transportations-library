@@ -967,12 +967,13 @@ impl FreewayFacility {
                         return false;
                     }
                     let onrd_prev_i = self.onrd_by_node(p - 1)[i];
-                    OversaturatedEngine::front_clearing_queue(
+                    OversaturatedEngine::front_clearing_active(
                         self.capacity[i][p],
                         onrd[i],
                         self.capacity[i][p - 1],
                         onrd_prev_i,
                         self.demand[i][p],
+                        self.dc_ratio[i][p - 1],
                     )
                 })
                 .collect();
