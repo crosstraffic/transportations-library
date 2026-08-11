@@ -76,11 +76,14 @@ fn test_complete_hcm_workflow() {
         };
         
         // Step 8: Determine Level of Service (HCM Step 8)
-        let los = highway.determine_segment_los(segment_index, avg_speed, capacity);
+        // Exhibit 15-6 selects its threshold column by POSTED SPEED LIMIT, not
+        // by the computed average speed.
+        let spl = highway.get_segments()[segment_index].get_spl();
+        let los = highway.determine_segment_los(segment_index, spl, capacity);
         assert!("ABCDEF".contains(los), "LOS should be A, B, C, D, E, or F");
         
         // Verify LOS makes sense with the metrics
-        if avg_speed >= 50.0 && fd <= 2.0 {
+        if spl >= 50.0 && fd <= 2.0 {
             assert!(los == 'A' || los == 'B', "High speed + low density should be LOS A or B");
         }
         if flow_i > capacity as f64 {
@@ -223,7 +226,14 @@ fn test_facility_level_analysis() {
     // midpoint density, which the library does in one call.
     let facility_fd = highway.determine_facility_follower_density();
     let facility_speed = weighted_speed / total_length;
-    let facility_los = highway.determine_facility_los(facility_fd, facility_speed);
+    // Exhibit 15-6 splits on posted speed limit, not on the computed speed.
+    let facility_spl = highway
+        .get_segments()
+        .iter()
+        .map(|s| s.get_spl() * s.get_length())
+        .sum::<f64>()
+        / total_length;
+    let facility_los = highway.determine_facility_los(facility_fd, facility_spl);
     
     // Validate facility metrics
     assert!(facility_fd >= 0.0, "Facility follower density should be non-negative");

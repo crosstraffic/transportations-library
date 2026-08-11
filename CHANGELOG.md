@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Exhibit 15-6 LOS thresholds are selected by posted speed limit, not by average travel speed.** Chapter 15 states the split as "On higher-speed two-lane highways (≥50 mi/h)" and prints the Exhibit 15-6 column headers as "Posted Speed Limit ≥ 50 mi/h" and "Posted Speed Limit < 50 mi/h". `determine_segment_los` and `determine_facility_los` already documented their `s_pl` parameter as the posted limit, and `docs/hcm/procedures/chapter15.md` already flagged it, but every caller in the repository passed the computed average speed instead: the two analysis scripts, the River Falls gate, the Rust integration and example-problem harnesses, `tests/common/mod.rs`, the README, the book, and the crate's own doc examples. No published value moves, because on all four Chapter 26 fixtures and on River Falls the posted limit and the average speed fall on the same side of 50 mi/h, so this closes a latent trap rather than correcting a result. HCM Step 11 defines no facility-level posted limit for a mixed-limit facility, so the facility callers length-weight it, which reduces to the common value when every segment shares one.
+- **`case_study1.json` now carries the River Falls peak hour factor and opposing volume.** The fixture is the River Falls corridor rather than an HCM example problem, and it had `phf` 0.9 on segments 1 through 4 against 0.94 on segment 5 (one facility, one analysis period, two factors) and `volume_op` 0 throughout, against the 0.94 and the 512 veh/h opposing volume that `analyze_river_falls.py` records as verbatim from the analysis request. Opposing volume is inert on the passing-constrained segments, where the engine substitutes the 1,500 veh/h high-opposing-flow assumption, but it drives the two passing zones. The fixture's `phv` and `sup_ele` were already correct in percent and are unchanged. No Rust test moves, because `read_test_files` excludes `case_study*` by shape.
+- **`run_case_study.py` no longer expects a superseded number and no longer exits zero on a mismatch.** It expected a facility follower density of 5.25, which the project superseded along with 5.09. It now pins this engine's own output for the fixture, at a 0.001 tolerance, and exits nonzero when anything drifts. Its expectations are engine output rather than published values, because the River Falls corridor has no published answer column, and the header says so.
+
+### Known issues
+
+- **The River Falls facility follower density is 5.223 by one construction and 5.310 by another, and the difference is a unit error in the first.** `analyze_river_falls.py` and `tests/test_river_falls_gate.py` build the facility in Python with `phv=0.08` and `sup_ele=0.02` as fractions where the engine reads percent, which understates the heavy-vehicle free-flow-speed penalty and drops both curve subsegments into a lower horizontal class. Correcting only those two, holding every other input fixed, gives 5.309; `case_study1.json` gives 5.310, the residual 0.001 being the fixture rounding segment 3 to 2.34 mi where its subsegments sum to 2.3390 mi. The two constructions otherwise converge. 5.223 is unchanged here because it is the value currently reported in the paper.
+
 ## 0.3.1 — 2026-08
 
 ### Fixed

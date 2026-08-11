@@ -201,7 +201,9 @@ def analyze():
         
         print(f"  Follower Density: {fd:.2f} followers/mi/ln")
         
-        los = highway.determine_segment_los(i, ats, int(cap))
+        # Exhibit 15-6 selects its threshold set by POSTED SPEED LIMIT, not by
+        # the computed average travel speed.
+        los = highway.determine_segment_los(i, seg.spl, int(cap))
         print(f"  Segment LOS: {los}")
         
         length = seg.length
@@ -221,7 +223,11 @@ def analyze():
     # owns that so this script cannot drift from the engine.
     facility_fd = highway.determine_facility_follower_density()
     facility_speed = weighted_speed / total_length
-    facility_los = highway.determine_facility_los(facility_fd, facility_speed)
+    # Exhibit 15-6 splits on posted speed limit. HCM Step 11 defines no
+    # facility-level posted limit, so this length-weights it, which reduces to
+    # the common value on a uniform-limit facility.
+    facility_spl = sum(s.spl * s.length for s in highway.segments) / total_length
+    facility_los = highway.determine_facility_los(facility_fd, facility_spl)
     
     print("\nSummary Table:")
     print("| Segment ID | Adjusted FFS (mph) | Average Travel Speed (ATS) | Percent Follower (%) | Follower Density (FD) | Segment LOS |")

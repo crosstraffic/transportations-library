@@ -7,6 +7,18 @@ is the reference the rest of the codebase is checked against, but until now it w
 only reproducible by running scripts/analyze_river_falls.py by hand — a drift in
 the Ch.15 chain would not have failed any test. This test closes that gap.
 
+OPEN QUESTION, do not read 5.223 as settled. ``PHV`` and ``sup_ele`` below are
+passed as fractions (0.08, 0.02) where the engine reads percent: Exhibit 15-9
+brackets the heavy-vehicle FFS coefficient at 5/10/15/20/25 and Exhibit 15-22
+brackets superelevation at 1 through 8, and every published fixture in
+``tests/ExampleCases/hcm/TwoLaneHighways/`` passes 5.0/8.0 and 2.0/3.0/4.0/5.0
+accordingly. Correcting only those two, holding every other input here fixed,
+gives 5.309, and ``case_study1.json`` (the same corridor encoded as a fixture,
+in percent) gives 5.310. So 5.223 is low by roughly 0.09 for a unit reason
+rather than an engine reason. It is left in place because it is the number
+currently reported in the paper; changing it is Rei's call, not a maintenance
+edit. See the header of ``run_case_study.py`` for the full attribution.
+
 Inputs are verbatim from the analysis request; nothing is estimated. Two engine
 conventions that are easy to get wrong (both verified against the Rust source):
   * ``spl`` is the POSTED SPEED LIMIT; the engine derives BFFS = 1.14 * spl.
@@ -80,7 +92,10 @@ def _facility_metrics(hwy):
         tot_len += s.length
         w_spd += ats * s.length
     fac_fd, fac_spd = hwy.determine_facility_follower_density(), w_spd / tot_len
-    return tot_len, fac_fd, fac_spd, hwy.determine_facility_los(fac_fd, fac_spd)
+    # Exhibit 15-6 splits on POSTED SPEED LIMIT, not on the computed average
+    # speed. Every River Falls segment is posted 55, so the facility limit is
+    # PSL. Both fall above 50 here, so the LOS assertion below is unaffected.
+    return tot_len, fac_fd, fac_spd, hwy.determine_facility_los(fac_fd, PSL)
 
 
 def test_river_falls_facility_follower_density_gate():

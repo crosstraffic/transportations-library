@@ -249,7 +249,10 @@ pub struct Segment {
 ///         highway.determine_follower_density_pc_pz(seg_num);
 ///     }
 ///
-///     let los = highway.determine_segment_los(seg_num, speed, capacity);
+///     // Exhibit 15-6 selects its threshold set by POSTED SPEED LIMIT, not by
+///     // the computed average speed, so pass the segment's `spl`.
+///     let spl = highway.segments[seg_num].spl;
+///     let los = highway.determine_segment_los(seg_num, spl, capacity);
 /// }
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2272,6 +2275,12 @@ impl TwoLaneHighways {
     /// * `fd` - Facility average follower density (followers/mi/ln)
     /// * `s_pl` - Posted speed limit (mi/h) - determines threshold set
     ///
+    /// Exhibit 15-6 splits its threshold set on the POSTED SPEED LIMIT
+    /// ("Posted Speed Limit ≥ 50 mi/h" vs "< 50 mi/h"), not on the computed
+    /// average travel speed. Callers used to pass the length-weighted average
+    /// speed here, which picks the wrong column whenever the two fall on
+    /// opposite sides of 50 mi/h.
+    ///
     /// # Returns
     ///
     /// Facility LOS letter ('A' through 'F')
@@ -2281,8 +2290,7 @@ impl TwoLaneHighways {
     /// ```ignore
     /// // After analyzing all segments, compute facility LOS:
     /// let facility_fd = highway.determine_facility_follower_density();
-    /// let avg_speed = total_speed_times_length / total_length;
-    /// let facility_los = highway.determine_facility_los(facility_fd, avg_speed);
+    /// let facility_los = highway.determine_facility_los(facility_fd, posted_speed_limit);
     /// ```
     pub fn determine_facility_los(&self, fd: f64, s_pl: f64) -> char {
         let mut los: char = 'F';
