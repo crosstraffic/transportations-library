@@ -13,6 +13,9 @@
 //!   with queue spillback (published O-D results in Exhibit 34-43).
 //! * `case4.json` — Chapter 34, Example Problem 4: diamond interchange
 //!   with demand starvation (published O-D results in Exhibit 34-57).
+//! * `case5.json` — Chapter 34, Example Problem 6: the Example Problem 5
+//!   DDI with the four off-ramp turns YIELD-controlled instead of
+//!   signalized (published results in Exhibits 34-67 through 34-71).
 //!
 //! Example Problem 2 (Parclo A-2Q, Exhibits 34-17 through 34-29) has no
 //! fixture. Its arterial lane groups are an external through, an external
@@ -30,6 +33,75 @@
 //! `test_ep2_parclo_a2q_common_green_and_downstream_queues` instead,
 //! which drives the Step 4 free functions against the published Exhibit
 //! 34-23 and Exhibit 34-24 intermediates.
+//!
+//! Example Problem 7 (SPUI, Exhibits 34-72 through 34-82) has no fixture.
+//! A SPUI needs ten signalized lane groups — an exclusive left, a through,
+//! and an exclusive right on each of the four approaches, minus the two
+//! north–south throughs that carry no demand — and `InterchangeMovement`
+//! (src/hcm/ramp_terminals/ramp_terminals.rs:894-919) has exactly ten
+//! variants but no external right. Parking the two external rights in the
+//! unused `EbIntThrough` / `WbIntThrough` slots would misroute every O-D,
+//! because `Interchange::od_path`
+//! (src/hcm/ramp_terminals/ramp_terminals.rs:1991-2070) reads those slots as
+//! internal arterial throughs. The harder gap is the arterial left turns:
+//! Exhibit 34-75 splits each of them into a protected and a permitted lane
+//! group (f_LT = 0.930 protected against 0.136 / 0.125 permitted, adjusted
+//! saturation flows 1,560 / 228 eastbound and 1,561 / 211 westbound) and
+//! Exhibit 34-77 combines them through the Chapter 19 protected-plus-
+//! permitted uniform delay procedure, which `Interchange::step_3_saturation_flows`
+//! (src/hcm/ramp_terminals/ramp_terminals.rs:1486) and
+//! `Interchange::step_8_control_delay`
+//! (src/hcm/ramp_terminals/ramp_terminals.rs:1919) do not model — a lane
+//! group carries one saturation flow and one effective green. Published
+//! targets for whoever adds the surface: Exhibit 34-80 / 34-81 control
+//! delays (EB left / through / right 31.0 / 54.6 / 25.4, WB 34.6 / 51.0 /
+//! 29.1, NB 27.9 / 23.6 / 63.6, SB 56.0 / 23.6 / 53.0 s/veh) and the
+//! Exhibit 34-82 O-D table, whose ETTs are those movement delays unchanged
+//! because a SPUI has one intersection and no extra distance traveled
+//! (A 27.9 B, B 63.6 D, C 53.0 C, D 56.0 D, E 31.0 C, F 25.4 B, G 29.1 B,
+//! H 34.6 C, I 54.6 C, J 51.0 C; interchange ETT 48.3 s/veh, LOS C).
+//!
+//! Example Problem 8 (diamond with an adjacent closely spaced intersection,
+//! Exhibits 34-83 through 34-98) has no fixture. Its Step 4 intermediates are
+//! covered by `test_ep8_adjacent_intersection_queues_and_lost_time`, which
+//! drives the free functions against Exhibits 34-89 and 34-90. The full
+//! example is not assembled because it is two facilities, not one: the
+//! adjacent signalized intersection is a Chapter 19 analysis in its own right
+//! (Exhibits 34-88, 34-93, 34-96, and the Exhibit 34-98 LOS table), and
+//! `Interchange` has no slot for a third intersection —
+//! `adjacent_intersection_lost_time`
+//! (src/hcm/ramp_terminals/ramp_terminals.rs:2171) exposes only the coupling
+//! term, and the Chapter 23 text leaves the rest of the interaction to the
+//! analyst. Published targets: Exhibit 34-97 interchange O-D ETTs (A 47.2,
+//! B 41.1, C 51.9, D 74.5, E 100.0, F 37.2, G 34.1, H 88.9, I 56.2, J 38.2
+//! s/veh; interchange ETT 53.8 s/veh, LOS C) and the Exhibit 34-98 adjacent
+//! intersection delays (EB 48.5 / 67.6, WB 41.4 / 60.0, NB 85.4 / 109.1,
+//! SB 68.4 / 138.6 / 226.6 s/veh).
+//!
+//! Example Problem 10 (operational analysis for interchange type selection,
+//! Exhibits 34-103 through 34-114) has no fixture and no test. It exercises
+//! the Chapter 34 Section 3 type-selection methodology — Equations 34-1
+//! through 34-14 over the Exhibit 34-151 default saturation flows and the
+//! Exhibit 34-152 O-D-to-NEMA mapping, closed by the Exhibit 34-159 delay
+//! regression — and none of that is implemented anywhere in `src/hcm`
+//! (grep for `34-159`, `critical flow ratio`, and `type_selection` returns
+//! nothing outside the Chapter 19 and 31 critical-flow-ratio machinery,
+//! which is a different quantity). It is a planning-level screening model
+//! that shares no code with the Part B operational pipeline. Published
+//! targets: the Exhibit 34-114 interchange delays for the eight types with
+//! signalized right turns (SPUI 62.9, TUDI 217.7, CUDI 35.9, CDI 26.6,
+//! Parclo A-4Q 26.2, Parclo A-2Q 47.4, Parclo B-4Q 11.9, Parclo B-2Q 30.7
+//! s/veh) and with free or YIELD-controlled right turns (22.0, 33.3, 27.4,
+//! 21.7, 21.6, 29.0, 11.3, 29.0 s/veh), with Parclo B-4Q selected.
+//!
+//! Example Problem 11 (alternative analysis tool, Exhibits 34-115 through
+//! 34-122) is skipped. It is a simulation study of self-aggravating queue
+//! interactions — ramp metering, left-bay spillover blocking through
+//! traffic, and a TWSC intersection blocked by a stationary queue — and it
+//! publishes no HCM-computed values, only demand-versus-discharge curves
+//! read off simulation output. The example exists precisely to show what the
+//! Chapter 23 methodology does not capture, so there is nothing here for the
+//! engine to reproduce.
 //!
 //! Documented tolerances:
 //! * Example Problem 1 — O-D control delay and ETT ±1.0 s/veh, asserted at
@@ -64,16 +136,32 @@
 //!   in Exhibits 34-53 and 34-55 are not reproducible (see
 //!   `test_ep4_diamond_demand_starvation_external_capacity_defect`).
 //!
+//! * Example Problem 6 — the Step 6 YIELD capacity chain is exact: all four
+//!   v/c ratios reproduce the Exhibit 34-70 printed values at two decimals.
+//!   The Exhibit 34-70 control delays do not reproduce (see
+//!   `test_ep6_ddi_yield_control_delay_defect`), so the O-D table is
+//!   asserted at the equation-based values with the published ones inline.
+//! * Example Problem 8 — Exhibit 34-89 common greens exact, Exhibit 34-90
+//!   queue lengths ±0.15 ft and additional lost times ±0.05 s.
+//! * Example Problem 9 — Chapter 22 entry capacities ±1 pc/h of the
+//!   Exhibit 34-101 values under the equation the example actually used, and
+//!   ±0.15 s/veh on the delays under that same reading; the HCM 7 equations
+//!   give different numbers and are asserted separately (see
+//!   `test_ep9_roundabout_terminals_use_superseded_chapter_22_equations`).
+//!
 //! One engine gap surfaced by these examples is documented at its assertion
 //! site rather than fixed here: the missing external right-turn lane group
 //! (Example Problem 3), which zeroes the O-D F and O-D G contributions.
 
 use transportations_library::hcm::ramp_terminals::{
-    common_green_time, demand_starvation_initial_queue, demand_starvation_lost_time,
-    downstream_queue_length_ft, downstream_queue_lost_time, GreenInterval, Interchange,
+    adjacent_intersection_lost_time, common_green_time, demand_starvation_initial_queue,
+    demand_starvation_lost_time, downstream_queue_length_ft, downstream_queue_lost_time,
+    extra_distance_travel_time, los_roundabout_interchange_od, GreenInterval, Interchange,
     InterchangeMovement, OdMovement,
 };
+use transportations_library::hcm::common::delay::control_delay_roundabout;
 use transportations_library::hcm::common::LevelOfService;
+use transportations_library::hcm::roundabouts::{capacity_exponential, capacity_single_lane};
 
 fn load_case(name: &str) -> Interchange {
     let path = format!(
@@ -876,6 +964,534 @@ fn test_ep4_diamond_demand_starvation_od_results() {
     assert_near!(ix.interchange_ett_s.unwrap(), 78.1, 0.5, "interchange ETT");
     assert_eq!(ix.interchange_los.unwrap(), L::D, "interchange LOS");
 }
+
+/// Chapter 34, Example Problem 6 (DDI with YIELD control): the Step 6
+/// three-regime capacity chain against Exhibits 34-67, 34-68, 34-69, and
+/// the v/c row of Exhibit 34-70.
+///
+/// This is the part of the example the engine reproduces. The fixture only
+/// swaps the four off-ramp lane groups of Example Problem 5 from
+/// `Signalized` to `YieldControlled`, so a passing v/c row also confirms
+/// that the pipeline routes YIELD groups around the signalized capacity of
+/// Equation 23-48.
+#[test]
+fn test_ep6_ddi_yield_control_capacity() {
+    use InterchangeMovement::*;
+    let mut ix = load_case("case5.json");
+    ix.analyze();
+
+    // The four signalized crossover movements are untouched by the YIELD
+    // conversion (the example states Steps 1 through 5 are unchanged), so
+    // they still carry the Example Problem 5 saturation flows.
+    for (mv, s_pub, tol) in [
+        (EbExtThrough, 3_563.0, 55.0),
+        (WbExtThrough, 2_045.0, 5.0),
+        (EbIntThrough, 3_229.0, 5.0),
+        (WbIntThrough, 3_156.0, 5.0),
+    ] {
+        assert_near!(group(&ix, mv).sat_flow.unwrap(), s_pub, tol, format!("s {mv:?}"));
+    }
+
+    // Exhibit 34-70 v/c row: 0.38 (M7), 0.16 (M8), 0.35 (M3), 0.19 (M4).
+    // The exhibit prints two decimals, so ±0.005 is agreement to the last
+    // printed digit. Reproducing all four pins the whole Step 6 chain at
+    // once, because each v/c is the movement demand over the Equation 23-47
+    // combined capacity, which in turn consumes the Exhibit 34-67 blocked
+    // regime (Equations 23-53 / 23-54 / 23-56), the Exhibit 34-68 gap
+    // acceptance regime (Equations 23-42 / 23-43), and the Exhibit 34-69
+    // no-opposing-flow regime (Equations 23-44 / 23-45).
+    for (mv, v_pub, x_pub) in [
+        (SbRampLeft, 300.0, 0.38),   // M7
+        (SbRampRight, 200.0, 0.16),  // M8
+        (NbRampLeft, 350.0, 0.35),   // M3
+        (NbRampRight, 200.0, 0.19),  // M4
+    ] {
+        let r = group(&ix, mv);
+        assert_near!(r.flow_rate, v_pub, 0.5, format!("v {mv:?}"));
+        assert_near!(r.vc_ratio.unwrap(), x_pub, 0.005, format!("X {mv:?}"));
+        // A YIELD group is not evaluated with a signalized capacity, so
+        // the Step 6 capacity must differ from s g'/C.
+        let signalized = r.sat_flow.unwrap() * r.effective_green_s.unwrap() / 70.0;
+        assert!(
+            (r.capacity.unwrap() - signalized).abs() > 1.0,
+            "{mv:?} capacity {} coincides with the signalized s g/C {signalized}",
+            r.capacity.unwrap()
+        );
+    }
+
+    // M3's gap acceptance window closes entirely: Exhibit 34-68 notes that
+    // p_GA for M3 came out negative and was set to zero, which in Equation
+    // 23-47 means the 20-s conflicting green contributes nothing and the
+    // capacity is carried by the no-opposing-flow regime alone. Exhibit
+    // 34-69 publishes c_NOF = 1,385 veh/h over C − g = 50 s of the 70-s
+    // cycle, so 1,385 x 50/70 = 989 veh/h.
+    assert_near!(group(&ix, NbRampLeft).capacity.unwrap(), 989.0, 7.0, "M3 c_YCT");
+}
+
+/// Chapter 34, Example Problem 6: the Exhibit 34-70 control delays are not
+/// reproducible from Equation 22-17 at the capacities the same exhibit's
+/// v/c row confirms.
+///
+/// Chapter 34 states that the control delay of a YIELD-controlled turn is
+/// estimated "by using the control delay procedure for roundabouts given in
+/// Equation 22-17", and `Interchange::step_8_control_delay`
+/// (src/hcm/ramp_terminals/ramp_terminals.rs:1919) does exactly that. The
+/// published delays are 3.1 to 3.8 times larger. Solving Equation 22-17
+/// backwards for the capacity that would produce each published delay gives
+/// 0.4 to 0.5 of the Equation 23-47 capacity — and that same Equation 23-47
+/// capacity is what the exhibit's own v/c row reports, so the two rows of
+/// Exhibit 34-70 disagree with each other. The engine follows the equation.
+#[test]
+fn test_ep6_ddi_yield_control_delay_defect() {
+    use InterchangeMovement::*;
+    let mut ix = load_case("case5.json");
+    ix.analyze();
+
+    // Equation 22-17 is monotone decreasing in capacity, so bisection
+    // recovers the capacity implied by a published delay.
+    let implied_capacity = |v: f64, d_target: f64| -> f64 {
+        let (mut lo, mut hi) = (v * 1.001, 10_000.0);
+        for _ in 0..200 {
+            let mid = 0.5 * (lo + hi);
+            if control_delay_roundabout(v, mid, 0.25) > d_target {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        0.5 * (lo + hi)
+    };
+
+    for (mv, v, d_published, d_engine) in [
+        (SbRampLeft, 300.0, 34.7, 9.11),   // M7
+        (SbRampRight, 200.0, 13.4, 4.28),  // M8
+        (NbRampLeft, 350.0, 31.0, 7.32),   // M3
+        (NbRampRight, 200.0, 16.3, 5.24),  // M4
+    ] {
+        let r = group(&ix, mv);
+        let cap = r.capacity.unwrap();
+        assert_near!(r.control_delay_s.unwrap(), d_engine, 0.05, format!("d {mv:?}"));
+        // The engine value is Equation 22-17 evaluated at the Step 6
+        // capacity, with nothing else added.
+        assert_near!(
+            r.control_delay_s.unwrap(),
+            control_delay_roundabout(v, cap, 0.25),
+            1e-9,
+            format!("d {mv:?} is Equation 22-17 at c_YCT")
+        );
+        // The published delay needs roughly half that capacity.
+        let ratio = implied_capacity(v, d_published) / cap;
+        assert!(
+            (0.35..0.55).contains(&ratio),
+            "{mv:?}: published {d_published} s/veh implies c = {:.0} veh/h against the \
+             Exhibit 34-70 v/c capacity {cap:.0} veh/h (ratio {ratio:.2})",
+            implied_capacity(v, d_published)
+        );
+    }
+}
+
+/// Chapter 34, Example Problem 6 (DDI with YIELD control): O-D results
+/// against Exhibit 34-71.
+///
+/// Exhibit 34-71 has to be read against itself. Its Control Delay, ETT, and
+/// LOS columns for O-Ds A through D are reprinted unchanged from the
+/// Example Problem 5 table (Exhibit 34-65) and still carry the signalized
+/// delays, but its Demand x ETT column and its totals row were recomputed
+/// with the YIELD delays of Exhibit 34-70. Two independent checks say the
+/// products column is the live one: dividing each product by its demand
+/// recovers exactly the Exhibit 34-70 YIELD delays plus the stated EDTT
+/// (O-D A = M3 + M5 = 31.0 + 17.2, +1.9 EDTT = 50.1, and 368 x 50.1 =
+/// 18,436), and the published interchange total 117,917 / 3,476 = 33.9
+/// s/veh matches the printed totals row while the stale ETT column would
+/// give the Example Problem 5 value of 34.9. The recomputed values are used
+/// below.
+#[test]
+fn test_ep6_ddi_yield_control_od_results() {
+    use LevelOfService as L;
+    use OdMovement::*;
+    let mut ix = load_case("case5.json");
+    ix.analyze();
+
+    // (O-D, demand, engine ETT, engine LOS); the comment carries the
+    // journey and the recomputed published ETT. The engine runs short on
+    // every O-D, and on two separate counts: O-Ds A through D carry the
+    // YIELD delay gap of `test_ep6_ddi_yield_control_delay_defect`, while
+    // every O-D that uses a signalized crossover also carries the Exhibit
+    // 34-64 movement delay gap already documented for Example Problem 5.
+    // O-D E is the exception that isolates the split, running only on the
+    // eastbound external crossover and reproducing its published 24.7 s/veh
+    // exactly, as it does in the Example Problem 5 fixture.
+    let expected = [
+        (A, 350.0, 27.22, L::B), // M3 + M5, published 50.1
+        (B, 200.0, 3.30, L::A),  // M4,      published 14.4
+        (C, 200.0, 2.34, L::A),  // M8,      published 11.5
+        (D, 300.0, 24.52, L::B), // M7 + M1, published 58.5
+        (E, 600.0, 24.67, L::B), // M6,      published 24.7
+        (F, 200.0, 0.0, L::A),   // free-flow bypass
+        (G, 300.0, 0.0, L::A),   // free-flow bypass
+        (H, 300.0, 31.51, L::C), // M2,      published 50.3
+        (I, 700.0, 36.96, L::C), // M6 + M1, published 45.5
+        (J, 150.0, 48.30, L::C), // M2 + M5, published 66.4
+    ];
+    for (m, demand, ett, los) in expected {
+        let r = od(&ix, m);
+        assert_near!(r.demand, demand, 0.5, format!("demand {m:?}"));
+        assert_near!(r.ett_s, ett, 0.5, format!("ETT {m:?}"));
+        assert_eq!(r.los, los, "LOS {m:?} (ETT {})", r.ett_s);
+    }
+
+    // The recomputed published table is internally consistent: the O-D
+    // demands are those of Example Problem 5 (the YIELD conversion changes
+    // no demand), and weighting the recomputed ETTs by them reproduces the
+    // published totals row of Exhibit 34-71 (117,917 veh-s/h over 3,476
+    // veh/h, 33.9 s/veh, LOS C).
+    let published_demands = [368.0, 211.0, 211.0, 316.0, 632.0, 211.0, 316.0, 316.0, 737.0, 158.0];
+    let published_etts = [50.1, 14.4, 11.5, 58.5, 24.7, 0.0, 0.0, 50.3, 45.5, 66.4];
+    let products: f64 = published_demands
+        .iter()
+        .zip(published_etts)
+        .map(|(v, ett)| v * ett)
+        .sum();
+    let total_demand: f64 = published_demands.iter().sum();
+    assert_near!(products, 117_917.0, 5.0, "Exhibit 34-71 demand x ETT total");
+    assert_near!(total_demand, 3_476.0, 0.5, "Exhibit 34-71 demand total");
+    assert_near!(products / total_demand, 33.9, 0.05, "Exhibit 34-71 interchange ETT");
+
+    // The engine's own interchange result, carrying both delay gaps.
+    assert_near!(ix.interchange_ett_s.unwrap(), 22.8, 0.5, "interchange ETT");
+    assert_eq!(ix.interchange_los.unwrap(), L::B);
+}
+
+/// Chapter 34, Example Problem 8 (diamond with an adjacent closely spaced
+/// intersection): the Exhibit 34-89 common greens and the Exhibit 34-90
+/// queue lengths and additional lost times.
+///
+/// The full example is not assembled as an `Interchange` (see the module
+/// notes on the missing third intersection), but its Step 4 coupling terms
+/// depend only on green windows, feeding flows, and lane counts, so they
+/// exercise the same free functions the diamond fixtures use. I-99 at
+/// University Drive with Spring Street 300 ft to the west, C = 160 s,
+/// L_h = 25.006 ft.
+#[test]
+fn test_ep8_adjacent_intersection_queues_and_lost_time() {
+    const C: f64 = 160.0;
+    const D_INTERCHANGE_FT: f64 = 500.0;
+    const D_ADJACENT_FT: f64 = 300.0;
+    const L_H: f64 = 25.006;
+
+    // Green windows as Exhibit 34-89 prints them in its movement rows, not
+    // as derived from its phase table: the phase table runs Intersection I
+    // at 0-63 / 68-111 / 116-155, Intersection II at 150-53 (wrapping the
+    // cycle) / 58-111 / 116-145, and the adjacent intersection at 0-33 /
+    // 38-62 / 67-96 / 96-155, but the movement rows fold change intervals
+    // and consecutive phases into the windows below (the two adjacent
+    // through movements are printed as one 38-97 window spanning that
+    // intersection's Phases 2 and 3). The movement rows are what the
+    // exhibit's own common green column is computed from. The eastbound
+    // internal through is the only movement green twice per cycle.
+    let eb_ext = [GreenInterval { begin_s: 0.0, duration_s: 63.0 }];
+    let eb_int = [
+        GreenInterval { begin_s: 150.0, duration_s: 63.0 },
+        GreenInterval { begin_s: 116.0, duration_s: 34.0 },
+    ];
+    let wb_ext = [GreenInterval { begin_s: 150.0, duration_s: 63.0 }];
+    let wb_int = [GreenInterval { begin_s: 0.0, duration_s: 111.0 }];
+    let wb_int_left = [GreenInterval { begin_s: 68.0, duration_s: 43.0 }];
+    let eb_int_left = [GreenInterval { begin_s: 116.0, duration_s: 29.0 }];
+    let sb_ramp = [GreenInterval { begin_s: 116.0, duration_s: 39.0 }];
+    let nb_ramp = [GreenInterval { begin_s: 58.0, duration_s: 53.0 }];
+    let adj_eb = [GreenInterval { begin_s: 38.0, duration_s: 59.0 }];
+    let adj_wb = [GreenInterval { begin_s: 38.0, duration_s: 59.0 }];
+    let adj_sb_left = [GreenInterval { begin_s: 102.0, duration_s: 24.0 }];
+    let adj_nb_right = [GreenInterval { begin_s: 131.0, duration_s: 24.0 }];
+
+    // Exhibit 34-89 common green column, in the order the exhibit prints it.
+    // The SB RAMP row is handled separately below.
+    for (what, a, b, cg_pub) in [
+        ("EB EXT-TH / EB INT-TH", &eb_ext[..], &eb_int[..], 53.0),
+        ("WB EXT-TH / WB INT-TH", &wb_ext[..], &wb_int[..], 53.0),
+        ("NB RAMP / WB INT-TH", &nb_ramp[..], &wb_int[..], 53.0),
+        ("WB INT-L / EB INT-TH", &wb_int_left[..], &eb_int[..], 0.0),
+        ("EB INT-L / WB INT-TH", &eb_int_left[..], &wb_int[..], 0.0),
+        ("EB EXT-TH / ADJ EB-TH", &eb_ext[..], &adj_eb[..], 25.0),
+        ("EB EXT-TH / ADJ SB-L", &eb_ext[..], &adj_sb_left[..], 0.0),
+        ("EB EXT-TH / ADJ NB-R", &eb_ext[..], &adj_nb_right[..], 0.0),
+        ("ADJ WB-TH / WB INT-TH", &adj_wb[..], &wb_int[..], 59.0),
+        ("ADJ WB-TH / SB RAMP", &adj_wb[..], &sb_ramp[..], 0.0),
+    ] {
+        assert_near!(common_green_time(a, b, C), cg_pub, 1e-9, format!("CG {what}"));
+    }
+
+    // The SB RAMP / EB INT-TH row is where `common_green_time` and the
+    // published exhibits part company, and the split is worth pinning
+    // because the eastbound internal through is the one movement in these
+    // examples that receives green twice per cycle. The exhibit prints its
+    // two windows as 150-53 and 116-150, which are contiguous, so unioning
+    // them makes the movement green continuously from 116 to 53 and the
+    // overlap with the 116-155 ramp phase is the whole 39-s ramp green.
+    // Both Exhibit 34-89 here and Exhibit 34-9 in Example Problem 1 print
+    // 34 s, which is the overlap with the second window alone. Example
+    // Problem 1 corroborates its own number downstream: Exhibit 34-10
+    // publishes a 4.1-ft SB-L queue, and Equation 23-34 returns 4.1 ft at
+    // CG = 34 s and 0 ft at CG = 39 s. The engine value is asserted, the
+    // published reading is asserted alongside it, and nothing downstream of
+    // either changes an answer in the fixtures (both lost times are zero).
+    assert_near!(
+        common_green_time(&sb_ramp, &eb_int, C),
+        39.0,
+        1e-9,
+        "CG SB RAMP / EB INT-TH (published 34)"
+    );
+    assert_near!(
+        common_green_time(&sb_ramp, &eb_int[1..], C),
+        34.0,
+        1e-9,
+        "CG SB RAMP / EB INT-TH second window only"
+    );
+
+    // Exhibit 34-90, upper block: (label, feeding flow, feeding lanes,
+    // feeding green, downstream green, common green, published queue). The
+    // first four rows are the interchange's own approaches, which all clear
+    // their 500-ft internal links; the last five are the approaches coupled
+    // to the 300-ft link toward the adjacent intersection.
+    for (what, v_feed, n_feed, g_feed, g_down, cg, q_pub) in [
+        ("EB EXT-TH", 191.0, 1u32, 39.0, 97.0, 53.0, 0.0),
+        ("SB-L", 805.0, 2, 63.0, 97.0, 34.0, 0.0),
+        ("WB EXT-TH", 216.0, 1, 53.0, 111.0, 53.0, 0.0),
+        ("NB-L", 822.0, 2, 63.0, 111.0, 53.0, 0.0),
+        ("ADJ EB-TH", 474.0, 1, 48.0, 63.0, 25.0, 56.9),
+        ("ADJ SB-L", 804.0, 2, 59.0, 63.0, 0.0, 102.6),
+        ("ADJ NB-R", 804.0, 2, 59.0, 63.0, 0.0, 102.6),
+        ("WB INT-TH", 156.0, 1, 39.0, 59.0, 15.0, 0.0),
+        ("SB-R", 795.0, 2, 111.0, 59.0, 39.0, 91.1),
+    ] {
+        // ±0.15 ft: the exhibit prints the queue to one decimal.
+        let q = downstream_queue_length_ft(v_feed, n_feed, g_feed, g_down, cg, C, L_H);
+        assert_near!(q, q_pub, 0.15, format!("Q {what}"));
+    }
+
+    // Exhibit 34-90, lower block: the additional lost time uses the subject
+    // approach's own green and the distance to the back of the downstream
+    // queue. Only the two adjacent-intersection movements whose downstream
+    // storage falls below the 200-ft threshold lose time, and they are the
+    // headline numbers of this example (2.10 and 3.07 s).
+    for (what, g_subject, d_ft, q_ft, cg, ld_pub) in [
+        ("EB EXT-TH", 63.0, D_INTERCHANGE_FT, 0.0, 53.0, 0.0),
+        ("SB-L", 39.0, D_INTERCHANGE_FT, 0.0, 34.0, 0.0),
+        ("WB EXT-TH", 63.0, D_INTERCHANGE_FT, 0.0, 53.0, 0.0),
+        ("NB-L", 53.0, D_INTERCHANGE_FT, 0.0, 53.0, 0.0),
+        ("ADJ EB-TH", 59.0, D_ADJACENT_FT, 56.9, 25.0, 0.0),
+        ("ADJ SB-L", 24.0, D_ADJACENT_FT, 102.6, 29.0, 2.10),
+        ("ADJ NB-R", 24.0, D_ADJACENT_FT, 102.6, 0.0, 3.07),
+        ("WB INT-TH", 119.0, D_ADJACENT_FT, 0.0, 15.0, 0.0),
+        ("SB-R", 39.0, D_ADJACENT_FT, 91.1, 39.0, 0.0),
+    ] {
+        // ±0.05 s: the exhibit prints the DQ column to whole feet, which
+        // moves Equation 23-40 by up to 0.05 s through the 0.106 DQ term.
+        assert_near!(
+            adjacent_intersection_lost_time(g_subject, d_ft - q_ft, cg, C),
+            ld_pub,
+            0.05,
+            format!("L_D {what}")
+        );
+    }
+
+    // Equation 23-40 is the Equation 23-29 form applied at the adjacent
+    // intersection, and `adjacent_intersection_lost_time` is a thin alias,
+    // so the two must not diverge.
+    assert_near!(
+        adjacent_intersection_lost_time(24.0, D_ADJACENT_FT - 102.6, 29.0, C),
+        downstream_queue_lost_time(24.0, D_ADJACENT_FT - 102.6, 29.0, C),
+        1e-12,
+        "Equation 23-40 alias"
+    );
+}
+
+/// Chapter 34, Example Problem 9 (diamond interchange with roundabouts):
+/// the published Exhibit 34-101 capacities and delays come from superseded
+/// Chapter 22 equations.
+///
+/// Chapter 23 evaluates a roundabout ramp terminal by handing each approach
+/// to Chapter 22. Two things then have to hold, and neither does. First,
+/// every published capacity is recovered by `1,130 e^(-1.0e-3 v_c)`, the
+/// HCM 2010 single-lane entry model, not by the HCM 7 Equation 22-1
+/// `1,380 e^(-1.02e-3 v_c)` that `capacity_single_lane`
+/// (src/hcm/roundabouts/roundabouts.rs:51) implements. Second, every
+/// published delay is recovered by Equation 22-17 evaluated at those
+/// capacities *minus* its `5 min(x, 1)` term, which is the term Chapter 22
+/// carries for the geometric delay of yielding. Both readings hold across
+/// all six approaches, so neither is a rounding artifact.
+#[test]
+fn test_ep9_roundabout_terminals_use_superseded_chapter_22_equations() {
+    // (approach, entering flow pc/h, conflicting flow pc/h, published
+    //  capacity pc/h, published control delay s/veh) — Exhibit 34-101.
+    for (what, v_e, v_c, c_pub, d_pub) in EP9_APPROACHES {
+        // ±1 pc/h: the exhibit prints whole pc/h.
+        assert_near!(
+            capacity_exponential(1_130.0, 1.0e-3, v_c),
+            c_pub,
+            1.0,
+            format!("HCM 2010 capacity {what}")
+        );
+        // The HCM 7 equation is 17 to 22% higher on every approach.
+        let c7 = capacity_single_lane(v_c);
+        assert!(
+            c7 > c_pub * 1.15,
+            "{what}: HCM 7 capacity {c7:.0} should exceed the published {c_pub}"
+        );
+
+        // ±0.15 s/veh: the exhibit prints one decimal and rounds its
+        // capacities to whole pc/h first.
+        let x: f64 = v_e / c_pub;
+        let d_no_geometric = control_delay_roundabout(v_e, c_pub, 0.25) - 5.0 * x.min(1.0);
+        assert_near!(d_no_geometric, d_pub, 0.15, format!("d without 5 min(x,1) {what}"));
+        // With the term, the published delay is missed by 5 x on the nose.
+        assert_near!(
+            control_delay_roundabout(v_e, c_pub, 0.25) - d_pub,
+            5.0 * x.min(1.0),
+            0.15,
+            format!("geometric term {what}")
+        );
+    }
+}
+
+/// Chapter 34, Example Problem 9: O-D assembly and interchange LOS.
+///
+/// The Chapter 23 roundabout ramp terminal wraps Chapter 22 rather than
+/// extending the signalized pipeline, and the piece that would let
+/// `Interchange` drive it — the Exhibit 34-160 / 34-161 worksheet that maps
+/// the O-D demands onto each roundabout's entering and conflicting flows —
+/// is not implemented (`InterchangeForm`,
+/// src/hcm/ramp_terminals/ramp_terminals.rs:89-106, has no roundabout
+/// variant, and `Roundabouts`, src/hcm/roundabouts/roundabouts.rs:340,
+/// takes per-leg turning volumes rather than interchange O-Ds). The
+/// published entering and conflicting flows are therefore taken as given
+/// here and everything downstream of them is computed: Chapter 22 capacity,
+/// Chapter 22 delay, the Step 8 O-D journeys, Equation 23-50 EDTT, and the
+/// Exhibit 23-14 LOS table.
+#[test]
+fn test_ep9_diamond_with_roundabouts_od_results() {
+    use LevelOfService as L;
+
+    let delay = |approach: &str| -> f64 {
+        let (_, v_e, v_c, _, _) = EP9_APPROACHES
+            .iter()
+            .find(|(a, ..)| *a == approach)
+            .unwrap_or_else(|| panic!("approach {approach}"));
+        control_delay_roundabout(*v_e, capacity_single_lane(*v_c), 0.25)
+    };
+
+    // (O-D, heavy-vehicle-adjusted demand, approaches traversed, extra
+    //  distance ft, engine ETT, engine LOS, published ETT, published LOS).
+    // The demands are the Exhibit 34-100 heavy-vehicle-adjusted column. The
+    // Exhibit 34-102 demand column prints the Example Problem 7 O-D demands
+    // instead (174 / 168 / 126 / 547 / 177 / 84 / 221 / 194 / 911 / 881
+    // veh/h), but its own Demand x ETT products divide out to the Exhibit
+    // 34-100 values and its totals row prints 2,252 veh/h, which is the
+    // Exhibit 34-100 total and not the 3,483 veh/h of Example Problem 7.
+    struct Ep9Od {
+        movement: &'static str,
+        demand: f64,
+        path: &'static [&'static str],
+        distance_ft: f64,
+        ett_engine: f64,
+        los_engine: LevelOfService,
+        ett_published: f64,
+        los_published: LevelOfService,
+    }
+    let ep9 = |movement, demand, path, distance_ft, ett_engine, los_engine, ett_published,
+                los_published| Ep9Od {
+        movement,
+        demand,
+        path,
+        distance_ft,
+        ett_engine,
+        los_engine,
+        ett_published,
+        los_published,
+    };
+    let ods = [
+        ep9("A", 191.0, &["NB RAMP", "WB INT"], 100.0, 33.44, L::C, 46.1, L::D),
+        ep9("B", 179.0, &["NB RAMP"], -100.0, 19.31, L::B, 29.0, L::C),
+        ep9("C", 130.0, &["SB RAMP"], -100.0, 19.33, L::B, 29.2, L::C),
+        ep9("D", 242.0, &["SB RAMP", "EB INT"], 100.0, 33.52, L::C, 46.4, L::D),
+        ep9("E", 99.0, &["EB EXT", "EB INT"], 100.0, 30.90, L::C, 49.8, L::D),
+        ep9("F", 82.0, &["EB EXT"], -100.0, 16.72, L::B, 32.6, L::C),
+        ep9("G", 100.0, &["WB EXT"], -100.0, 15.87, L::B, 31.9, L::C),
+        ep9("H", 127.0, &["WB EXT", "WB INT"], 100.0, 30.00, L::C, 49.0, L::D),
+        ep9("I", 541.0, &["EB EXT", "EB INT"], 0.0, 28.96, L::C, 47.9, L::D),
+        ep9("J", 561.0, &["WB EXT", "WB INT"], 0.0, 28.06, L::C, 47.1, L::D),
+    ];
+
+    let (mut num, mut den, mut num_published) = (0.0, 0.0, 0.0);
+    for Ep9Od {
+        movement: m,
+        demand,
+        path,
+        distance_ft,
+        ett_engine,
+        los_engine,
+        ett_published,
+        los_published,
+    } in ods
+    {
+        // Chapter 23 Step 8 sums the approach delays along the journey.
+        let d: f64 = path.iter().map(|a| delay(a)).sum();
+        // Equation 23-50 with 100 ft of ramp travel at 35 mi/h: ±1.9 s.
+        let edtt = extra_distance_travel_time(distance_ft, 35.0, 0.0);
+        let ett = d + edtt;
+        assert_near!(ett, ett_engine, 0.05, format!("ETT {m}"));
+        assert_eq!(
+            los_roundabout_interchange_od(ett, false, false),
+            los_engine,
+            "LOS {m} (ETT {ett})"
+        );
+        // The published ETT is the published approach delays summed with
+        // the same EDTT, and it grades one letter worse on every O-D.
+        assert_eq!(
+            los_roundabout_interchange_od(ett_published, false, false),
+            los_published,
+            "published LOS {m}"
+        );
+        num += ett * demand;
+        num_published += ett_published * demand;
+        den += demand;
+    }
+
+    // Exhibit 34-102 totals row: 2,252 veh/h, 98,374.3 veh-s/h, 43.7 s/veh,
+    // LOS D. Reproducing the products total from the Exhibit 34-100 demands
+    // is what identifies the printed demand column as the stale one.
+    assert_near!(den, 2_252.0, 0.5, "Exhibit 34-102 demand total");
+    assert_near!(num_published, 98_374.3, 1.0, "Exhibit 34-102 demand x ETT total");
+    assert_near!(num_published / den, 43.7, 0.05, "published interchange ETT");
+    assert_eq!(
+        los_roundabout_interchange_od(num_published / den, false, false),
+        L::D,
+        "published interchange LOS"
+    );
+
+    // The HCM 7 equations give 27.4 s/veh and LOS C for the same
+    // interchange, the difference being the two Chapter 22 readings pinned
+    // in `test_ep9_roundabout_terminals_use_superseded_chapter_22_equations`.
+    assert_near!(num / den, 27.4, 0.05, "engine interchange ETT");
+    assert_eq!(
+        los_roundabout_interchange_od(num / den, false, false),
+        L::C,
+        "engine interchange LOS"
+    );
+}
+
+/// Chapter 34 Exhibit 34-101: entering flow, conflicting flow, published
+/// capacity, and published control delay for the six roundabout approaches
+/// of Example Problem 9, all in pc/h except the delay in s/veh.
+const EP9_APPROACHES: [(&str, f64, f64, f64, f64); 6] = [
+    ("EB EXT", 722.0, 369.0, 782.0, 34.5),
+    ("EB INT", 882.0, 0.0, 1_130.0, 13.4),
+    ("WB EXT", 788.0, 289.0, 846.0, 33.8),
+    ("WB INT", 879.0, 0.0, 1_130.0, 13.3),
+    ("NB RAMP", 370.0, 882.0, 468.0, 30.9),
+    ("SB RAMP", 372.0, 879.0, 469.0, 31.1),
+];
 
 /// Serialization round trip: the analyzed facility serializes and
 /// deserializes with results intact.
