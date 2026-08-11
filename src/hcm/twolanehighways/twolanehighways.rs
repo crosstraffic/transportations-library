@@ -220,7 +220,7 @@ pub struct Segment {
 /// 8. **Step 8**: Calculate follower density with `determine_follower_density_*()` methods
 /// 9. **Step 9**: Adjust for upstream passing lanes with `determine_adjustment_to_follower_density()`
 /// 10. **Step 10**: Determine segment LOS with `determine_segment_los()`
-/// 11. **Step 11**: Combine segments for facility analysis with `determine_facility_los()`
+/// 11. **Step 11**: Combine segments for facility analysis with `determine_facility_follower_density()` and `determine_facility_los()`
 ///
 /// # Base Conditions (Exhibit 15-8)
 ///
@@ -2201,19 +2201,71 @@ impl TwoLaneHighways {
         los
     }
 
+    /// Step 11: Facility follower density (Equation 15-39).
+    ///
+    /// ```text
+    /// FD_F = Σ(FD_i × L_i) / Σ(L_i)
+    /// ```
+    ///
+    /// Equation 15-39 defines FD_i as "follower density, or adjusted follower
+    /// density, for segment i", and directs that FD_PLmid is used for passing
+    /// lane segments. So the term contributed by each segment is the passing
+    /// lane midpoint density on a passing lane, the Step 9 adjusted density on
+    /// any segment that falls within the effective downstream length of an
+    /// upstream passing lane, and the plain Step 8 density everywhere else.
+    /// Aggregating the unadjusted densities instead discards the whole Step 9
+    /// benefit, which is what most of Chapter 26 Example Problem 3 is spent
+    /// computing.
+    ///
+    /// The Step 9 adjustment is evaluated segment by segment in order, because
+    /// [`Self::determine_adjustment_to_follower_density`] records the effective
+    /// downstream length of a passing lane when it reaches that passing lane
+    /// and every later segment is measured against it. Segments must already
+    /// have been carried through Steps 1 to 8, since this reads their stored
+    /// speeds, percent followers, and densities.
+    ///
+    /// # Returns
+    ///
+    /// Facility follower density in followers/mi/ln, 0.0 for an empty facility.
+    pub fn determine_facility_follower_density(&mut self) -> f64 {
+        let mut weighted = 0.0;
+        let mut total_length = 0.0;
+
+        for seg_num in 0..self.segments.len() {
+            // Called on every segment, including passing lanes, for the l_de
+            // side effect that the downstream segments depend on.
+            let fd_adj = self.determine_adjustment_to_follower_density(seg_num);
+            let segment = &self.segments[seg_num];
+            let fd = if segment.get_passing_type() == 2 {
+                segment.get_followers_density_mid()
+            } else if fd_adj > 0.0 {
+                fd_adj
+            } else {
+                segment.get_followers_density()
+            };
+
+            weighted += fd * segment.get_length();
+            total_length += segment.get_length();
+        }
+
+        if total_length > 0.0 {
+            weighted / total_length
+        } else {
+            0.0
+        }
+    }
+
     /// Step 11: Determine facility-level Level of Service (Equation 15-39).
     ///
-    /// For multi-segment facility analysis, computes the length-weighted average
-    /// follower density and determines overall facility LOS.
+    /// For multi-segment facility analysis, converts a facility follower
+    /// density from [`Self::determine_facility_follower_density`] into the
+    /// facility LOS letter.
     ///
     /// # Facility Follower Density (Equation 15-39)
     ///
     /// ```text
     /// FD_F = Σ(FD_i × L_i) / Σ(L_i)
     /// ```
-    ///
-    /// where actual segment lengths are used (not min/max constrained values).
-    /// For passing lane segments, FD_PLmid is used as the segment FD value.
     ///
     /// # Arguments
     ///
@@ -2228,7 +2280,7 @@ impl TwoLaneHighways {
     ///
     /// ```ignore
     /// // After analyzing all segments, compute facility LOS:
-    /// let facility_fd = total_fd_times_length / total_length;
+    /// let facility_fd = highway.determine_facility_follower_density();
     /// let avg_speed = total_speed_times_length / total_length;
     /// let facility_los = highway.determine_facility_los(facility_fd, avg_speed);
     /// ```

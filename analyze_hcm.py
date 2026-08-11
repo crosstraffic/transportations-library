@@ -116,7 +116,6 @@ def analyze():
     print("-" * 30)
     
     total_length = 0.0
-    weighted_fd = 0.0
     weighted_speed = 0.0
     
     results = []
@@ -206,7 +205,6 @@ def analyze():
         print(f"  Segment LOS: {los}")
         
         length = seg.length
-        weighted_fd += fd * length
         weighted_speed += ats * length
         total_length += length
         
@@ -219,7 +217,9 @@ def analyze():
             "los": los
         })
 
-    facility_fd = weighted_fd / total_length
+    # Equation 15-39 aggregates adjusted densities and FD_PLmid; the library
+    # owns that so this script cannot drift from the engine.
+    facility_fd = highway.determine_facility_follower_density()
     facility_speed = weighted_speed / total_length
     facility_los = highway.determine_facility_los(facility_fd, facility_speed)
     

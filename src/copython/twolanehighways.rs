@@ -518,6 +518,10 @@ impl TwoLaneHighways {
         self.inner.determine_segment_los(seg_num, s_pl, cap)
     }
 
+    pub fn determine_facility_follower_density(&mut self) -> f64 {
+        self.inner.determine_facility_follower_density()
+    }
+
     pub fn determine_facility_los(&self, fd: f64, s_pl: f64) -> char {
         self.inner.determine_facility_los(fd, s_pl)
     }

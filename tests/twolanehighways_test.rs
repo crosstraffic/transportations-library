@@ -57,23 +57,19 @@
 //!   puts the passing-lane segment 5 at 6.2 followers/mi and LOS C. The exhibit
 //!   is the consistent reading, since 6.2 cannot be LOS E under Exhibit 15-6.
 //!
-//! # Known deviation from a published value
+//! # Facility aggregation
 //!
-//! `determine_facility_los_test` expects LOS D for case3, where Exhibit 26-27
-//! publishes facility LOS C at 7.3 followers/mi. This is not a rounding
-//! difference. The harness in that test aggregates the UNADJUSTED segment
-//! densities, so it drops both the passing-lane midpoint density and the Step 9
-//! downstream benefit that EP3 spends most of its length computing. Weighting
-//! the published per-segment column of Exhibit 26-27 by segment length gives
-//! (10.7)(0.75) + (2.9)(1.5) + (8.2)(1.0) + (8.2)(0.5) + (8.8)(1.75) = 40.075
-//! over 5.5 mi = 7.3 followers/mi, hence LOS C; weighting the unadjusted
-//! densities the harness actually uses gives about 9.8, hence LOS D. The same
-//! omission is present for case4 but is masked, because both the adjusted
-//! (20.0) and unadjusted aggregates fall in the LOS E band.
-//!
-//! The expected values are left as they are, since correcting this means
-//! changing what the facility harness aggregates rather than retuning a
-//! constant, and that is a behavioral change rather than a test fix.
+//! `determine_facility_los_test` now calls
+//! `TwoLaneHighways::determine_facility_follower_density`, which aggregates
+//! what Equation 15-39 asks for: the adjusted density where the Step 9
+//! passing-lane benefit applies, FD_PLmid on a passing lane segment, and the
+//! plain Step 8 density elsewhere. Weighting the published per-segment column
+//! of Exhibit 26-27 by segment length gives (10.7)(0.75) + (2.9)(1.5) +
+//! (8.2)(1.0) + (8.2)(0.5) + (8.8)(1.75) = 40.075 over 5.5 mi = 7.3
+//! followers/mi and LOS C, which the engine now reproduces at 7.271. The
+//! earlier harness weighted the unadjusted densities and reached 8.041, hence
+//! LOS D. case4 carries the same correction (20.219 to 19.897) but was masked,
+//! because both aggregates fall inside the LOS E band.
 
 use assert_approx_eq::assert_approx_eq;
 use transportations_library::math;
@@ -461,7 +457,12 @@ fn determine_segment_los_test() {
 
 #[test]
 fn determine_facility_los_test() {
-    let ans_los = vec!['D', 'D', 'D', 'E'];
+    // case3 is Chapter 26 Example Problem 3: facility follower density 7.3
+    // followers/mi and LOS C in Exhibit 26-27. case4 is Example Problem 4,
+    // LOS E in Exhibit 26-36. case1 and case2 are single-segment fixtures
+    // with no published facility row.
+    let ans_los = ['D', 'D', 'C', 'E'];
+    let ans_fd_f = [10.092, 10.933, 7.271, 19.897];
 
     let setting_files = read_test_files();
     for (index, s_file) in setting_files.iter().enumerate() {
@@ -470,10 +471,7 @@ fn determine_facility_los_test() {
 
         let (mut twolanehighways, seg_len) = initialize_test_case(tlh);
         let mut tot_len: f64 = 0.0;
-        let mut fd_f: f64 = 0.0;
         let mut s_tot: f64 = 0.0;
-        let mut fd: f64;
-        let mut fd_mid: f64;
 
         for seg_num in 0..seg_len {
             let (_, _, _) = twolanehighways.determine_demand_flow(seg_num);
@@ -481,20 +479,19 @@ fn determine_facility_los_test() {
             let (s, _) = twolanehighways.estimate_average_speed(seg_num);
             let _ = twolanehighways.estimate_percent_followers(seg_num);
             if twolanehighways.get_segments()[seg_num].get_passing_type() == 2 {
-                (_, fd_mid) = twolanehighways.determine_follower_density_pl(seg_num);
-                fd_f += fd_mid * twolanehighways.get_segments()[seg_num].get_length();
+                let (_, _) = twolanehighways.determine_follower_density_pl(seg_num);
             } else {
-                fd = twolanehighways.determine_follower_density_pc_pz(seg_num);
-                fd_f += fd * twolanehighways.get_segments()[seg_num].get_length();
+                let _ = twolanehighways.determine_follower_density_pc_pz(seg_num);
             }
             tot_len += twolanehighways.get_segments()[seg_num].get_length();
             s_tot += s * twolanehighways.get_segments()[seg_num].get_length();
         }
-        fd_f = fd_f / tot_len;
 
+        let fd_f = twolanehighways.determine_facility_follower_density();
         let average_speed = s_tot / tot_len;
         let fac_los = twolanehighways.determine_facility_los(fd_f, average_speed);
 
+        assert_approx_eq!(ans_fd_f[index], fd_f, 0.001);
         assert_eq!(ans_los[index], fac_los);
     }
 }
