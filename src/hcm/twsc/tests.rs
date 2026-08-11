@@ -895,3 +895,180 @@ fn test_upstream_signals_serde_roundtrip() {
     assert!(s.eastbound.is_some());
     assert!(s.westbound.is_none());
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Section 5 pedestrian mode (Equations 20-76 through 20-99)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+use super::pedestrian::*;
+use crate::hcm::common::LevelOfService;
+
+/// A single-stage crossing with the given lane count and yield rate, using the
+/// Example Problem 2 geometry so that n >= 2 potential yielding events exist.
+fn ped_crossing(through_lanes: u32, motorist_yield_rate: f64) -> PedestrianCrossing {
+    PedestrianCrossing {
+        stages: vec![PedestrianCrossingStage {
+            crossing_length_ft: 20.0,
+            conflicting_flow_veh_h: 850.0,
+            through_lanes,
+        }],
+        walk_speed_fps: 4.0,
+        startup_clearance_s: 1.0,
+        motorist_yield_rate,
+        peak_hour_volume_veh_h: 1700.0,
+        k_factor: 0.08,
+        ..Default::default()
+    }
+}
+
+/// `prob_all_blocking_yield` collapses Equations 20-86, 20-88, 20-90, and
+/// 20-92 into one binomial sum. Because P(Y_1) = P_d * (per-event / P_d) =
+/// per-event, the first yield probability is exactly the published closed form
+/// for each lane count, so this pins the unification against literal
+/// transcriptions of the four intact equations.
+#[test]
+fn test_pedestrian_yield_matches_published_closed_forms() {
+    let m_y = 0.5;
+
+    // One lane, Equation 20-86: P(Y_1) = P_d M_y, with P_d = P_b.
+    let s = &ped_crossing(1, m_y).analyze().stages[0];
+    let p_b = s.prob_blocked_lane;
+    assert!(
+        (s.prob_delayed_crossing - p_b).abs() < 1e-12,
+        "one lane: Equation 20-81 must reduce to P_d = P_b"
+    );
+    assert!((s.prob_yield[1] - s.prob_delayed_crossing * m_y).abs() < 1e-12);
+    // Equation 20-87 for i = 2: P(Y_2) = P_d M_y (1 - M_y).
+    assert!((s.prob_yield[2] - s.prob_delayed_crossing * m_y * (1.0 - m_y)).abs() < 1e-12);
+
+    // Two lanes, Equation 20-88: 2 P_b (1 - P_b) M_y + P_b^2 M_y^2.
+    let s = &ped_crossing(2, m_y).analyze().stages[0];
+    let p_b = s.prob_blocked_lane;
+    let eq_20_88 = 2.0 * p_b * (1.0 - p_b) * m_y + p_b.powi(2) * m_y.powi(2);
+    assert!((s.prob_yield[1] - eq_20_88).abs() < 1e-12);
+
+    // Three lanes, Equation 20-90.
+    let s = &ped_crossing(3, m_y).analyze().stages[0];
+    let p_b = s.prob_blocked_lane;
+    let eq_20_90 = p_b.powi(3) * m_y.powi(3)
+        + 3.0 * p_b.powi(2) * (1.0 - p_b) * m_y.powi(2)
+        + 3.0 * p_b * (1.0 - p_b).powi(2) * m_y;
+    assert!((s.prob_yield[1] - eq_20_90).abs() < 1e-12);
+
+    // Four lanes, Equation 20-92 (read from the intact numerator of 20-93).
+    let s = &ped_crossing(4, m_y).analyze().stages[0];
+    let p_b = s.prob_blocked_lane;
+    let eq_20_92 = p_b.powi(4) * m_y.powi(4)
+        + 4.0 * p_b.powi(3) * (1.0 - p_b) * m_y.powi(3)
+        + 6.0 * p_b.powi(2) * (1.0 - p_b).powi(2) * m_y.powi(2)
+        + 4.0 * p_b * (1.0 - p_b).powi(3) * m_y;
+    assert!((s.prob_yield[1] - eq_20_92).abs() < 1e-12);
+}
+
+/// A 100% yield rate must be clamped to 99.99% per the HCM note on Equation
+/// 20-87, which otherwise evaluates 0^0 at i = 1.
+#[test]
+fn test_pedestrian_yield_rate_clamped_at_one() {
+    let s = &ped_crossing(2, 1.0).analyze().stages[0];
+    assert!(
+        s.prob_yield.iter().all(|p| p.is_finite()),
+        "M_y = 1.0 must not produce a NaN in Equation 20-87"
+    );
+    assert!(s.prob_yield[1] > 0.0 && s.prob_yield[1] <= s.prob_delayed_crossing);
+}
+
+/// A zero conflicting flow must not divide by zero in Equations 20-82 and
+/// 20-85; the HCM floors v at 0.0001 veh/s.
+#[test]
+fn test_pedestrian_zero_conflicting_flow_is_finite() {
+    let mut c = ped_crossing(2, 0.5);
+    c.stages[0].conflicting_flow_veh_h = 0.0;
+    let r = c.analyze();
+    assert!(
+        r.delay.is_finite(),
+        "zero conflicting flow must not divide by zero"
+    );
+    // With effectively no traffic, nobody is blocked and nobody is delayed.
+    assert!(r.stages[0].prob_delayed_crossing < 1e-3);
+    // The HCM floors v at 0.0001 veh/s rather than allowing zero, which leaves
+    // a residual d_g of about v * t_c,G^2 / 2 = 0.002 s instead of exactly zero.
+    assert!(
+        r.delay < 0.01,
+        "no conflicting traffic means negligible gap delay"
+    );
+    // LOS still is not A, because Exhibit 20-3 keys on satisfaction rather than
+    // delay: Equation 20-95 penalizes the 21,250 veh/day AADT and credits no
+    // countermeasures, so P(D, no delay) alone lands the crossing in LOS E even
+    // though pedestrians never wait. This is the pedestrian mode behaving as
+    // specified, not a degenerate-input artifact.
+    assert!(
+        (r.proportion_dissatisfied - r.prob_dissatisfied_no_delay).abs() < 1e-3,
+        "with P_nd = 1 Equation 20-99 must collapse to P(D, no delay)"
+    );
+    assert_eq!(r.los, LevelOfService::E);
+}
+
+/// Exhibit 20-3 band edges. The bands are closed on the lower bound and open
+/// on the upper, so each threshold value belongs to the worse LOS.
+#[test]
+fn test_pedestrian_los_bands_exhibit_20_3() {
+    assert_eq!(pedestrian_los(0.0), LevelOfService::A);
+    assert_eq!(pedestrian_los(0.049), LevelOfService::A);
+    assert_eq!(pedestrian_los(0.05), LevelOfService::B);
+    assert_eq!(pedestrian_los(0.149), LevelOfService::B);
+    assert_eq!(pedestrian_los(0.15), LevelOfService::C);
+    assert_eq!(pedestrian_los(0.249), LevelOfService::C);
+    assert_eq!(pedestrian_los(0.25), LevelOfService::D);
+    assert_eq!(pedestrian_los(0.329), LevelOfService::D);
+    assert_eq!(pedestrian_los(0.33), LevelOfService::E);
+    assert_eq!(pedestrian_los(0.499), LevelOfService::E);
+    assert_eq!(pedestrian_los(0.50), LevelOfService::F);
+    assert_eq!(pedestrian_los(1.0), LevelOfService::F);
+}
+
+/// Pedestrian platooning raises the group critical headway through Equations
+/// 20-77 through 20-79, which must in turn raise delay. Without platooning
+/// N_p = 1 and t_c,G collapses to t_c.
+#[test]
+fn test_pedestrian_platooning_raises_group_critical_headway() {
+    let base = ped_crossing(2, 0.5);
+    let no_platoon = base.analyze();
+    assert!(
+        (no_platoon.stages[0].group_critical_headway - no_platoon.stages[0].critical_headway).abs()
+            < 1e-12,
+        "without platooning t_c,G = t_c (Equation 20-79 with N_p = 1)"
+    );
+
+    let mut platooned = base.clone();
+    platooned.pedestrian_platooning = true;
+    platooned.crosswalk_width_ft = 8.0;
+    platooned.pedestrian_flow_p_h = 1800.0;
+    let r = platooned.analyze();
+    assert!(
+        r.stages[0].spatial_distribution > 1.0,
+        "a narrow crosswalk with heavy pedestrian flow must give N_p > 1 row"
+    );
+    assert!(r.stages[0].group_critical_headway > r.stages[0].critical_headway);
+    assert!(r.delay > no_platoon.delay);
+}
+
+/// Equation 20-94 sums the stages, and the AADT override bypasses the
+/// peak-hour / K-factor estimate used in Example Problem 2 Step 7.
+#[test]
+fn test_pedestrian_stage_sum_and_aadt_override() {
+    let mut c = ped_crossing(2, 0.5);
+    c.stages.push(c.stages[0].clone());
+    let r = c.analyze();
+    assert_eq!(r.stages.len(), 2);
+    assert!((r.delay - (r.stages[0].delay + r.stages[1].delay)).abs() < 1e-12);
+
+    // 1,700 / 0.08 = 21,250, the value Example Problem 2 derives.
+    let mut explicit = c.clone();
+    explicit.aadt_veh = Some(21_250.0);
+    explicit.peak_hour_volume_veh_h = 0.0;
+    explicit.k_factor = 0.0;
+    assert!(
+        (explicit.analyze().proportion_dissatisfied - r.proportion_dissatisfied).abs() < 1e-12,
+        "an explicit AADT must reproduce the peak-hour / K-factor estimate"
+    );
+}

@@ -155,3 +155,85 @@ class TestTwscExampleProblem4:
         # which is lower than the platooned 750 veh/h because platooning
         # concentrates the conflict into the blocked period and frees the rest.
         assert analysis.get_potential_capacity("1") == pytest.approx(644.0, abs=8.0)
+
+
+FIXTURE_EP2 = os.path.join(
+    os.path.dirname(__file__), "ExampleCases", "hcm", "Twsc", "case4_pedestrian.json"
+)
+
+
+def _pedestrian(scenario):
+    """Run one Example Problem 2 scenario through the PyO3 binding."""
+    if not hasattr(tl, "analyze_twsc_pedestrian"):
+        pytest.skip("transportations_library built without the pedestrian binding")
+    with open(FIXTURE_EP2) as f:
+        root = json.load(f)
+    return json.loads(tl.analyze_twsc_pedestrian(json.dumps(root[scenario])))
+
+
+class TestChapter20PedestrianMode:
+    """HCM Chapter 32, TWSC Example Problem 2: the Chapter 20 Section 5
+    pedestrian mode, mirroring tests/chapter20_integration.rs. This is the
+    pedestrian mode proper, not the Section 4 pedestrian-impedance adjustment
+    that the Twsc class applies."""
+
+    def test_scenario_a_unmarked_single_stage(self):
+        # 46-ft crossing of four lanes, 0% yield rate: t_c = 12.5 s,
+        # P_b = 0.771, P_d = 0.997, d_g = 761 s, d_p = 761 s, LOS F.
+        r = _pedestrian("scenario_a")
+        assert len(r["stages"]) == 1
+        s = r["stages"][0]
+        assert s["critical_headway"] == pytest.approx(12.5, abs=0.05)
+        assert s["prob_blocked_lane"] == pytest.approx(0.771, abs=0.001)
+        assert s["prob_delayed_crossing"] == pytest.approx(0.997, abs=0.001)
+        assert s["gap_delay"] == pytest.approx(761.0, rel=0.005)
+        assert r["delay"] == pytest.approx(761.0, rel=0.005)
+        assert r["odds_satisfied_no_delay"] == pytest.approx(1.066, abs=0.005)
+        assert r["odds_satisfied_delay"] == pytest.approx(0.159, abs=0.001)
+        assert r["prob_non_delayed"] == pytest.approx(0.003, abs=0.001)
+        assert r["los"] == "F"
+
+    def test_scenario_b_marked_crosswalk_and_median_refuge(self):
+        # Two 20-ft stages, 50% yield rate. Exhibit 32-7: P_d = 0.758,
+        # P(Y_1) = 0.314, P_nd = 0.481, P(D) = 0.207, LOS C; d_p = 6.0 s.
+        r = _pedestrian("scenario_b")
+        assert len(r["stages"]) == 2
+        s = r["stages"][0]
+        assert s["critical_headway"] == pytest.approx(6.0, abs=0.05)
+        assert s["prob_blocked_lane"] == pytest.approx(0.508, abs=0.001)
+        assert s["prob_delayed_crossing"] == pytest.approx(0.758, abs=0.001)
+        assert s["gap_delay"] == pytest.approx(7.2, abs=0.05)
+        assert s["gap_delay_when_delayed"] == pytest.approx(9.5, abs=0.05)
+        assert s["average_short_headway"] == pytest.approx(2.3, abs=0.05)
+        assert s["yield_events"] == 4
+        assert r["delay"] == pytest.approx(6.0, abs=0.5)
+        assert r["odds_satisfied_no_delay"] == pytest.approx(13.44, abs=0.05)
+        assert r["odds_satisfied_delay"] == pytest.approx(2.00, abs=0.01)
+        assert r["prob_yield_first_event"] == pytest.approx(0.314, abs=0.001)
+        assert r["prob_non_delayed"] == pytest.approx(0.481, abs=0.001)
+        assert r["proportion_dissatisfied"] == pytest.approx(0.207, abs=0.001)
+        assert r["los"] == "C"
+
+    def test_scenario_c_adds_rrfb(self):
+        # Same as Scenario B plus RRFBs and an 80% yield rate. Exhibit 32-7:
+        # P(Y_1) = 0.565, P_nd = 0.670, P(D) = 0.029, LOS A; d_p = 3.0 s.
+        r = _pedestrian("scenario_c")
+        assert r["delay"] == pytest.approx(3.0, abs=0.5)
+        assert r["odds_satisfied_no_delay"] == pytest.approx(95.15, abs=0.15)
+        assert r["odds_satisfied_delay"] == pytest.approx(14.15, abs=0.05)
+        assert r["prob_yield_first_event"] == pytest.approx(0.565, abs=0.001)
+        assert r["prob_non_delayed"] == pytest.approx(0.670, abs=0.001)
+        assert r["proportion_dissatisfied"] == pytest.approx(0.029, abs=0.001)
+        assert r["los"] == "A"
+
+    def test_countermeasures_improve_los_f_to_c_to_a(self):
+        # The Example Problem 2 discussion: a marked crosswalk plus median
+        # refuge moves LOS F -> C, and adding RRFBs moves it to A.
+        los = [_pedestrian(s)["los"] for s in ("scenario_a", "scenario_b", "scenario_c")]
+        assert los == ["F", "C", "A"]
+
+    def test_invalid_config_raises(self):
+        if not hasattr(tl, "analyze_twsc_pedestrian"):
+            pytest.skip("transportations_library built without the pedestrian binding")
+        with pytest.raises(ValueError):
+            tl.analyze_twsc_pedestrian("{not json")
