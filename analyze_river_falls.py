@@ -59,7 +59,10 @@ for i in range(hwy.num_segments):
     hwy.determine_adjustment_to_follower_density(i)
     s = hwy.segments[i]
     fd = s.followers_density
-    los = hwy.determine_segment_los(i, ats, int(cap))
+    # Exhibit 15-6 selects its threshold set by POSTED SPEED LIMIT ("Posted
+    # Speed Limit >= 50 mi/h" vs "< 50 mi/h"), not by the computed average
+    # travel speed. Both are >= 50 here, so this does not move River Falls.
+    los = hwy.determine_segment_los(i, s.spl, int(cap))
     tot_len += s.length
     w_spd += ats * s.length
     inter.append({"seg": i + 1, "length_mi": round(s.length, 4),
@@ -70,7 +73,9 @@ for i in range(hwy.num_segments):
 
 # Equation 15-39 over the adjusted densities; see determine_facility_follower_density.
 fac_fd, fac_spd = hwy.determine_facility_follower_density(), w_spd / tot_len
-fac_los = hwy.determine_facility_los(fac_fd, fac_spd)
+# Exhibit 15-6 splits on posted speed limit, not on the computed speed. Every
+# segment is posted 55, so the facility limit is 55.
+fac_los = hwy.determine_facility_los(fac_fd, PSL)
 print(json.dumps({"intermediate": inter,
                   "facility": {"total_length_mi": round(tot_len, 4),
                                "length_weighted_ats": round(fac_spd, 2),

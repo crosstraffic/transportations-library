@@ -113,7 +113,8 @@ ffs = highway.determine_free_flow_speed(seg_num)
 avg_speed, _ = highway.estimate_average_speed(seg_num)
 percent_followers = highway.estimate_percent_followers(seg_num)
 follower_density = highway.determine_follower_density_pc_pz(seg_num)
-los = highway.determine_segment_los(seg_num, avg_speed, capacity)
+# Exhibit 15-6 picks its threshold set by POSTED SPEED LIMIT, not average speed
+los = highway.determine_segment_los(seg_num, highway.segments[seg_num].spl, capacity)
 
 print(f"Level of Service: {los}")
 print(f"Average Speed: {avg_speed:.1f} mph")

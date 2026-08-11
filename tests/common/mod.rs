@@ -257,7 +257,13 @@ pub fn analyze_facility(highway: &mut TwoLaneHighways) -> FacilitySummary {
             length,
             speed,
             follower_density: fd,
-            level_of_service: highway.determine_segment_los(i, speed, segment.get_capacity()),
+            // Exhibit 15-6 selects its threshold column by POSTED SPEED LIMIT,
+            // not by the computed average speed.
+            level_of_service: highway.determine_segment_los(
+                i,
+                segment.get_spl(),
+                segment.get_capacity(),
+            ),
         });
     }
 
@@ -265,7 +271,16 @@ pub fn analyze_facility(highway: &mut TwoLaneHighways) -> FacilitySummary {
     // this rather than the harness reweighting the per-segment column above.
     let facility_fd = highway.determine_facility_follower_density();
     let facility_speed = weighted_speed / total_length;
-    let facility_los = highway.determine_facility_los(facility_fd, facility_speed);
+    // Exhibit 15-6 splits on posted speed limit. HCM Step 11 defines no
+    // facility-level posted limit, so this length-weights it, which reduces to
+    // the common value on a uniform-limit facility.
+    let facility_spl = highway
+        .get_segments()
+        .iter()
+        .map(|s| s.get_spl() * s.get_length())
+        .sum::<f64>()
+        / total_length;
+    let facility_los = highway.determine_facility_los(facility_fd, facility_spl);
 
     FacilitySummary {
         total_length,

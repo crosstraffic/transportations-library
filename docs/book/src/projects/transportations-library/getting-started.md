@@ -50,7 +50,9 @@ let (speed, _) = highway.estimate_average_speed(seg_num);
 highway.estimate_percent_followers(seg_num);
 highway.determine_follower_density_pc_pz(seg_num);
 
-let los = highway.determine_segment_los(seg_num, speed, capacity);
+// Exhibit 15-6 picks its threshold set by POSTED SPEED LIMIT, not average speed.
+let spl = highway.get_segments()[seg_num].get_spl();
+let los = highway.determine_segment_los(seg_num, spl, capacity);
 println!("Segment LOS: {}", los);
 ```
 

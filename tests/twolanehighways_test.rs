@@ -441,14 +441,17 @@ fn determine_segment_los_test() {
         for seg_num in 0..seg_len {
             let (_, _, capacity) = twolanehighways.determine_demand_flow(seg_num);
             let _ = twolanehighways.determine_free_flow_speed(seg_num);
-            let (s, _) = twolanehighways.estimate_average_speed(seg_num);
+            let _ = twolanehighways.estimate_average_speed(seg_num);
             let _ = twolanehighways.estimate_percent_followers(seg_num);
             if twolanehighways.get_segments()[seg_num].get_passing_type() == 2 {
                 let (_, _) = twolanehighways.determine_follower_density_pl(seg_num);
             } else {
                 let _ = twolanehighways.determine_follower_density_pc_pz(seg_num);
             }
-            let los = twolanehighways.determine_segment_los(seg_num, s, capacity);
+            // Exhibit 15-6 selects its threshold column by POSTED SPEED LIMIT,
+            // not by the computed average speed.
+            let spl = twolanehighways.get_segments()[seg_num].get_spl();
+            let los = twolanehighways.determine_segment_los(seg_num, spl, capacity);
 
             assert_eq!(ans_los[index][seg_num], los);
         }
@@ -471,12 +474,12 @@ fn determine_facility_los_test() {
 
         let (mut twolanehighways, seg_len) = initialize_test_case(tlh);
         let mut tot_len: f64 = 0.0;
-        let mut s_tot: f64 = 0.0;
+        let mut spl_tot: f64 = 0.0;
 
         for seg_num in 0..seg_len {
             let (_, _, _) = twolanehighways.determine_demand_flow(seg_num);
             let _ = twolanehighways.determine_free_flow_speed(seg_num);
-            let (s, _) = twolanehighways.estimate_average_speed(seg_num);
+            let _ = twolanehighways.estimate_average_speed(seg_num);
             let _ = twolanehighways.estimate_percent_followers(seg_num);
             if twolanehighways.get_segments()[seg_num].get_passing_type() == 2 {
                 let (_, _) = twolanehighways.determine_follower_density_pl(seg_num);
@@ -484,12 +487,18 @@ fn determine_facility_los_test() {
                 let _ = twolanehighways.determine_follower_density_pc_pz(seg_num);
             }
             tot_len += twolanehighways.get_segments()[seg_num].get_length();
-            s_tot += s * twolanehighways.get_segments()[seg_num].get_length();
+            // Exhibit 15-6 splits on posted speed limit, so Step 11 weights the
+            // POSTED limit rather than the computed average speed. HCM Step 11
+            // does not define a facility-level posted limit for mixed-limit
+            // facilities; length weighting reduces to the common value when
+            // every segment shares one, which is the case for all four fixtures.
+            spl_tot += twolanehighways.get_segments()[seg_num].get_spl()
+                * twolanehighways.get_segments()[seg_num].get_length();
         }
 
         let fd_f = twolanehighways.determine_facility_follower_density();
-        let average_speed = s_tot / tot_len;
-        let fac_los = twolanehighways.determine_facility_los(fd_f, average_speed);
+        let facility_spl = spl_tot / tot_len;
+        let fac_los = twolanehighways.determine_facility_los(fd_f, facility_spl);
 
         assert_approx_eq!(ans_fd_f[index], fd_f, 0.001);
         assert_eq!(ans_los[index], fac_los);
