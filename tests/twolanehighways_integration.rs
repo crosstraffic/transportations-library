@@ -188,7 +188,6 @@ fn test_facility_level_analysis() {
     assert!(segment_count > 0, "Highway should have segments for facility analysis");
     
     let mut total_length = 0.0;
-    let mut weighted_fd = 0.0;
     let mut weighted_speed = 0.0;
     let mut segment_results = Vec::new();
     
@@ -212,7 +211,6 @@ fn test_facility_level_analysis() {
         };
         
         total_length += segment_length;
-        weighted_fd += fd * segment_length;
         weighted_speed += speed * segment_length;
         
         segment_results.push((segment_index, speed, fd, segment_length));
@@ -221,7 +219,9 @@ fn test_facility_level_analysis() {
     // Calculate facility-wide metrics
     assert!(total_length > 0.0, "Total facility length should be positive");
     
-    let facility_fd = weighted_fd / total_length;
+    // Equation 15-39 aggregates the adjusted densities and the passing-lane
+    // midpoint density, which the library does in one call.
+    let facility_fd = highway.determine_facility_follower_density();
     let facility_speed = weighted_speed / total_length;
     let facility_los = highway.determine_facility_los(facility_fd, facility_speed);
     

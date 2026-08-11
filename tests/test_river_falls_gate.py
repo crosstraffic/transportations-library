@@ -66,7 +66,7 @@ def _river_falls_facility():
 
 
 def _facility_metrics(hwy):
-    tot_len = w_fd = w_spd = 0.0
+    tot_len = w_spd = 0.0
     for i in range(hwy.num_segments):
         hwy.identify_vertical_class(i)
         _, _, cap = hwy.determine_demand_flow(i)
@@ -78,9 +78,8 @@ def _facility_metrics(hwy):
         hwy.determine_adjustment_to_follower_density(i)
         s = hwy.segments[i]
         tot_len += s.length
-        w_fd += s.followers_density * s.length
         w_spd += ats * s.length
-    fac_fd, fac_spd = w_fd / tot_len, w_spd / tot_len
+    fac_fd, fac_spd = hwy.determine_facility_follower_density(), w_spd / tot_len
     return tot_len, fac_fd, fac_spd, hwy.determine_facility_los(fac_fd, fac_spd)
 
 
@@ -92,3 +91,28 @@ def test_river_falls_facility_follower_density_gate():
     # Secondary pins so a compensating error in length/speed can't hide a drift.
     assert round(tot_len, 3) == 5.364
     assert round(fac_spd, 2) == 58.36
+
+
+def test_river_falls_unaffected_by_the_equation_15_39_correction():
+    """River Falls has no passing lane, so Step 11 must aggregate plain densities.
+
+    ``determine_facility_follower_density`` implements Equation 15-39 over the
+    ADJUSTED segment densities, which corrects the Chapter 26 Example Problem 3
+    facility from LOS D to the published LOS C. That whole adjustment chain is
+    gated on the presence of a passing lane: River Falls is passing_type 0 and 1
+    only, so ``determine_adjustment_to_follower_density`` returns 0.0 on every
+    segment and the aggregate is unchanged at 5.223. This test states that
+    dependency explicitly, so a future change to the Step 9 gating that leaked
+    into non-passing-lane facilities would fail here rather than silently
+    move the project's canonical number.
+    """
+    hwy = _river_falls_facility()
+    assert {s.passing_type for s in hwy.segments} == {0, 1}, "no passing lane expected"
+
+    _, fac_fd, _, _ = _facility_metrics(hwy)
+    assert round(fac_fd, 3) == 5.223
+
+    for i in range(hwy.num_segments):
+        assert hwy.determine_adjustment_to_follower_density(i) == 0.0, (
+            f"segment {i} picked up a passing-lane adjustment"
+        )

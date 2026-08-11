@@ -31,13 +31,28 @@
 //! (269_Ch34_02*.xhtml).
 //!
 //! Implementation notes (documented deviations / conventions):
-//! * Incremental delay d2 (Equation 19-26) is evaluated with the
-//!   per-lane capacity c/N, following the Chapter 34 interchange
-//!   worksheets (Exhibits 34-12 through 34-15 list per-lane saturation
-//!   flows and d2 values reproducible only on a per-lane basis).
-//!   // VERIFY-HCM: Chapter 34 Example Problem 5 (DDI) evaluates d2 with
-//!   // the lane-group capacity instead; the two conventions differ for
-//!   // multilane groups near saturation.
+//! * Incremental delay d2 (Equation 19-26) is evaluated with the lane group
+//!   capacity, which is what the equation's own variable list requires: c_A is
+//!   "the average capacity (veh/h) ... equal to the capacity c computed in Step
+//!   7", and the Step 7 c is a lane group capacity, not a per-lane one.
+//!   Example Problems 3 and 5 agree with that reading (EP3 publishes d2 = 110.5
+//!   s/veh for the eastbound external through, which reproduces at 110.36 with
+//!   the lane group capacity of 1,672 veh/h against 119.9 with c/N = 557).
+//!   // VERIFY-HCM: Example Problem 1 is the outlier. Its published d2 of 4.6
+//!   // s/veh reproduces only on a per-lane basis (4.65), so the EP1 worked
+//!   // values are inconsistent with the definition Equation 19-26 gives for
+//!   // its own variable. Treated as a book defect alongside the Chapter 12 /
+//!   // Chapter 20 errata, since two example problems and the equation text
+//!   // outvote one worksheet. The affected EP1 expectations in
+//!   // tests/chapter23_integration.rs are pinned to engine values.
+//! * Interchange LOS (Step 9) is graded from the demand-weighted ETT alone.
+//!   The Exhibit 23-10 "automatically LOS F" rule for v/c > 1 or R_Q > 1 is a
+//!   per-O-D rule, and each O-D traveling through a flagged lane group still
+//!   receives F. Step 9 explicitly anticipates a failing O-D being masked at
+//!   the interchange level and directs the analyst to report the poorest O-D
+//!   as context rather than to force the aggregate letter down. Exhibits 34-43
+//!   and 34-57 confirm it, grading their interchanges E and D from ETT while
+//!   carrying flagged O-Ds.
 //! * Uniform delay d1 uses Equation 19-19 with the Equation 19-20
 //!   progression factor (P = R_p g/C). This reproduces the Example 1
 //!   movement delays; the Example 5 (DDI) published uniform delays are
@@ -1940,12 +1955,16 @@ impl Interchange {
                         1.0
                     };
                     let d1 = uniform_delay(c, g_eff, x, pf);
-                    // d2 on a per-lane basis (Chapter 34 worksheet
-                    // convention; see module notes).
-                    let cap_ln = r.capacity.unwrap_or(0.0) / g.lanes.max(1) as f64;
+                    // d2 uses the lane group capacity: Equation 19-26 defines
+                    // c_A as "the average capacity (veh/h) ... equal to the
+                    // capacity c computed in Step 7", and the Step 7 c is the
+                    // lane group capacity. cap_ln below stays per-lane because
+                    // the Chapter 31 back-of-queue Q1 is a per-lane queue.
+                    let cap = r.capacity.unwrap_or(0.0);
+                    let cap_ln = cap / g.lanes.max(1) as f64;
                     let i_f = r.upstream_filtering.unwrap_or(1.0);
-                    let d2 = if cap_ln > 0.0 {
-                        incremental_delay_signalized(t_h, x, cap_ln, K_PRETIMED, i_f)
+                    let d2 = if cap > 0.0 {
+                        incremental_delay_signalized(t_h, x, cap, K_PRETIMED, i_f)
                     } else {
                         0.0
                     };
@@ -2128,9 +2147,10 @@ impl Interchange {
         if den > 0.0 {
             let ett_i = num / den;
             self.interchange_ett_s = Some(ett_i);
-            let any_vc = self.od_results.iter().any(|r| r.vc_exceeds_one);
-            let any_rq = self.od_results.iter().any(|r| r.rq_exceeds_one);
-            self.interchange_los = Some(los_signalized_interchange_od(ett_i, any_vc, any_rq));
+            // Equation 23-52 grades the interchange from the demand-weighted
+            // ETT only. The per-O-D v/c and R_Q flags are deliberately not
+            // propagated here; see the Step 9 note in the module header.
+            self.interchange_los = Some(los_signalized_interchange_od(ett_i, false, false));
         }
     }
 }

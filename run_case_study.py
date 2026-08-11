@@ -27,7 +27,7 @@ hwy = TwoLaneHighways(segments=segs, lane_width=d["lane_width"], shoulder_width=
                       apd=d["apd"], pmhvfl=d["pmhvfl"], l_de=d.get("l_de", 0.0))
 
 got = {"ffs": [], "ats": [], "pf": [], "fd": []}
-tot = wfd = wsp = 0.0
+tot = wsp = 0.0
 for i in range(hwy.num_segments):
     hwy.identify_vertical_class(i); hwy.determine_demand_flow(i); hwy.determine_vertical_alignment(i)
     ffs = hwy.determine_free_flow_speed(i); ats = hwy.estimate_average_speed(i)[0]
@@ -36,8 +36,8 @@ for i in range(hwy.num_segments):
     hwy.determine_adjustment_to_follower_density(i)
     seg = hwy.segments[i]; fd = seg.followers_density; L = seg.length
     got["ffs"].append(ffs); got["ats"].append(ats); got["pf"].append(pf); got["fd"].append(fd)
-    tot += L; wfd += fd*L; wsp += ats*L
-fac_fd = wfd/tot
+    tot += L; wsp += ats*L
+fac_fd = hwy.determine_facility_follower_density()
 
 def row(name, g, e):
     flags = "".join(" OK" if abs(gi-ei) <= 0.06 else f" XX(exp {ei})" for gi, ei in zip(g, e))

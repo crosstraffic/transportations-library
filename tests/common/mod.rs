@@ -231,7 +231,6 @@ pub fn run_complete_analysis(highway: &mut TwoLaneHighways, segment_index: usize
 pub fn analyze_facility(highway: &mut TwoLaneHighways) -> FacilitySummary {
     let segment_count = highway.get_segments().len();
     let mut total_length = 0.0;
-    let mut weighted_fd = 0.0;
     let mut weighted_speed = 0.0;
     let mut segment_summaries = Vec::new();
 
@@ -250,9 +249,8 @@ pub fn analyze_facility(highway: &mut TwoLaneHighways) -> FacilitySummary {
         };
         
         total_length += length;
-        weighted_fd += fd * length;
         weighted_speed += speed * length;
-        
+
         segment_summaries.push(SegmentSummary {
             index: i,
             passing_type,
@@ -263,7 +261,9 @@ pub fn analyze_facility(highway: &mut TwoLaneHighways) -> FacilitySummary {
         });
     }
 
-    let facility_fd = weighted_fd / total_length;
+    // Equation 15-39 aggregates the adjusted densities, so the library owns
+    // this rather than the harness reweighting the per-segment column above.
+    let facility_fd = highway.determine_facility_follower_density();
     let facility_speed = weighted_speed / total_length;
     let facility_los = highway.determine_facility_los(facility_fd, facility_speed);
 

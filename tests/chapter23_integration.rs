@@ -32,31 +32,31 @@
 //! 34-23 and Exhibit 34-24 intermediates.
 //!
 //! Documented tolerances:
-//! * Example Problem 1 — O-D control delay and ETT ±1.0 s/veh of the
-//!   published Exhibit 34-16 values; O-D LOS exact; interchange ETT
-//!   ±1.0 s/veh; interchange LOS exact.
+//! * Example Problem 1 — O-D control delay and ETT ±1.0 s/veh, asserted at
+//!   equation-based values with the published Exhibit 34-16 values inline for
+//!   the six O-Ds that use an external through movement (see
+//!   `test_case1_diamond_od_results`); O-D LOS exact against the published
+//!   letters; interchange ETT ±0.5 s/veh; interchange LOS exact.
 //! * Example Problem 5 — the published Exhibit 34-64 movement delays are
 //!   not reproducible from the printed Chapter 19 / 23 equations (the
 //!   published uniform delays are inconsistent with Equation 19-19 for
 //!   M1 / M2 / M4 / M5 under any tabulated arrival type). The test
 //!   asserts the equation-based results (±0.5 s/veh) with the published
-//!   values and deltas recorded inline, and asserts the published O-D
-//!   LOS letters for the nine O-Ds where the equation-based ETT falls in
-//!   the same Exhibit 23-10 band (all but O-D E, which computes to C at
-//!   33.9 s vs. the published B at 24.7 s — driven by the per-lane
-//!   incremental delay on the 3-lane external crossover at X = 0.84).
-//!   The demand-weighted interchange ETT lands within 0.2 s/veh of the
-//!   published value (34.8 vs. 34.9 s/veh) with the same LOS C.
+//!   values and deltas recorded inline. O-D E, the case that most directly
+//!   isolates the Equation 19-26 capacity term because it runs on the 3-lane
+//!   external crossover at X = 0.84, reproduces the published 24.7 s/veh and
+//!   LOS B exactly. The westbound O-Ds run short and carry the demand-weighted
+//!   interchange ETT to 29.8 s/veh against the published 34.9, which is 0.2
+//!   s/veh below the Exhibit 23-10 B/C boundary and so grades B against the
+//!   published C.
 //! * Example Problem 3 — saturation flows ±6 veh/h, effective greens
 //!   ±0.01 s, the Exhibit 34-37 additional lost time ±0.05 s, capacities
 //!   ±2 veh/h,
 //!   v/c ±0.005, uniform delays ±0.15 s/veh. Control delays and O-D ETTs
 //!   are asserted at the equation-based values with the published ones
-//!   inline; the two external through movements differ because Example
-//!   Problem 3 evaluates the Equation 19-26 incremental delay with the
-//!   lane group capacity while the engine uses the per-lane capacity (see
-//!   `test_ep3_diamond_spillback_od_results`). O-D LOS letters are exact
-//!   for the eight O-Ds that do not use an external right-turn lane.
+//!   inline, and now agree to 0.2 s/veh on every O-D. O-D LOS letters are
+//!   exact for the eight O-Ds that do not use an external right-turn lane,
+//!   and the interchange LOS matches the published E.
 //! * Example Problem 4 — saturation flows ±5 veh/h, lane utilization
 //!   ±0.001, effective greens and demand-starvation lost times ±0.05 s,
 //!   and control delays ±0.4 s/veh for the eight lane groups that are not
@@ -64,10 +64,9 @@
 //!   in Exhibits 34-53 and 34-55 are not reproducible (see
 //!   `test_ep4_diamond_demand_starvation_external_capacity_defect`).
 //!
-//! Two engine gaps surfaced by these two examples are documented at their
-//! assertion sites rather than fixed here: the missing external
-//! right-turn lane group (Example Problem 3) and the propagation of the
-//! per-O-D v/c flag into the interchange-level LOS (both examples).
+//! One engine gap surfaced by these examples is documented at its assertion
+//! site rather than fixed here: the missing external right-turn lane group
+//! (Example Problem 3), which zeroes the O-D F and O-D G contributions.
 
 use transportations_library::hcm::ramp_terminals::{
     common_green_time, demand_starvation_initial_queue, demand_starvation_lost_time,
@@ -170,12 +169,21 @@ fn test_case1_diamond_lane_groups() {
         );
     }
 
-    // Movement control delays, Exhibits 34-14 / 34-15 (±1.0 s/veh).
-    for (mv, d_pub) in [
-        (EbExtThrough, 44.1),
+    // Movement control delays, Exhibits 34-14 / 34-15 (±1.0 s/veh). Column 1
+    // is asserted; column 2 in the comment is the published value where the
+    // two differ. Only the two 2-lane external throughs differ, and only by
+    // the d2 term: Example Problem 1 is the one worked example whose
+    // published incremental delay reproduces on a per-lane basis (EB d2 = 4.65
+    // per-lane against the published 4.6, 2.33 with the lane group capacity).
+    // Equation 19-26 defines c_A as the Step 7 lane group capacity and both
+    // Example Problem 3 and Example Problem 5 agree with that reading, so the
+    // engine follows the equation and the EP1 worksheet is treated as a book
+    // defect. See the note in src/hcm/ramp_terminals/ramp_terminals.rs.
+    for (mv, d_engine) in [
+        (EbExtThrough, 41.99), // published 44.1
         (EbIntLeft, 55.0),
         (EbIntThrough, 7.8),
-        (WbExtThrough, 37.5),
+        (WbExtThrough, 34.61), // published 37.5
         (WbIntLeft, 45.2),
         (WbIntThrough, 2.3),
         (NbRampLeft, 43.4),
@@ -185,7 +193,7 @@ fn test_case1_diamond_lane_groups() {
     ] {
         assert_near!(
             group(&ix, mv).control_delay_s.unwrap(),
-            d_pub,
+            d_engine,
             1.0,
             format!("d {mv:?}")
         );
@@ -212,20 +220,28 @@ fn test_case1_diamond_od_results() {
     let mut ix = load_case("case1.json");
     ix.analyze();
 
-    // (O-D, demand, control delay, EDTT, ETT, LOS) from Exhibit 34-16.
-    let published = [
-        (A, 233.0, 45.6, 1.9, 47.5, L::C),
-        (B, 227.0, 43.7, -1.9, 41.8, L::C),
+    // (O-D, demand, control delay, EDTT, ETT, LOS). Column 1 is the asserted
+    // engine value; the comment carries the published Exhibit 34-16 pair
+    // (delay, ETT) wherever the two differ by more than the ±1.0 s/veh
+    // tolerance. Every difference is the Equation 19-26 d2 correction reaching
+    // an external through movement, and nothing else: the six O-Ds whose path
+    // includes EbExtThrough or WbExtThrough drop by exactly the 2.11 or 2.89
+    // s/veh those two lane groups lost, while the four that avoid both (A, B,
+    // C, D) still reproduce the published values inside tolerance. Every LOS
+    // letter still matches the published one.
+    let expected = [
+        (A, 233.0, 45.7, 1.9, 47.7, L::C),
+        (B, 227.0, 43.8, -1.9, 41.8, L::C),
         (C, 173.0, 54.6, -1.9, 52.7, L::C),
-        (D, 206.0, 63.6, 1.9, 65.5, L::D),
-        (E, 107.0, 99.2, 1.9, 101.1, L::E),
-        (F, 89.0, 44.2, -1.9, 42.3, L::C),
-        (G, 150.0, 37.5, -1.9, 35.6, L::C),
-        (H, 236.0, 82.7, 1.9, 84.6, L::D),
-        (I, 761.0, 52.0, 0.0, 52.0, L::C),
-        (J, 650.0, 39.8, 0.0, 39.8, L::C),
+        (D, 206.0, 63.7, 1.9, 65.7, L::D),
+        (E, 107.0, 97.0, 1.9, 98.9, L::E), // published 99.2 / 101.1
+        (F, 89.0, 42.0, -1.9, 40.0, L::C), // published 44.2 /  42.3
+        (G, 150.0, 34.6, -1.9, 32.7, L::C), // published 37.5 /  35.6
+        (H, 236.0, 79.8, 1.9, 81.8, L::D), // published 82.7 /  84.6
+        (I, 761.0, 49.8, 0.0, 49.8, L::C), // published 52.0 /  52.0
+        (J, 650.0, 36.9, 0.0, 36.9, L::C), // published 39.8 /  39.8
     ];
-    for (m, demand, delay, edtt, ett, los) in published {
+    for (m, demand, delay, edtt, ett, los) in expected {
         let r = od(&ix, m);
         assert_near!(r.demand, demand, 1.0, format!("demand {m:?}"));
         assert_near!(r.control_delay_s, delay, 1.0, format!("delay {m:?}"));
@@ -235,8 +251,10 @@ fn test_case1_diamond_od_results() {
         assert!(!r.vc_exceeds_one && !r.rq_exceeds_one, "{m:?} flags");
     }
 
-    // Interchange ETT 52.4 s/veh, LOS C (Exhibit 34-16 totals row).
-    assert_near!(ix.interchange_ett_s.unwrap(), 52.4, 1.0, "interchange ETT");
+    // Interchange ETT 50.7 s/veh against the published 52.4 (Exhibit 34-16
+    // totals row), same LOS C. The 1.7 s/veh is the demand-weighted share of
+    // the two external-through d2 corrections above.
+    assert_near!(ix.interchange_ett_s.unwrap(), 50.7, 0.5, "interchange ETT");
     assert_eq!(ix.interchange_los.unwrap(), L::C);
 }
 
@@ -303,20 +321,28 @@ fn test_case2_ddi_results() {
     );
 
     // O-D results. Column 1: equation-based expectation (asserted,
-    // ±0.7 s/veh); column 2 in the comment: published Exhibit 34-65
-    // value. LOS letters match the published table for all O-Ds except
-    // E (computed C at 32.4 s vs. published B at 24.7 s).
+    // ±0.5 s/veh); column 2 in the comment: published Exhibit 34-65
+    // value. Example Problem 5 is the sharpest case for evaluating the
+    // Equation 19-26 incremental delay with the lane group capacity: O-D E
+    // runs entirely on the 3-lane eastbound external crossover at X = 0.84,
+    // and it lands on the published 24.7 s/veh where the per-lane form gave
+    // 33.9 s/veh and the wrong LOS letter. It also moves the O-Ds that use the
+    // 2-lane westbound crossover further from their published values, but the
+    // Exhibit 34-64 movement delays those come from are already documented as
+    // not reproducible from the printed equations (the published uniform
+    // delays are inconsistent with Equation 19-19 for M1 / M2 / M4 / M5), so
+    // the d2 term is not what is being measured there.
     let expected = [
-        (A, 43.5, L::C), // published 40.1 C
+        (A, 42.7, L::C), // published 40.1 C
         (B, 21.4, L::B), // published 21.0 B
         (C, 12.1, L::A), // published 11.4 A
-        (D, 65.5, L::D), // published 76.3 D
-        (E, 33.9, L::C), // published 24.7 B (see module notes)
+        (D, 64.8, L::D), // published 76.3 D
+        (E, 24.7, L::B), // published 24.7 B
         (F, 0.0, L::A),  // free-flow bypass
         (G, 0.0, L::A),  // free-flow bypass
-        (H, 38.3, L::C), // published 50.3 C
-        (I, 47.0, L::C), // published 45.5 C
-        (J, 55.9, L::D), // published 66.4 D
+        (H, 31.5, L::C), // published 50.3 C
+        (I, 37.0, L::C), // published 45.5 C
+        (J, 48.3, L::C), // published 66.4 D
     ];
     for (m, ett, los) in expected {
         let r = od(&ix, m);
@@ -324,11 +350,13 @@ fn test_case2_ddi_results() {
         assert_eq!(r.los, los, "LOS {m:?} (ETT {})", r.ett_s);
     }
 
-    // Interchange LOS C; the demand-weighted ETT of the equation-based
-    // O-D results is 34.8 s/veh against the published 34.9 s/veh
-    // (Exhibit 34-65 totals row).
-    assert_eq!(ix.interchange_los.unwrap(), L::C);
-    assert_near!(ix.interchange_ett_s.unwrap(), 34.9, 0.5, "interchange ETT");
+    // Demand-weighted interchange ETT 29.8 s/veh against the published 34.9
+    // (Exhibit 34-65 totals row), LOS B against the published C. The band
+    // boundary is 30 s/veh, so the aggregate sits 0.2 s/veh on the wrong side
+    // of it and is carried by the westbound O-Ds above rather than by the
+    // Step 9 aggregation.
+    assert_eq!(ix.interchange_los.unwrap(), L::B);
+    assert_near!(ix.interchange_ett_s.unwrap(), 29.8, 0.5, "interchange ETT");
 }
 
 /// Chapter 34, Example Problem 2 (Parclo A-2Q): the Step 4 common green
@@ -561,24 +589,22 @@ fn test_ep3_diamond_spillback_od_results() {
 
     // The remaining eight O-Ds. Column 1: equation-based expectation
     // (asserted); column 2 in the comment: published Exhibit 34-43 value.
-    // O-Ds E, H, I, and J run 9.2 to 9.5 s/veh long because their path
-    // includes an external through movement, where Example Problem 3
-    // evaluates the Equation 19-26 incremental delay with the lane group
-    // capacity (EB: 110.5 s/veh at c = 1,672 veh/h) while the engine uses
-    // the per-lane capacity (119.9 s/veh at c/N = 557 veh/h/ln), per the
-    // convention note in
-    // src/hcm/ramp_terminals/ramp_terminals.rs:34-40. Example Problem 1
-    // requires the per-lane form; Example Problems 3 and 5 require the
-    // lane group form.
+    // The four O-Ds whose path includes an external through movement used to
+    // run 9.2 to 9.5 s/veh long, because the engine evaluated the Equation
+    // 19-26 incremental delay with the per-lane capacity. With the lane group
+    // capacity that the equation's variable list calls for, the eastbound
+    // external through reproduces the published d2 of 110.5 s/veh at 110.36
+    // (c = 1,672 veh/h) instead of 119.9 (c/N = 557 veh/h/ln), and all four
+    // O-Ds land within 0.2 s/veh of the published values.
     let expected = [
-        (A, 139.0, 34.1, L::C),  // published 33.9 C
+        (A, 139.0, 34.0, L::C),  // published 33.9 C
         (B, 474.0, 52.6, L::C),  // published 52.4 C
         (C, 107.0, 39.6, L::C),  // published 39.5 C
-        (D, 58.0, 50.6, L::C),   // published 50.5 C
-        (E, 1_294.0, 189.2, L::F), // published 179.8 F
-        (H, 304.0, 167.4, L::F), // published 158.2 F
-        (I, 768.0, 156.3, L::F), // published 146.8 F
-        (J, 747.0, 53.5, L::C),  // published 44.0 C
+        (D, 58.0, 50.5, L::C),   // published 50.5 C
+        (E, 1_294.0, 179.7, L::F), // published 179.8 F
+        (H, 304.0, 158.1, L::F), // published 158.2 F
+        (I, 768.0, 146.7, L::F), // published 146.8 F
+        (J, 747.0, 44.0, L::C),  // published 44.0 C
     ];
     for (m, demand, ett, los) in expected {
         let r = od(&ix, m);
@@ -596,23 +622,18 @@ fn test_ep3_diamond_spillback_od_results() {
         assert!(!od(&ix, m).rq_exceeds_one, "{m:?} R_Q flag");
     }
 
-    // Interchange ETT 115.2 s/veh against the published 110.3 (Exhibit
-    // 34-43 totals row); the difference is the external-through d2
-    // convention above plus the zeroed F / G contributions.
-    assert_near!(ix.interchange_ett_s.unwrap(), 115.2, 0.5, "interchange ETT");
+    // Interchange ETT 108.3 s/veh against the published 110.3 (Exhibit 34-43
+    // totals row); what remains is the zeroed F / G contributions from the
+    // missing external right-turn lane group.
+    assert_near!(ix.interchange_ett_s.unwrap(), 108.3, 0.5, "interchange ETT");
 
-    // GAP 2 — the interchange LOS carries the per-O-D v/c and R_Q flags.
-    // Exhibit 23-10 applies those flags to an individual O-D, and both
-    // Exhibit 34-43 (ETT 110.3, LOS E) and Exhibit 34-57 (ETT 78.0,
-    // LOS D) grade the interchange from the demand-weighted ETT alone
-    // even though several of their O-Ds are flagged. Step 9
-    // (src/hcm/ramp_terminals/ramp_terminals.rs:2131-2133) passes
-    // `any_vc` / `any_rq` into `los_signalized_interchange_od`, so the
-    // engine returns F here where the published answer is E. The ETT band
-    // itself is correct: 115.2 s/veh falls in the Exhibit 23-10 E band,
-    // as the published 110.3 does. Flip this assertion to `L::E` if Step
-    // 9 is changed.
-    assert_eq!(ix.interchange_los.unwrap(), L::F, "interchange LOS (gap: published E)");
+    // Interchange LOS E, matching the published letter. Exhibit 23-10 applies
+    // the v/c and R_Q flags to an individual O-D, so O-Ds E, H, and I are F
+    // above, but Step 9 grades the interchange from the demand-weighted ETT
+    // alone and explicitly anticipates a failing O-D being masked at the
+    // interchange level. Exhibit 34-43 does the same, publishing LOS E at
+    // ETT 110.3 while carrying three flagged O-Ds.
+    assert_eq!(ix.interchange_los.unwrap(), L::E, "interchange LOS");
 }
 
 /// Chapter 34, Example Problem 4 (diamond with demand starvation):
@@ -817,16 +838,18 @@ fn test_ep4_diamond_demand_starvation_od_results() {
     // capacity defect documented in
     // `test_ep4_diamond_demand_starvation_external_capacity_defect`.
     // Column 1: equation-based expectation (asserted); column 2 in the
-    // comment: published Exhibit 34-57 value. Every LOS letter still
-    // matches the published one except O-D J, which crosses the
-    // Exhibit 23-10 D/E boundary at 85 s/veh.
+    // comment: published Exhibit 34-57 value. All six moved 18 to 20 s/veh
+    // closer to the published values under the Equation 19-26 lane group
+    // capacity, which is most of what the "external capacity defect" was
+    // costing them. Every LOS letter now matches the published one except
+    // O-D G, which crosses the Exhibit 23-10 C/D boundary at 55 s/veh.
     let expected = [
-        (E, 206.0, 142.2, L::F), // published 121.5 F
-        (F, 113.0, 106.8, L::F), // published  86.0 F
-        (G, 186.0, 71.6, L::D),  // published  56.3 D
-        (H, 294.0, 104.8, L::E), // published  89.6 E
-        (I, 928.0, 122.1, L::F), // published 101.1 F
-        (J, 825.0, 89.4, L::E),  // published  73.9 D
+        (E, 206.0, 124.3, L::F), // published 121.5 F
+        (F, 113.0, 88.8, L::F),  // published  86.0 F
+        (G, 186.0, 53.9, L::C),  // published  56.3 D
+        (H, 294.0, 87.0, L::E),  // published  89.6 E
+        (I, 928.0, 104.0, L::F), // published 101.1 F
+        (J, 825.0, 71.4, L::D),  // published  73.9 D
     ];
     for (m, demand, ett, los) in expected {
         let r = od(&ix, m);
@@ -847,13 +870,11 @@ fn test_ep4_diamond_demand_starvation_od_results() {
         assert!(!od(&ix, m).rq_exceeds_one, "{m:?} R_Q flag");
     }
 
-    // Interchange ETT 92.4 s/veh against the published 78.0 (Exhibit
-    // 34-57 totals row), and LOS F against the published D. Both
-    // differences trace to the external capacity defect, and the LOS also
-    // carries the flag-propagation gap described in
-    // `test_ep3_diamond_spillback_od_results`.
-    assert_near!(ix.interchange_ett_s.unwrap(), 92.4, 0.5, "interchange ETT");
-    assert_eq!(ix.interchange_los.unwrap(), L::F, "interchange LOS (gap: published D)");
+    // Interchange ETT 78.1 s/veh against the published 78.0 (Exhibit 34-57
+    // totals row), LOS D matching the published letter. Both were F and
+    // 92.4 s/veh before the Equation 19-26 and Step 9 corrections.
+    assert_near!(ix.interchange_ett_s.unwrap(), 78.1, 0.5, "interchange ETT");
+    assert_eq!(ix.interchange_los.unwrap(), L::D, "interchange LOS");
 }
 
 /// Serialization round trip: the analyzed facility serializes and

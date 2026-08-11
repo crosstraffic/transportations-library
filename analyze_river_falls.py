@@ -47,7 +47,7 @@ hwy = TwoLaneHighways(segments=segments, lane_width=LW, shoulder_width=SW,
                       apd=APD, pmhvfl=PHV)
 
 inter, rows = [], []
-tot_len = w_fd = w_spd = 0.0
+tot_len = w_spd = 0.0
 for i in range(hwy.num_segments):
     vc_min, vc_max = hwy.identify_vertical_class(i)
     v_i, v_o, cap = hwy.determine_demand_flow(i)
@@ -61,7 +61,6 @@ for i in range(hwy.num_segments):
     fd = s.followers_density
     los = hwy.determine_segment_los(i, ats, int(cap))
     tot_len += s.length
-    w_fd += fd * s.length
     w_spd += ats * s.length
     inter.append({"seg": i + 1, "length_mi": round(s.length, 4),
                   "vc": vc, "v_i": round(v_i, 2), "v_o": round(v_o, 2),
@@ -69,7 +68,8 @@ for i in range(hwy.num_segments):
                   "pf": round(pf, 2), "fd": round(fd, 3), "los": los})
     rows.append((i + 1, ffs, ats, pf, fd, los))
 
-fac_fd, fac_spd = w_fd / tot_len, w_spd / tot_len
+# Equation 15-39 over the adjusted densities; see determine_facility_follower_density.
+fac_fd, fac_spd = hwy.determine_facility_follower_density(), w_spd / tot_len
 fac_los = hwy.determine_facility_los(fac_fd, fac_spd)
 print(json.dumps({"intermediate": inter,
                   "facility": {"total_length_mi": round(tot_len, 4),
