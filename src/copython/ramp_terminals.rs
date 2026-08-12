@@ -34,23 +34,14 @@ fn parse_od(letter: &str) -> PyResult<OdMovement> {
     }
 }
 
+/// Parse a composed lane group name (approach + position + turn, e.g.
+/// `EbExtThrough`, `EbExtLeft`, `WbIntThroughRight`, `NbRampTwoRight`).
+/// The ten names of the diamond skeleton are compositions like any other,
+/// so callers written against the earlier closed set are unaffected.
 fn parse_movement(name: &str) -> PyResult<InterchangeMovement> {
-    use InterchangeMovement::*;
-    match name {
-        "EbExtThrough" => Ok(EbExtThrough),
-        "EbIntThrough" => Ok(EbIntThrough),
-        "EbIntLeft" => Ok(EbIntLeft),
-        "WbExtThrough" => Ok(WbExtThrough),
-        "WbIntThrough" => Ok(WbIntThrough),
-        "WbIntLeft" => Ok(WbIntLeft),
-        "NbRampLeft" => Ok(NbRampLeft),
-        "NbRampRight" => Ok(NbRampRight),
-        "SbRampLeft" => Ok(SbRampLeft),
-        "SbRampRight" => Ok(SbRampRight),
-        other => Err(PyValueError::new_err(format!(
-            "unknown interchange movement {other}"
-        ))),
-    }
+    InterchangeMovement::from_name(name).ok_or_else(|| {
+        PyValueError::new_err(format!("unknown interchange movement {name}"))
+    })
 }
 
 /// HCM Chapter 23 signalized interchange ramp terminal analysis

@@ -508,27 +508,27 @@ fn lane_group(
 }
 
 fn minimal_diamond() -> Interchange {
-    use InterchangeMovement::*;
+    use movements::*;
     let od = sample_od();
     let mut ix = Interchange::new(InterchangeForm::Diamond, 160.0, od);
     ix.peak_hour_factor = 0.9;
     ix.distance_between_intersections_ft = 500.0;
     ix.lane_groups = vec![
-        lane_group(EbExtThrough, 2, vec![green(0.0, 63.0)], 5.0),
+        lane_group(EB_EXT_THROUGH, 2, vec![green(0.0, 63.0)], 5.0),
         lane_group(
-            EbIntThrough,
+            EB_INT_THROUGH,
             2,
             vec![green(150.0, 63.0), green(116.0, 34.0)],
             5.0,
         ),
-        lane_group(EbIntLeft, 1, vec![green(116.0, 29.0)], 5.0),
-        lane_group(WbExtThrough, 2, vec![green(150.0, 63.0)], 5.0),
-        lane_group(WbIntThrough, 2, vec![green(0.0, 111.0)], 5.0),
-        lane_group(WbIntLeft, 1, vec![green(68.0, 43.0)], 5.0),
-        lane_group(NbRampLeft, 1, vec![green(58.0, 53.0)], 5.0),
-        lane_group(NbRampRight, 1, vec![green(58.0, 53.0)], 5.0),
-        lane_group(SbRampLeft, 1, vec![green(116.0, 39.0)], 5.0),
-        lane_group(SbRampRight, 1, vec![green(116.0, 39.0)], 5.0),
+        lane_group(EB_INT_LEFT, 1, vec![green(116.0, 29.0)], 5.0),
+        lane_group(WB_EXT_THROUGH, 2, vec![green(150.0, 63.0)], 5.0),
+        lane_group(WB_INT_THROUGH, 2, vec![green(0.0, 111.0)], 5.0),
+        lane_group(WB_INT_LEFT, 1, vec![green(68.0, 43.0)], 5.0),
+        lane_group(NB_RAMP_LEFT, 1, vec![green(58.0, 53.0)], 5.0),
+        lane_group(NB_RAMP_RIGHT, 1, vec![green(58.0, 53.0)], 5.0),
+        lane_group(SB_RAMP_LEFT, 1, vec![green(116.0, 39.0)], 5.0),
+        lane_group(SB_RAMP_RIGHT, 1, vec![green(116.0, 39.0)], 5.0),
     ];
     ix
 }
@@ -552,14 +552,14 @@ fn test_step_1_lane_group_demands() {
             .unwrap()
             .flow_rate
     };
-    use InterchangeMovement::*;
-    assert!(near(flow(&ix, EbExtThrough), 957.0, 2.0));
-    assert!(near(flow(&ix, WbExtThrough), 1_036.0, 2.0));
-    assert!(near(flow(&ix, EbIntThrough), 967.0, 2.0));
-    assert!(near(flow(&ix, WbIntThrough), 883.0, 2.0));
-    assert!(near(flow(&ix, EbIntLeft), 107.0, 2.0));
-    assert!(near(flow(&ix, NbRampLeft), 233.0, 2.0));
-    assert!(near(flow(&ix, SbRampRight), 173.0, 1.0));
+    use movements::*;
+    assert!(near(flow(&ix, EB_EXT_THROUGH), 957.0, 2.0));
+    assert!(near(flow(&ix, WB_EXT_THROUGH), 1_036.0, 2.0));
+    assert!(near(flow(&ix, EB_INT_THROUGH), 967.0, 2.0));
+    assert!(near(flow(&ix, WB_INT_THROUGH), 883.0, 2.0));
+    assert!(near(flow(&ix, EB_INT_LEFT), 107.0, 2.0));
+    assert!(near(flow(&ix, NB_RAMP_LEFT), 233.0, 2.0));
+    assert!(near(flow(&ix, SB_RAMP_RIGHT), 173.0, 1.0));
 }
 
 /// Full pipeline produces O-D results with finite ETT and a LOS for
@@ -587,7 +587,7 @@ fn test_full_pipeline_smoke() {
 /// internal effective green (published: L_DS = 14.7 s, g'' = 45.3 s).
 #[test]
 fn test_step_4_demand_starvation_engaged() {
-    use InterchangeMovement::*;
+    use movements::*;
     // O-D demands matching the Exhibit 34-51/34-52 feed flows:
     // EB arterial feed I + E = 1,134, EB ramp feed D + N = 191,
     // WB arterial feed J + H = 1,119, WB ramp feed A + M = 129 veh/h.
@@ -611,21 +611,21 @@ fn test_step_4_demand_starvation_engaged() {
     // throughs green 0..60 while the opposing internal lefts (0..30 /
     // 35..60) are also green, creating starvation potential.
     ix.lane_groups = vec![
-        lane_group(EbExtThrough, 3, vec![green(35.0, 25.0)], 5.0),
-        lane_group(EbIntThrough, 3, vec![green(0.0, 60.0)], 5.0),
-        lane_group(EbIntLeft, 1, vec![green(35.0, 25.0)], 5.0),
-        lane_group(WbExtThrough, 3, vec![green(0.0, 30.0)], 5.0),
-        lane_group(WbIntThrough, 3, vec![green(0.0, 60.0)], 5.0),
-        lane_group(WbIntLeft, 1, vec![green(0.0, 30.0)], 5.0),
-        lane_group(NbRampLeft, 1, vec![green(65.0, 30.0)], 5.0),
-        lane_group(NbRampRight, 1, vec![green(65.0, 30.0)], 5.0),
-        lane_group(SbRampLeft, 1, vec![green(65.0, 30.0)], 5.0),
-        lane_group(SbRampRight, 1, vec![green(65.0, 30.0)], 5.0),
+        lane_group(EB_EXT_THROUGH, 3, vec![green(35.0, 25.0)], 5.0),
+        lane_group(EB_INT_THROUGH, 3, vec![green(0.0, 60.0)], 5.0),
+        lane_group(EB_INT_LEFT, 1, vec![green(35.0, 25.0)], 5.0),
+        lane_group(WB_EXT_THROUGH, 3, vec![green(0.0, 30.0)], 5.0),
+        lane_group(WB_INT_THROUGH, 3, vec![green(0.0, 60.0)], 5.0),
+        lane_group(WB_INT_LEFT, 1, vec![green(0.0, 30.0)], 5.0),
+        lane_group(NB_RAMP_LEFT, 1, vec![green(65.0, 30.0)], 5.0),
+        lane_group(NB_RAMP_RIGHT, 1, vec![green(65.0, 30.0)], 5.0),
+        lane_group(SB_RAMP_LEFT, 1, vec![green(65.0, 30.0)], 5.0),
+        lane_group(SB_RAMP_RIGHT, 1, vec![green(65.0, 30.0)], 5.0),
     ];
     // Heavy vehicles on the internal throughs shift h_I toward the
     // published 2.23 s value.
     for g in ix.lane_groups.iter_mut() {
-        if matches!(g.movement, EbIntThrough | WbIntThrough) {
+        if matches!(g.movement, EB_INT_THROUGH | WB_INT_THROUGH) {
             g.pct_heavy_vehicles = 6.1;
         }
     }
@@ -633,7 +633,7 @@ fn test_step_4_demand_starvation_engaged() {
     let int_th = ix
         .results
         .iter()
-        .find(|r| r.movement == EbIntThrough)
+        .find(|r| r.movement == EB_INT_THROUGH)
         .unwrap();
     let lds = int_th.demand_starvation_lost_time_s.unwrap();
     assert!(lds > 5.0, "expected sizable starvation lost time, got {lds}");
@@ -788,4 +788,173 @@ fn test_pc_dlt_weighted_average_equation_23_69() {
     ];
     // (30*100 + 15*200) / 250 = 24.0.
     assert!(near(pc::dlt_weighted_average_delay(&cells, 250.0), 24.0, 0.001));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// The interchange form family (Exhibit 23-17 / Exhibit 34-162)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Every form Chapter 23 Part B covers: the diamond and its DDI variant,
+/// the six parclos of Exhibit 23-17, and the SPUI.
+const ALL_FORMS: [InterchangeForm; 9] = [
+    InterchangeForm::Diamond,
+    InterchangeForm::Ddi,
+    InterchangeForm::ParcloA2Q,
+    InterchangeForm::ParcloA4Q,
+    InterchangeForm::ParcloAB2Q,
+    InterchangeForm::ParcloAB4Q,
+    InterchangeForm::ParcloB2Q,
+    InterchangeForm::ParcloB4Q,
+    InterchangeForm::Spui,
+];
+
+/// A synthetic interchange for `form` carrying one lane group for every
+/// movement its Chapter 34 worksheet names, so that nothing is routed into
+/// a group that does not exist.
+fn synthetic_interchange(form: InterchangeForm) -> Interchange {
+    let od = OdDemands {
+        a: 200.0, b: 250.0, c: 120.0, d: 275.0, e: 190.0, f: 300.0, g: 165.0,
+        h: 350.0, i: 800.0, j: 830.0, k: 0.0, l: 0.0, m: 0.0, n: 0.0,
+    };
+    let mut ix = Interchange::new(form, 120.0, od);
+    ix.peak_hour_factor = 0.95;
+    ix.distance_between_intersections_ft = 500.0;
+
+    // The union of the worksheet journeys is exactly the set of lane
+    // groups this form needs.
+    let mut wanted: Vec<InterchangeMovement> = Vec::new();
+    for m in OdMovement::ALL {
+        for mv in od_journey(form, m) {
+            if !wanted.contains(&mv) {
+                wanted.push(mv);
+            }
+        }
+    }
+    ix.lane_groups = wanted
+        .into_iter()
+        .enumerate()
+        .map(|(i, mv)| {
+            // Two non-overlapping 50 s greens, alternating, so that every
+            // form has some common green somewhere and the Step 4
+            // equations are actually entered rather than short-circuited.
+            let begin = if i % 2 == 0 { 0.0 } else { 60.0 };
+            let mut g = lane_group(mv, 1, vec![green(begin, 50.0)], 5.0);
+            if mv.turn != MovementTurn::Through {
+                g.turn_radius_ft = Some(50.0);
+            }
+            g.storage_ft = Some(300.0);
+            g
+        })
+        .collect();
+    ix
+}
+
+/// Every interchange form runs the full Exhibit 23-22 pipeline on a
+/// synthetic configuration without panicking, and produces a finite result
+/// for every lane group and every O-D.
+///
+/// Only the diamond, the DDI, and the Parclo A-2Q are validated against
+/// published Chapter 34 example problems (Example Problems 1, 3, and 4;
+/// 5 and 6; and 2 respectively). The other five parclos and the SPUI are
+/// structurally supported and unvalidated: their routing and lane group
+/// composition come from the same Exhibit 34-171 through 34-177 worksheets
+/// as the validated forms, and the worksheets themselves are round-tripped
+/// in `test_od_turning_movement_round_trip`, but no worked example pins
+/// their numbers. See the note in `src/hcm/ramp_terminals/mod.rs`.
+#[test]
+fn test_every_form_runs_the_pipeline() {
+    for form in ALL_FORMS {
+        let mut ix = synthetic_interchange(form);
+        ix.analyze();
+        assert!(
+            !ix.results.is_empty(),
+            "{form:?} produced no lane group results"
+        );
+        for r in &ix.results {
+            for (what, v) in [
+                ("s", r.sat_flow),
+                ("g", r.effective_green_s),
+                ("c", r.capacity),
+                ("X", r.vc_ratio),
+                ("d", r.control_delay_s),
+            ] {
+                let v = v.unwrap_or_else(|| panic!("{form:?} {:?}: {what} missing", r.movement));
+                assert!(v.is_finite(), "{form:?} {:?}: {what} is {v}", r.movement);
+            }
+        }
+        let ett = ix
+            .interchange_ett_s
+            .unwrap_or_else(|| panic!("{form:?} produced no interchange ETT"));
+        assert!(ett.is_finite() && ett > 0.0, "{form:?} ETT {ett}");
+        assert!(ix.interchange_los.is_some(), "{form:?} has no LOS");
+    }
+}
+
+/// Every O-D that carries demand is routed through at least one lane group
+/// in every form, once every worksheet movement has a lane group. A form
+/// whose routing silently dropped an O-D would score it as free-flowing
+/// and understate the interchange ETT, which is the failure the missing
+/// external right-turn group used to produce on Example Problem 3.
+#[test]
+fn test_every_form_routes_every_od() {
+    for form in ALL_FORMS {
+        let ix = synthetic_interchange(form);
+        for m in OdMovement::ALL {
+            if ix.od.get(m) <= 0.0 {
+                continue;
+            }
+            assert!(
+                !ix.od_path(m).is_empty(),
+                "{form:?} routes O-D {m:?} through nothing"
+            );
+        }
+    }
+}
+
+/// The composed movement names round-trip, and the ten names of the
+/// diamond skeleton compose to exactly the strings the fixtures and the
+/// Python bindings already use. This is the whole of the serde
+/// compatibility surface: there are no aliases, the legacy names *are*
+/// compositions.
+#[test]
+fn test_legacy_movement_names() {
+    let legacy = [
+        "EbExtThrough", "EbIntThrough", "EbIntLeft",
+        "WbExtThrough", "WbIntThrough", "WbIntLeft",
+        "NbRampLeft", "NbRampRight", "SbRampLeft", "SbRampRight",
+    ];
+    for name in legacy {
+        let m = InterchangeMovement::from_name(name)
+            .unwrap_or_else(|| panic!("{name} no longer parses"));
+        assert_eq!(m.name(), name, "{name} does not round-trip");
+        assert_eq!(format!("{m:?}"), name, "{name} Debug output moved");
+        assert_eq!(
+            serde_json::to_string(&m).unwrap(),
+            format!("\"{name}\""),
+            "{name} serialises differently"
+        );
+    }
+    // Every composition round-trips, and nothing else parses.
+    for m in InterchangeMovement::all() {
+        assert_eq!(InterchangeMovement::from_name(&m.name()), Some(m));
+    }
+    assert_eq!(InterchangeMovement::from_name("EbExtDiagonal"), None);
+    assert_eq!(InterchangeMovement::from_name("ebextthrough"), None);
+}
+
+/// The compositions the parclo family needs and the diamond skeleton never
+/// reached.
+#[test]
+fn test_new_compositions_exist() {
+    for name in [
+        "EbExtLeft", "WbExtLeft", "EbExtRight", "WbExtRight",
+        "EbIntRight", "WbIntRight",
+        "EbIntThroughRight", "WbIntThroughRight",
+        "NbRampTwoLeft", "NbRampTwoRight", "SbRampTwoRight",
+    ] {
+        assert!(
+            InterchangeMovement::from_name(name).is_some(),
+            "{name} does not compose"
+        );
+    }
 }
