@@ -542,6 +542,86 @@ pub fn turning_movements_from_od(form: InterchangeForm, od: &OdDemands) -> Turni
     tm
 }
 
+impl TurningMovements {
+    /// The composed lane-group movements this turning-movement set puts
+    /// flow into. The U-turn fields are deliberately skipped: a freeway
+    /// U-turn is a component of the ramp left or right it is counted
+    /// inside (Exhibit 34-160), not a lane group of its own.
+    fn occupied(&self) -> Vec<InterchangeMovement> {
+        use InterchangeApproach::*;
+        use MovementPosition::*;
+        use MovementTurn::*;
+        let slots: [(f64, InterchangeMovement); 20] = [
+            (self.eb_ext_left, InterchangeMovement::new(Eastbound, External, Left)),
+            (self.eb_ext_through, InterchangeMovement::new(Eastbound, External, Through)),
+            (self.eb_ext_right, InterchangeMovement::new(Eastbound, External, Right)),
+            (self.eb_int_left, InterchangeMovement::new(Eastbound, Internal, Left)),
+            (self.eb_int_through, InterchangeMovement::new(Eastbound, Internal, Through)),
+            (self.eb_int_right, InterchangeMovement::new(Eastbound, Internal, Right)),
+            (self.wb_ext_left, InterchangeMovement::new(Westbound, External, Left)),
+            (self.wb_ext_through, InterchangeMovement::new(Westbound, External, Through)),
+            (self.wb_ext_right, InterchangeMovement::new(Westbound, External, Right)),
+            (self.wb_int_left, InterchangeMovement::new(Westbound, Internal, Left)),
+            (self.wb_int_through, InterchangeMovement::new(Westbound, Internal, Through)),
+            (self.wb_int_right, InterchangeMovement::new(Westbound, Internal, Right)),
+            (self.nb_left, InterchangeMovement::new(Northbound, Ramp, Left)),
+            (self.nb_right, InterchangeMovement::new(Northbound, Ramp, Right)),
+            (self.nb_through, InterchangeMovement::new(Northbound, Ramp, Through)),
+            (self.nb_left_ii, InterchangeMovement::new(Northbound, RampTwo, Left)),
+            (self.nb_right_ii, InterchangeMovement::new(Northbound, RampTwo, Right)),
+            (self.sb_left, InterchangeMovement::new(Southbound, Ramp, Left)),
+            (self.sb_right, InterchangeMovement::new(Southbound, Ramp, Right)),
+            (self.sb_right_ii, InterchangeMovement::new(Southbound, RampTwo, Right)),
+        ];
+        slots
+            .into_iter()
+            .filter(|(v, _)| *v > 0.0)
+            .map(|(_, m)| m)
+            .collect()
+    }
+}
+
+impl OdDemands {
+    /// One veh/h on a single O-D letter and nothing else.
+    fn unit(m: OdMovement) -> OdDemands {
+        let mut od = OdDemands::default();
+        match m {
+            OdMovement::A => od.a = 1.0,
+            OdMovement::B => od.b = 1.0,
+            OdMovement::C => od.c = 1.0,
+            OdMovement::D => od.d = 1.0,
+            OdMovement::E => od.e = 1.0,
+            OdMovement::F => od.f = 1.0,
+            OdMovement::G => od.g = 1.0,
+            OdMovement::H => od.h = 1.0,
+            OdMovement::I => od.i = 1.0,
+            OdMovement::J => od.j = 1.0,
+            OdMovement::K => od.k = 1.0,
+            OdMovement::L => od.l = 1.0,
+            OdMovement::M => od.m = 1.0,
+            OdMovement::N => od.n = 1.0,
+        }
+        od
+    }
+}
+
+/// The turning movements an O-D passes through, for the given interchange
+/// form, read straight off the Chapter 34 worksheet
+/// (Exhibits 34-171 through 34-177): a unit demand on the O-D is pushed
+/// through `turning_movements_from_od` and the movements it lands in are
+/// the journey.
+///
+/// Deriving the journey from the worksheet instead of tabulating it per
+/// form is what makes the parclo family fall out of the diamond code. The
+/// worksheets already encode which turn each O-D makes at each terminal —
+/// that O-D F is an external right in a diamond and an external left onto
+/// the loop in a parclo A-2Q, that a parclo A internal approach turns
+/// right onto the freeway where a diamond turns left — so the routing and
+/// the lane group demand composition never have to say it a second time.
+pub fn od_journey(form: InterchangeForm, m: OdMovement) -> Vec<InterchangeMovement> {
+    turning_movements_from_od(form, &OdDemands::unit(m)).occupied()
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Green intervals and common green time (Exhibit 23-28)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -903,38 +983,276 @@ pub fn extra_distance_travel_time(distance_ft: f64, design_speed_mph: f64, accel
 // Lane groups
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Lane groups of a two-intersection interchange (diamond / parclo / DDI
-/// naming; arterial east–west). For a DDI the mapping to the Chapter 34
-/// Example Problem 5 movement numbers is: M6 = `EbExtThrough`,
-/// M1 = `EbIntThrough`, M2 = `WbExtThrough`, M5 = `WbIntThrough`,
-/// M3 = `NbRampLeft`, M4 = `NbRampRight`, M7 = `SbRampLeft`,
-/// M8 = `SbRampRight` (the DDI has no internal left-turn lane groups —
-/// left turns onto the freeway are free-flowing at the internal
-/// crossover). For a SPUI the `Ext` groups are the single-intersection
-/// arterial groups and `EbIntLeft` / `WbIntLeft` are the arterial
-/// left-turn groups.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum InterchangeMovement {
-    /// External arterial through (+ right when shared) at Intersection I.
-    EbExtThrough,
-    /// Internal arterial through at Intersection II.
-    EbIntThrough,
-    /// Internal left onto the freeway at Intersection II.
-    EbIntLeft,
-    /// External arterial through (+ right when shared) at Intersection II.
-    WbExtThrough,
-    /// Internal arterial through at Intersection I.
-    WbIntThrough,
-    /// Internal left onto the freeway at Intersection I.
-    WbIntLeft,
-    /// NB off-ramp left turn (Intersection II).
-    NbRampLeft,
-    /// NB off-ramp right turn (Intersection II).
-    NbRampRight,
-    /// SB off-ramp left turn (Intersection I).
-    SbRampLeft,
-    /// SB off-ramp right turn (Intersection I).
-    SbRampRight,
+/// Compass direction an interchange approach is travelling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum InterchangeApproach {
+    Eastbound,
+    Westbound,
+    Northbound,
+    Southbound,
+}
+
+impl InterchangeApproach {
+    /// Prefix used in the composed movement name (`Eb`, `Wb`, `Nb`, `Sb`).
+    pub fn name(self) -> &'static str {
+        match self {
+            InterchangeApproach::Eastbound => "Eb",
+            InterchangeApproach::Westbound => "Wb",
+            InterchangeApproach::Northbound => "Nb",
+            InterchangeApproach::Southbound => "Sb",
+        }
+    }
+
+    pub const ALL: [InterchangeApproach; 4] = [
+        InterchangeApproach::Eastbound,
+        InterchangeApproach::Westbound,
+        InterchangeApproach::Northbound,
+        InterchangeApproach::Southbound,
+    ];
+}
+
+/// Where in the interchange skeleton an approach sits. The arterial
+/// directions imply their terminal (an eastbound external approach enters
+/// Intersection I, an eastbound internal approach arrives at
+/// Intersection II), so only the off-ramp approaches need the terminal
+/// spelled out, and only the AB and B-4Q parclos need the second one:
+/// there both loop ramps are fed from the same freeway direction, so the
+/// same compass approach appears at both terminals (the `_ii` columns of
+/// Exhibits 34-165, 34-166, and 34-168).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MovementPosition {
+    /// Arterial approach entering the interchange from outside.
+    External,
+    /// Arterial approach on the internal link between the two terminals.
+    Internal,
+    /// Off-ramp approach at the terminal that direction normally serves.
+    Ramp,
+    /// Off-ramp approach at the other terminal.
+    RampTwo,
+}
+
+impl MovementPosition {
+    /// Infix used in the composed movement name.
+    pub fn name(self) -> &'static str {
+        match self {
+            MovementPosition::External => "Ext",
+            MovementPosition::Internal => "Int",
+            MovementPosition::Ramp => "Ramp",
+            MovementPosition::RampTwo => "RampTwo",
+        }
+    }
+
+    pub const ALL: [MovementPosition; 4] = [
+        MovementPosition::External,
+        MovementPosition::Internal,
+        MovementPosition::Ramp,
+        MovementPosition::RampTwo,
+    ];
+}
+
+/// The turning movement a lane group serves. `ThroughRight` is the shared
+/// through-and-right group of the parclo A internal approaches
+/// (Exhibit 34-22 "INT-TH&R").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MovementTurn {
+    Left,
+    Through,
+    Right,
+    ThroughRight,
+}
+
+impl MovementTurn {
+    /// Suffix used in the composed movement name.
+    pub fn name(self) -> &'static str {
+        match self {
+            MovementTurn::Left => "Left",
+            MovementTurn::Through => "Through",
+            MovementTurn::Right => "Right",
+            MovementTurn::ThroughRight => "ThroughRight",
+        }
+    }
+
+    /// Whether the group carries the approach's through traffic.
+    pub fn serves_through(self) -> bool {
+        matches!(self, MovementTurn::Through | MovementTurn::ThroughRight)
+    }
+
+    /// Whether the group carries the approach's right turns.
+    pub fn serves_right(self) -> bool {
+        matches!(self, MovementTurn::Right | MovementTurn::ThroughRight)
+    }
+
+    pub const ALL: [MovementTurn; 4] = [
+        MovementTurn::Left,
+        MovementTurn::Through,
+        MovementTurn::Right,
+        MovementTurn::ThroughRight,
+    ];
+}
+
+/// One lane group of an interchange, composed from the approach it
+/// serves, where that approach sits in the interchange skeleton, and the
+/// turn it makes.
+///
+/// The ten movements of a diamond skeleton are the compositions
+/// `EbExtThrough`, `EbIntThrough`, `EbIntLeft`, `WbExtThrough`,
+/// `WbIntThrough`, `WbIntLeft`, `NbRampLeft`, `NbRampRight`,
+/// `SbRampLeft`, and `SbRampRight`, and those names are what the
+/// composition serialises to, so fixtures written against the former
+/// closed enum deserialise unchanged (see `test_legacy_movement_names`).
+/// The compositions the diamond skeleton never reached are what the
+/// parclo forms need: an external left (the arterial left onto a parclo A
+/// loop, Exhibit 34-22 "EXT-L"), an internal shared through-and-right
+/// ("INT-TH&R"), and an exclusive external right (Exhibit 34-34
+/// "EXT-R").
+///
+/// For a DDI the mapping to the Chapter 34 Example Problem 5 movement
+/// numbers is: M6 = `EbExtThrough`, M1 = `EbIntThrough`,
+/// M2 = `WbExtThrough`, M5 = `WbIntThrough`, M3 = `NbRampLeft`,
+/// M4 = `NbRampRight`, M7 = `SbRampLeft`, M8 = `SbRampRight` (the DDI has
+/// no internal left-turn lane groups — left turns onto the freeway are
+/// free-flowing at the internal crossover). For a SPUI the `Ext` groups
+/// are the single-intersection arterial groups.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct InterchangeMovement {
+    pub approach: InterchangeApproach,
+    pub position: MovementPosition,
+    pub turn: MovementTurn,
+}
+
+impl InterchangeMovement {
+    pub const fn new(
+        approach: InterchangeApproach,
+        position: MovementPosition,
+        turn: MovementTurn,
+    ) -> Self {
+        InterchangeMovement {
+            approach,
+            position,
+            turn,
+        }
+    }
+
+    /// Composed name, e.g. `EbExtThrough`. This is the serialised form.
+    pub fn name(self) -> String {
+        format!(
+            "{}{}{}",
+            self.approach.name(),
+            self.position.name(),
+            self.turn.name()
+        )
+    }
+
+    /// Parse a composed name. Returns `None` for anything that is not
+    /// approach + position + turn.
+    pub fn from_name(s: &str) -> Option<Self> {
+        for approach in InterchangeApproach::ALL {
+            for position in MovementPosition::ALL {
+                for turn in MovementTurn::ALL {
+                    let m = InterchangeMovement::new(approach, position, turn);
+                    if m.name() == s {
+                        return Some(m);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Every composition, for exhaustive tests and for API listings.
+    pub fn all() -> Vec<Self> {
+        let mut out = Vec::with_capacity(64);
+        for approach in InterchangeApproach::ALL {
+            for position in MovementPosition::ALL {
+                for turn in MovementTurn::ALL {
+                    out.push(InterchangeMovement::new(approach, position, turn));
+                }
+            }
+        }
+        out
+    }
+
+    /// An arterial (east–west) approach rather than an off-ramp approach.
+    pub fn is_arterial(self) -> bool {
+        matches!(
+            self.approach,
+            InterchangeApproach::Eastbound | InterchangeApproach::Westbound
+        )
+    }
+
+    /// An external arterial through group — the only groups the
+    /// Equation 23-16 through 23-18 lane utilization models apply to.
+    pub fn is_external_arterial_through(self) -> bool {
+        self.is_arterial()
+            && self.position == MovementPosition::External
+            && self.turn.serves_through()
+    }
+}
+
+/// Composed name, so `{:?}` keeps printing `EbExtThrough` for every
+/// caller that formats a movement into a message or a Python-facing
+/// string.
+impl core::fmt::Debug for InterchangeMovement {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(&self.name())
+    }
+}
+
+impl core::fmt::Display for InterchangeMovement {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(&self.name())
+    }
+}
+
+impl Serialize for InterchangeMovement {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.name())
+    }
+}
+
+impl<'de> Deserialize<'de> for InterchangeMovement {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        InterchangeMovement::from_name(&s).ok_or_else(|| {
+            serde::de::Error::custom(format!("unknown interchange movement {s}"))
+        })
+    }
+}
+
+/// The composed movements as constants, so `match` arms and lane group
+/// construction read the way they did against the former enum. Glob-import
+/// with `use movements::*`.
+pub mod movements {
+    use super::InterchangeApproach::*;
+    use super::InterchangeMovement as M;
+    use super::MovementPosition::*;
+    use super::MovementTurn::*;
+
+    // Diamond skeleton (the ten names the fixtures already carry).
+    pub const EB_EXT_THROUGH: M = M::new(Eastbound, External, Through);
+    pub const EB_INT_THROUGH: M = M::new(Eastbound, Internal, Through);
+    pub const EB_INT_LEFT: M = M::new(Eastbound, Internal, Left);
+    pub const WB_EXT_THROUGH: M = M::new(Westbound, External, Through);
+    pub const WB_INT_THROUGH: M = M::new(Westbound, Internal, Through);
+    pub const WB_INT_LEFT: M = M::new(Westbound, Internal, Left);
+    pub const NB_RAMP_LEFT: M = M::new(Northbound, Ramp, Left);
+    pub const NB_RAMP_RIGHT: M = M::new(Northbound, Ramp, Right);
+    pub const SB_RAMP_LEFT: M = M::new(Southbound, Ramp, Left);
+    pub const SB_RAMP_RIGHT: M = M::new(Southbound, Ramp, Right);
+
+    // Compositions the diamond skeleton never reached.
+    pub const EB_EXT_LEFT: M = M::new(Eastbound, External, Left);
+    pub const EB_EXT_RIGHT: M = M::new(Eastbound, External, Right);
+    pub const WB_EXT_LEFT: M = M::new(Westbound, External, Left);
+    pub const WB_EXT_RIGHT: M = M::new(Westbound, External, Right);
+    pub const EB_INT_RIGHT: M = M::new(Eastbound, Internal, Right);
+    pub const WB_INT_RIGHT: M = M::new(Westbound, Internal, Right);
+    pub const EB_INT_THROUGH_RIGHT: M = M::new(Eastbound, Internal, ThroughRight);
+    pub const WB_INT_THROUGH_RIGHT: M = M::new(Westbound, Internal, ThroughRight);
+    pub const NB_RAMP_TWO_LEFT: M = M::new(Northbound, RampTwo, Left);
+    pub const NB_RAMP_TWO_RIGHT: M = M::new(Northbound, RampTwo, Right);
+    pub const SB_RAMP_TWO_LEFT: M = M::new(Southbound, RampTwo, Left);
+    pub const SB_RAMP_TWO_RIGHT: M = M::new(Southbound, RampTwo, Right);
 }
 
 /// Traffic control of a lane group.
@@ -1164,6 +1482,13 @@ pub struct ExtraDistance {
     pub distance_ft: f64,
     /// Deceleration/acceleration delay a, s (5 s for loop ramps).
     pub accel_decel_s: f64,
+    /// Design speed of this diverted movement v_D, mi/h, overriding the
+    /// interchange-wide `extra_distance_speed_mph`. Equation 23-50 defines
+    /// v_D per diverted movement, and a form can mix them: Example
+    /// Problem 2 evaluates its loop-ramp O-Ds at 25 mi/h and its remaining
+    /// diverted O-Ds at 35 mi/h.
+    #[serde(default)]
+    pub design_speed_mph: Option<f64>,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1233,6 +1558,21 @@ pub struct Interchange {
     /// Interchange LOS (Exhibit 23-10 applied to the interchange ETT).
     #[serde(default)]
     pub interchange_los: Option<LevelOfService>,
+}
+
+/// One internal link and the lane groups the Step 4 lost-time equations
+/// read for it (Equations 23-29 through 23-39).
+struct LinkSpec {
+    /// Internal through group at the downstream terminal.
+    downstream: InterchangeMovement,
+    /// External arterial through feeding the link.
+    arterial: InterchangeMovement,
+    /// Off-ramp movement feeding the link.
+    ramp: InterchangeMovement,
+    /// Movement served at the upstream terminal while the link receives
+    /// no input (the demand starvation window).
+    blocking_left: InterchangeMovement,
+    eastbound: bool,
 }
 
 impl Interchange {
@@ -1322,42 +1662,77 @@ impl Interchange {
     // Step 1: O-D demands and lane group demand composition
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// Lane group demand composition (Exhibit 34-176 worksheet): which
-    /// PHF-adjusted O-D demands travel in each lane group.
-    fn lane_group_demand(&self, m: InterchangeMovement, od: &OdDemands) -> f64 {
-        use InterchangeForm::*;
-        use InterchangeMovement::*;
-        let ddi = matches!(self.form, Ddi);
-        let spui = matches!(self.form, Spui);
-        match m {
-            EbExtThrough => {
-                if spui {
-                    // SPUI arterial through (+ shared right).
-                    od.i + if self.eb_external_right_shared { od.f } else { 0.0 }
-                } else if ddi {
-                    // DDI external crossover: through + left onto freeway
-                    // (rights depart upstream of the crossover).
-                    od.i + od.e + if self.eb_external_right_shared { od.f } else { 0.0 }
-                } else {
-                    od.i + od.e + if self.eb_external_right_shared { od.f } else { 0.0 }
-                }
-            }
-            WbExtThrough => {
-                if spui {
-                    od.j + if self.wb_external_right_shared { od.g } else { 0.0 }
-                } else {
-                    od.j + od.h + if self.wb_external_right_shared { od.g } else { 0.0 }
-                }
-            }
-            EbIntThrough => od.i + od.d, // internal link: arterial through + SB ramp left
-            WbIntThrough => od.j + od.a,
-            EbIntLeft => od.e + od.n,
-            WbIntLeft => od.h + od.m,
-            NbRampLeft => od.a + od.m,
-            NbRampRight => od.b,
-            SbRampLeft => od.d + od.n,
-            SbRampRight => od.c,
+    /// Whether the external arterial turn O-D of a direction (v_F / v_G of
+    /// Exhibit 23-20) shares the external through lane group.
+    fn external_turn_shared(&self, approach: InterchangeApproach) -> bool {
+        match approach {
+            InterchangeApproach::Eastbound => self.eb_external_right_shared,
+            _ => self.wb_external_right_shared,
         }
+    }
+
+    /// Map a worksheet turning movement onto a lane group that this
+    /// interchange actually has.
+    ///
+    /// An exact composition wins. Failing that, a turn folds into the
+    /// shared group that carries it: an internal right into the internal
+    /// through-and-right group (the parclo A "INT-TH&R" of
+    /// Exhibit 34-22), an internal or external through into a
+    /// through-and-right group, and an external turn into the external
+    /// through group — but only when the direction is flagged as sharing,
+    /// which is the same flag Exhibit 23-24 uses to decide whether v_R
+    /// enters Equation 23-17. An external turn that is neither given its
+    /// own lane group nor flagged as shared resolves to nothing, which is
+    /// the free-flow bypass case (a DDI right turn).
+    fn resolve_movement(&self, want: InterchangeMovement) -> Option<InterchangeMovement> {
+        let has = |m: InterchangeMovement| {
+            self.lane_groups
+                .iter()
+                .any(|g| g.movement == m)
+                .then_some(m)
+        };
+        if let Some(m) = has(want) {
+            return Some(m);
+        }
+        let shared = |turn: MovementTurn| {
+            has(InterchangeMovement::new(want.approach, want.position, turn))
+        };
+        match want.turn {
+            MovementTurn::Right | MovementTurn::Through => {
+                if let Some(m) = shared(MovementTurn::ThroughRight) {
+                    return Some(m);
+                }
+            }
+            _ => {}
+        }
+        if want.position == MovementPosition::External
+            && matches!(want.turn, MovementTurn::Left | MovementTurn::Right)
+            && self.external_turn_shared(want.approach)
+        {
+            return shared(MovementTurn::Through).or_else(|| shared(MovementTurn::ThroughRight));
+        }
+        None
+    }
+
+    /// The lane groups an O-D traverses, each paired with the turn the
+    /// worksheet has it making there (which may differ from the group's
+    /// own turn when the group is shared).
+    fn od_legs(&self, m: OdMovement) -> Vec<(InterchangeMovement, MovementTurn)> {
+        od_journey(self.form, m)
+            .into_iter()
+            .filter_map(|want| self.resolve_movement(want).map(|got| (got, want.turn)))
+            .collect()
+    }
+
+    /// Lane group demand composition (the Exhibit 34-171 through 34-177
+    /// worksheets): every O-D whose journey resolves onto the lane group
+    /// contributes its PHF-adjusted demand.
+    fn lane_group_demand(&self, m: InterchangeMovement, od: &OdDemands) -> f64 {
+        OdMovement::ALL
+            .iter()
+            .filter(|o| self.od_legs(**o).iter().any(|(g, _)| *g == m))
+            .map(|o| od.get(*o))
+            .sum()
     }
 
     /// Step 1: adjust the O-D demands by the PHF and compose the lane
@@ -1400,30 +1775,26 @@ impl Interchange {
     /// Lane utilization factor f_LU for a lane group (Equations 23-16
     /// through 23-18; 1.0 for non-external groups and single lanes).
     fn lane_utilization(&self, g: &LaneGroupInput, od: &OdDemands) -> f64 {
-        use InterchangeMovement::*;
         if let Some(f) = g.lane_utilization_override {
             return f;
         }
         if g.lanes <= 1 {
             return 1.0;
         }
-        let (is_ext, eastbound) = match g.movement {
-            EbExtThrough => (true, true),
-            WbExtThrough => (true, false),
-            _ => (false, false),
-        };
+        let is_ext = g.movement.is_external_arterial_through();
+        let eastbound = g.movement.approach == InterchangeApproach::Eastbound;
         if !is_ext || matches!(self.form, InterchangeForm::Spui) {
             // Non-external (ramp, internal, SPUI) approaches use the
             // Chapter 19 Exhibit 19-15 defaults (Chapter 23 Step 3 text:
             // "The lane utilization factors for all other interchange
             // approaches ... are estimated by using the procedures of
             // Chapter 19").
-            let group = match g.movement {
-                EbIntLeft | WbIntLeft | NbRampLeft | SbRampLeft => {
-                    LaneUtilizationGroup::ExclusiveLeft
+            let group = match g.movement.turn {
+                MovementTurn::Left => LaneUtilizationGroup::ExclusiveLeft,
+                MovementTurn::Right => LaneUtilizationGroup::ExclusiveRight,
+                MovementTurn::Through | MovementTurn::ThroughRight => {
+                    LaneUtilizationGroup::ExclusiveThrough
                 }
-                NbRampRight | SbRampRight => LaneUtilizationGroup::ExclusiveRight,
-                _ => LaneUtilizationGroup::ExclusiveThrough,
             };
             return default_lane_utilization_factor(group, g.lanes);
         }
@@ -1443,8 +1814,17 @@ impl Interchange {
             let ltdr = v_l / total;
             return lane_utilization_factor_from_max(ddi_pct_v_lmax(cfg, ltdr), g.lanes);
         }
-        // Equations 23-16 / 23-17 with Exhibit 23-24.
-        let model = self.arterial_lane_utilization_model(eastbound);
+        // Equations 23-16 / 23-17 with Exhibit 23-24. v_L is the O-D that
+        // travels through the first intersection and turns at the second,
+        // v_T the one that goes through both, and v_R the external turn
+        // O-D (v_F / v_G), which Exhibit 23-24's note sets to zero when
+        // that turn has its own lane. Reading v_L as "turns at the second
+        // intersection" rather than "turns left there" is what carries the
+        // model across the family: a diamond's O-D E turns left onto the
+        // freeway at Intersection II and a parclo A-2Q's turns right onto
+        // the loop, and Exhibit 34-20 puts the parclo O-D in the same slot
+        // (its published %V_L1 of 0.2660 eastbound and 0.2263 westbound
+        // reproduce exactly at v_L = v_E / v_H with v_R = 0).
         let (v_l, v_r, v_t) = if eastbound {
             let shared = self.eb_external_right_shared;
             (od.e, if shared { od.f } else { 0.0 }, od.i)
@@ -1452,6 +1832,7 @@ impl Interchange {
             let shared = self.wb_external_right_shared;
             (od.h, if shared { od.g } else { 0.0 }, od.j)
         };
+        let model = self.arterial_lane_utilization_model(eastbound);
         let pct = pct_v_lmax_arterial(
             model,
             g.lanes,
@@ -1482,26 +1863,30 @@ impl Interchange {
 
     /// Turning proportions in the lane group (P_LT, P_RT) from the O-D
     /// composition, for the shared-lane radius adjustments.
+    ///
+    /// Each O-D contributes to P_LT or P_RT according to the turn the
+    /// worksheet has it making in this lane group, not according to the
+    /// group's own name. A diamond's external through group therefore
+    /// still reports P_LT = 0 even though the O-D that will turn left at
+    /// the next intersection travels in it, and a parclo A internal
+    /// through-and-right group reports the loop-ramp share as P_RT.
     fn turn_proportions(&self, m: InterchangeMovement, od: &OdDemands) -> (f64, f64) {
-        use InterchangeMovement::*;
-        let v = self.lane_group_demand(m, od).max(1e-9);
-        match m {
-            EbExtThrough => {
-                let p_rt = if self.eb_external_right_shared { od.f / v } else { 0.0 };
-                // DDI external crossover carries the (free at the internal
-                // crossover) left-turn demand but turns within the
-                // crossover geometry are treated as through (f_DDI covers
-                // the crossover effect).
-                (0.0, p_rt)
+        let mut v_lt = 0.0;
+        let mut v_rt = 0.0;
+        for o in OdMovement::ALL {
+            for (group, turn) in self.od_legs(o) {
+                if group != m {
+                    continue;
+                }
+                match turn {
+                    MovementTurn::Left => v_lt += od.get(o),
+                    MovementTurn::Right => v_rt += od.get(o),
+                    MovementTurn::Through | MovementTurn::ThroughRight => {}
+                }
             }
-            WbExtThrough => {
-                let p_rt = if self.wb_external_right_shared { od.g / v } else { 0.0 };
-                (0.0, p_rt)
-            }
-            EbIntLeft | WbIntLeft | NbRampLeft | SbRampLeft => (1.0, 0.0),
-            NbRampRight | SbRampRight => (0.0, 1.0),
-            EbIntThrough | WbIntThrough => (0.0, 0.0),
         }
+        let v = self.lane_group_demand(m, od).max(1e-9);
+        (v_lt / v, v_rt / v)
     }
 
     /// Step 3: adjusted saturation flow rate for each lane group
@@ -1562,13 +1947,9 @@ impl Interchange {
             // Interchange adjustment No. 3: f_DDI for the DDI crossover
             // through movements.
             let f_ddi = if matches!(self.form, InterchangeForm::Ddi)
-                && matches!(
-                    g.movement,
-                    InterchangeMovement::EbExtThrough
-                        | InterchangeMovement::WbExtThrough
-                        | InterchangeMovement::EbIntThrough
-                        | InterchangeMovement::WbIntThrough
-                ) {
+                && g.movement.is_arterial()
+                && g.movement.turn.serves_through()
+            {
                 F_DDI
             } else {
                 1.0
@@ -1604,8 +1985,64 @@ impl Interchange {
 
     /// Step 4: additional lost times (downstream internal queue, DDI
     /// overlap phasing, demand starvation) and adjusted effective greens.
+    /// The two internal links and the lane groups the Step 4 lost-time
+    /// equations read for each of them.
+    ///
+    /// The roles are the same in every form; only which composed movement
+    /// fills each role changes. The downstream group is the internal
+    /// through of the direction, the arterial feeder is the external
+    /// through that discharges into the link, and the ramp feeder is
+    /// whichever off-ramp movement enters the link, which is the first leg
+    /// of O-D D eastbound and O-D A westbound (a southbound ramp left in a
+    /// diamond and in a parclo A, a northbound ramp right in an AB parclo).
+    ///
+    /// The blocking group is the phase served at the upstream intersection
+    /// while the link receives nothing, which Exhibit 23-31 draws as the
+    /// opposite direction's internal left. Forms whose internal approach
+    /// has no left turn — the parclo A internal shared through-and-right —
+    /// have no such phase, and the lookup is deliberately exact so that it
+    /// finds nothing and Equation 23-38 returns zero. Exhibit 34-24
+    /// confirms that for Example Problem 2: every Intersection I phase
+    /// there serves either the eastbound external through or the
+    /// southbound ramp, so the eastbound link is never starved.
+    fn internal_links(&self) -> [LinkSpec; 2] {
+        use movements::*;
+        let ramp_feeder = |o: OdMovement, fallback: InterchangeMovement| {
+            self.od_legs(o)
+                .into_iter()
+                .map(|(g, _)| g)
+                .find(|g| !g.is_arterial())
+                .unwrap_or(fallback)
+        };
+        [
+            LinkSpec {
+                downstream: self
+                    .resolve_movement(EB_INT_THROUGH)
+                    .unwrap_or(EB_INT_THROUGH),
+                arterial: self
+                    .resolve_movement(EB_EXT_THROUGH)
+                    .unwrap_or(EB_EXT_THROUGH),
+                ramp: ramp_feeder(OdMovement::D, SB_RAMP_LEFT),
+                blocking_left: WB_INT_LEFT,
+                eastbound: true,
+            },
+            LinkSpec {
+                downstream: self
+                    .resolve_movement(WB_INT_THROUGH)
+                    .unwrap_or(WB_INT_THROUGH),
+                arterial: self
+                    .resolve_movement(WB_EXT_THROUGH)
+                    .unwrap_or(WB_EXT_THROUGH),
+                ramp: ramp_feeder(OdMovement::A, NB_RAMP_LEFT),
+                blocking_left: EB_INT_LEFT,
+                eastbound: false,
+            },
+        ]
+    }
+
+    /// Step 4: additional lost times (downstream internal queue, DDI
+    /// overlap phasing, demand starvation) and adjusted effective greens.
     pub fn step_4_effective_green_adjustments(&mut self) {
-        use InterchangeMovement::*;
         let od = self.od_adjusted.unwrap_or(self.od);
         let c = self.cycle_length_s;
         let d_ft = self.distance_between_intersections_ft;
@@ -1643,34 +2080,7 @@ impl Interchange {
                 .unwrap_or(1)
         };
 
-        // Per-direction relationships (diamond / parclo / DDI):
-        // * EB internal link (downstream = EbIntThrough at Int II) is fed
-        //   by EbExtThrough (Int I) and SbRampLeft (Int I); starvation
-        //   window is the WbIntLeft green (Int I).
-        // * WB internal link mirrors with NbRampLeft and EbIntLeft.
-        struct LinkSpec {
-            downstream: InterchangeMovement,
-            arterial: InterchangeMovement,
-            ramp: InterchangeMovement,
-            blocking_left: InterchangeMovement,
-            eastbound: bool,
-        }
-        let links = [
-            LinkSpec {
-                downstream: EbIntThrough,
-                arterial: EbExtThrough,
-                ramp: SbRampLeft,
-                blocking_left: WbIntLeft,
-                eastbound: true,
-            },
-            LinkSpec {
-                downstream: WbIntThrough,
-                arterial: WbExtThrough,
-                ramp: NbRampLeft,
-                blocking_left: EbIntLeft,
-                eastbound: false,
-            },
-        ];
+        let links = self.internal_links();
 
         // Pass 1: downstream-queue lost times for the external arterial
         // and ramp-left groups (Equations 23-29 through 23-34). Directly
@@ -1748,8 +2158,8 @@ impl Interchange {
         // groups (Equations 23-24 / 23-25 / 23-27); internal groups are
         // handled in pass 2.
         for (idx, g) in self.lane_groups.iter().enumerate() {
-            let internal = matches!(g.movement, EbIntThrough | WbIntThrough);
-            if internal {
+            if links.iter().any(|l| l.downstream == g.movement) {
+                // Handled in pass 2 with the demand-starvation term.
                 continue;
             }
             let tl = adjusted_lost_time(
@@ -1907,27 +2317,33 @@ impl Interchange {
         let _ = t_h;
     }
 
+    /// Equation 19-6 upstream filtering: every internal lane group is
+    /// filtered by the v/c of the external through group that feeds its
+    /// direction. Example Problem 2 confirms the composed reading on the
+    /// shared internal through-and-right groups, which the diamond
+    /// skeleton had no case for (Exhibit 34-25 publishes I = 0.90
+    /// eastbound at X_u = 0.44 and 0.81 westbound at X_u = 0.56).
     fn assign_upstream_filtering(&mut self) {
-        use InterchangeMovement::*;
-        let x_eb = self
-            .result_index(EbExtThrough)
-            .and_then(|i| self.results[i].vc_ratio);
-        let x_wb = self
-            .result_index(WbExtThrough)
-            .and_then(|i| self.results[i].vc_ratio);
+        use movements::*;
+        let x_of = |m: InterchangeMovement| {
+            self.resolve_movement(m)
+                .and_then(|m| self.result_index(m))
+                .and_then(|i| self.results[i].vc_ratio)
+        };
+        let x_eb = x_of(EB_EXT_THROUGH);
+        let x_wb = x_of(WB_EXT_THROUGH);
         for (g, r) in self.lane_groups.iter().zip(self.results.iter_mut()) {
             let i_factor = if let Some(over) = g.upstream_filtering_override {
                 over
-            } else {
-                match g.movement {
-                    EbIntThrough | EbIntLeft => {
+            } else if g.movement.position == MovementPosition::Internal {
+                match g.movement.approach {
+                    InterchangeApproach::Eastbound => {
                         x_eb.map(upstream_filtering_factor).unwrap_or(1.0)
                     }
-                    WbIntThrough | WbIntLeft => {
-                        x_wb.map(upstream_filtering_factor).unwrap_or(1.0)
-                    }
-                    _ => 1.0,
+                    _ => x_wb.map(upstream_filtering_factor).unwrap_or(1.0),
                 }
+            } else {
+                1.0
             };
             r.upstream_filtering = Some(i_factor);
         }
@@ -2026,89 +2442,18 @@ impl Interchange {
     // Step 9: O-D control delay, ETT, and LOS (Equations 23-49 to 23-52)
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// Lane groups traversed by each O-D movement (diamond / parclo O-D
-    /// letters; validated against Chapter 34 Exhibits 34-16 and 34-65).
-    /// O-D movements with no represented lane groups (e.g., free-flow
-    /// DDI right turns, K / L ramp throughs) return an empty path.
-    fn od_path(&self, m: OdMovement) -> Vec<InterchangeMovement> {
-        use InterchangeMovement::*;
-        use OdMovement::*;
-        let spui = matches!(self.form, InterchangeForm::Spui);
-        let raw: Vec<InterchangeMovement> = match m {
-            A => {
-                if spui {
-                    vec![NbRampLeft]
-                } else {
-                    vec![NbRampLeft, WbIntThrough]
-                }
-            }
-            B => vec![NbRampRight],
-            C => vec![SbRampRight],
-            D => {
-                if spui {
-                    vec![SbRampLeft]
-                } else {
-                    vec![SbRampLeft, EbIntThrough]
-                }
-            }
-            E => {
-                if spui {
-                    vec![EbIntLeft]
-                } else if matches!(self.form, InterchangeForm::Ddi) {
-                    // The DDI left onto the freeway departs at the
-                    // internal crossover after traversing the external
-                    // crossover (free-flowing at the internal crossover).
-                    vec![EbExtThrough]
-                } else {
-                    vec![EbExtThrough, EbIntLeft]
-                }
-            }
-            F => {
-                if self.eb_external_right_shared {
-                    vec![EbExtThrough]
-                } else {
-                    vec![] // exclusive / free-flow bypass
-                }
-            }
-            G => {
-                if self.wb_external_right_shared {
-                    vec![WbExtThrough]
-                } else {
-                    vec![]
-                }
-            }
-            H => {
-                if spui {
-                    vec![WbIntLeft]
-                } else if matches!(self.form, InterchangeForm::Ddi) {
-                    vec![WbExtThrough]
-                } else {
-                    vec![WbExtThrough, WbIntLeft]
-                }
-            }
-            I => {
-                if spui {
-                    vec![EbExtThrough]
-                } else {
-                    vec![EbExtThrough, EbIntThrough]
-                }
-            }
-            J => {
-                if spui {
-                    vec![WbExtThrough]
-                } else {
-                    vec![WbExtThrough, WbIntThrough]
-                }
-            }
-            // Freeway U-turns traverse the off-ramp left and the
-            // opposite internal left (diamond geometry).
-            M if !spui => vec![NbRampLeft, WbIntLeft],
-            N if !spui => vec![SbRampLeft, EbIntLeft],
-            _ => vec![],
-        };
-        raw.into_iter()
-            .filter(|mv| self.result_index(*mv).is_some())
-            .collect()
+    /// Lane groups traversed by each O-D movement, from the form's
+    /// Chapter 34 worksheet resolved onto the lane groups this
+    /// interchange actually has (validated against Chapter 34 Exhibits
+    /// 34-16, 34-29, 34-43, and 34-65).
+    ///
+    /// O-D movements with no represented lane group return an empty path:
+    /// the K / L ramp throughs, which no fixture gives a lane group, and
+    /// the free-flowing turns of a DDI, whose internal left has no lane
+    /// group at all and whose external right is neither shared nor given
+    /// an exclusive one.
+    pub fn od_path(&self, m: OdMovement) -> Vec<InterchangeMovement> {
+        self.od_legs(m).into_iter().map(|(g, _)| g).collect()
     }
 
     /// Step 9 (with the Step 8 O-D aggregation): O-D delays, ETT, LOS
@@ -2148,7 +2493,7 @@ impl Interchange {
             let xd = self.extra_distances[k];
             let edtt = extra_distance_travel_time(
                 xd.distance_ft,
-                self.extra_distance_speed_mph,
+                xd.design_speed_mph.unwrap_or(self.extra_distance_speed_mph),
                 xd.accel_decel_s,
             );
             let ett = delay + edtt;

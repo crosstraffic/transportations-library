@@ -159,10 +159,17 @@ implemented (EPUB `235_Ch30_03.xhtml`, `236_Ch30_04.xhtml`; EP1 intermediates in
 ## Chapter 23 (feat/hcm-ch23-ramp-terminals)
 1. **Eq 23-17/Exhibit 23-24 lane-utilization model does not reproduce the book's own worked values**
    (Ex. 34-6: 0.497 computed vs 0.5056 published; Ex. 3: 0.625 vs 0.5551). Printed equation
-   implemented; override input provided (used by fixtures).
+   implemented; override input provided (used by fixtures). Example Problem 2 narrows where the
+   Parclo A-2Q row goes wrong: with v_L = v_E / v_H and v_R = 0, the printed a2 of −0.363 reproduces
+   Exhibit 34-20's leftmost-lane shares exactly in both directions (0.2659 against 0.2660 eastbound,
+   0.2264 against 0.2263 westbound), while the rightmost-lane shares need a2 = 0.655 where the
+   exhibit prints 0.605 (0.4549 implies 0.6548, 0.5265 implies 0.6558 — the same unprinted value
+   from two independent approaches). The printed 0.605 is kept.
 2. **Eq 23-37 (DDI clearance) printed as (W+L−D) but Exhibit 34-63 implies (W+L+D)**; printed form
    implemented, fixture supplies published values.
-3. d2 per-lane vs per-lane-group basis differs between Ch 34 Examples 1 and 5; per-lane implemented.
+3. d2 per-lane vs per-lane-group basis differs between Ch 34 Examples 1 and 5. Settled in 0.3.1 on
+   the lane group capacity, which is what Eq 19-26 defines c_A as; Examples 3 and 5 agree and
+   Example 1's worksheet is treated as a book defect.
 4. Exhibit 34-70 YIELD-turn delays not reproducible from Eq 22-17 (capacities all reproduce exactly).
 5. Ch 34 Ex. 5 published DDI uniform delays inconsistent with Eq 19-19 under any arrival type;
    equation-based results asserted (9/10 LOS letters still match).
@@ -172,6 +179,32 @@ implemented (EPUB `235_Ch30_03.xhtml`, `236_Ch30_04.xhtml`; EP1 intermediates in
    pair governs when several qualify. Exhibits 34-9 and 34-89 both print CG_RD = 34 (a union of the
    two windows gives 39, and Exhibit 34-10's 4.1-ft queue only follows from 34).
 8. Shared-group f_RT convention: flow-weighted f_R via Eq 23-23 (Exhibit 34-7 convention) used.
+9. **Exhibit 34-22 gives the Example Problem 2 internal shared through-and-right groups f_LU = 1.000**
+   where Chapter 19 Exhibit 19-15's default for a three-lane through group is 0.908, which is what
+   Examples 1, 3, and 4 print in the same column (Exhibit 34-34 prints 0.908 for exactly this group)
+   and what Chapter 23 Step 3 directs for every non-external approach. The default is implemented.
+   Forcing 1.000 reproduces the published saturation flows to 4 veh/h but raises mean absolute error
+   against the ten Exhibit 34-29 O-D ETTs from 0.26 to 0.63 s/veh, so Exhibit 34-22 is inconsistent
+   with Exhibits 34-27 through 34-29 of its own example.
+10. **Exhibit 34-25 prints v = 1,282 veh/h for the Example Problem 2 eastbound internal
+    through-and-right group** where the Exhibit 34-163 worksheet composition gives v_I + v_D + v_E =
+    1,356. Two cells inside the book corroborate 1,356 against that one: Exhibit 34-27 prints
+    X = 0.56 for the movement, which is 1,356/2,401 and not 1,282/2,401 (0.53), and the arrival rate
+    row of Exhibit 34-25 itself prints q = 0.38 veh/s, which is 1,368 veh/h. The worksheet
+    composition is implemented.
+11. **Example Problem 2 evaluates EDTT at two design speeds.** The chapter text computes the two
+    loop-ramp O-Ds as 1,200/(1.47 × 25) + 5 = 37.7 s/veh while the remaining diverted O-Ds resolve at
+    35 mi/h over the 800-ft interchange spacing. `ExtraDistance::design_speed_mph` carries the
+    per-movement override, which is what Eq 23-50 defines v_D as. The Facts section of the example
+    states the loop-ramp extra distance as 1,600 ft where the worked EDTT uses 1,200 ft.
+12. **The parclo family beyond A-2Q is structurally supported and unvalidated.** Routing and lane
+    group composition for all six Exhibit 23-17 parclos and the SPUI come from the same Exhibits
+    34-171 through 34-177 worksheets that the validated forms use, and every form is exercised end to
+    end by `test_every_form_runs_the_pipeline` and `test_every_form_routes_every_od`, but only the
+    diamond (Examples 1, 3, 4), the DDI (Examples 5, 6), and the Parclo A-2Q (Example 2) are pinned
+    to published numbers. Chapter 34 publishes no worked example for the other five parclos or the
+    SPUI at the Part B operational level (Example Problem 7 is a SPUI but needs the Chapter 19
+    protected-plus-permitted left-turn surface, which this module does not model).
 
 ## Chapter 23 Part C (feat/hcm-ch23-alternative-intersections)
 Alternative intersections (RCUT / MUT / DLT), EPUB 178–182_Ch23_pt3_*.xhtml, Ch 34 Example

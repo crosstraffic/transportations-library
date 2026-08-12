@@ -9,6 +9,19 @@
 //! and YIELD-controlled turns, O-D experienced travel time, and the
 //! Exhibit 23-10 LOS determination.
 //!
+//! Lane groups are composed rather than enumerated: an
+//! `InterchangeMovement` is an approach, a position in the interchange
+//! skeleton, and a turn, and the routing and demand composition for every
+//! form are derived from that form's own Chapter 34 worksheet
+//! (`od_journey`). All nine forms of Exhibit 23-17 therefore run the
+//! pipeline, but only three are validated against published numbers: the
+//! diamond (Chapter 34 Example Problems 1, 3, and 4), the DDI (Example
+//! Problems 5 and 6), and the Parclo A-2Q (Example Problem 2). The Parclo
+//! A-4Q, AB-2Q, AB-4Q, B-2Q, B-4Q, and the SPUI are
+//! **structurally supported and unvalidated** — Chapter 34 publishes no
+//! Part B worked example that would pin them, and the only tests they
+//! carry are the synthetic end-to-end smoke tests in `tests.rs`.
+//!
 //! Milestone 1 covers signalized interchange ramp terminals and DDIs
 //! (`ramp_terminals`). Interchanges with roundabout ramp terminals are
 //! supported through the Exhibit 34-161 O-D composition table and the

@@ -16,23 +16,8 @@
 //! * `case5.json` — Chapter 34, Example Problem 6: the Example Problem 5
 //!   DDI with the four off-ramp turns YIELD-controlled instead of
 //!   signalized (published results in Exhibits 34-67 through 34-71).
-//!
-//! Example Problem 2 (Parclo A-2Q, Exhibits 34-17 through 34-29) has no
-//! fixture. Its arterial lane groups are an external through, an external
-//! left onto the loop ramp, and an internal shared through-and-right in
-//! each direction, and `InterchangeMovement`
-//! (src/hcm/ramp_terminals/ramp_terminals.rs:879-900) names neither an
-//! external left nor an internal right. Every one of its ten variants is
-//! already spoken for by the diamond skeleton, so a Parclo A-2Q fixture
-//! would have to park the external lefts in the `EbIntLeft` / `WbIntLeft`
-//! slots, and `Interchange::od_path`
-//! (src/hcm/ramp_terminals/ramp_terminals.rs:1991-2070) would then route
-//! O-D E through the external left instead of the internal right and
-//! route O-D F through nothing at all. The published Exhibit 34-29 O-D
-//! delays are unreachable that way, so the example is covered by
-//! `test_ep2_parclo_a2q_common_green_and_downstream_queues` instead,
-//! which drives the Step 4 free functions against the published Exhibit
-//! 34-23 and Exhibit 34-24 intermediates.
+//! * `case6.json` — Chapter 34, Example Problem 2: Parclo A-2Q
+//!   interchange (published O-D results in Exhibit 34-29).
 //!
 //! Example Problem 7 (SPUI, Exhibits 34-72 through 34-82) has no fixture.
 //! A SPUI needs ten signalized lane groups — an exclusive left, a through,
@@ -141,6 +126,17 @@
 //!   The Exhibit 34-70 control delays do not reproduce (see
 //!   `test_ep6_ddi_yield_control_delay_defect`), so the O-D table is
 //!   asserted at the equation-based values with the published ones inline.
+//! * Example Problem 2 — effective greens exact, saturation flows ±5 veh/h,
+//!   capacities ±2 veh/h, v/c ±0.005, upstream filtering ±0.005, and control
+//!   delays ±0.15 s/veh, for the eight lane groups that are not an internal
+//!   shared through-and-right. Those two are asserted at engine values with
+//!   the published ones inline, because Exhibit 34-22 gives them a lane
+//!   utilization factor of 1.000 where Chapter 19's default for a three-lane
+//!   through group is 0.908 (see
+//!   `test_ep2_parclo_a2q_internal_lane_utilization_defect`). O-D ETTs are
+//!   asserted at ±0.8 s/veh against the published Exhibit 34-29 values, with
+//!   LOS letters and the v/c and R_Q flags exact, and the interchange ETT
+//!   reads 61.5 s/veh against the published 61.3, LOS D either way.
 //! * Example Problem 8 — Exhibit 34-89 common greens exact, Exhibit 34-90
 //!   queue lengths ±0.15 ft and additional lost times ±0.05 s.
 //! * Example Problem 9 — Chapter 22 entry capacities ±1 pc/h of the
@@ -149,15 +145,15 @@
 //!   give different numbers and are asserted separately (see
 //!   `test_ep9_roundabout_terminals_use_superseded_chapter_22_equations`).
 //!
-//! One engine gap surfaced by these examples is documented at its assertion
-//! site rather than fixed here: the missing external right-turn lane group
-//! (Example Problem 3), which zeroes the O-D F and O-D G contributions.
+//! The one book defect these examples surface that is not a delay-equation
+//! deviation is Exhibit 34-22's internal lane utilization, documented at its
+//! assertion site.
 
 use transportations_library::hcm::ramp_terminals::{
     adjacent_intersection_lost_time, common_green_time, demand_starvation_initial_queue,
     demand_starvation_lost_time, downstream_queue_length_ft, downstream_queue_lost_time,
-    extra_distance_travel_time, los_roundabout_interchange_od, GreenInterval, Interchange,
-    InterchangeMovement, OdMovement,
+    extra_distance_travel_time, los_roundabout_interchange_od, movements, GreenInterval,
+    Interchange, InterchangeMovement, OdMovement,
 };
 use transportations_library::hcm::common::delay::control_delay_roundabout;
 use transportations_library::hcm::common::LevelOfService;
@@ -206,7 +202,7 @@ fn group<'a>(
 /// against Exhibits 34-7 / 34-8 / 34-14 / 34-15.
 #[test]
 fn test_case1_diamond_lane_groups() {
-    use InterchangeMovement::*;
+    use movements::*;
     let mut ix = load_case("case1.json");
     ix.analyze();
 
@@ -215,16 +211,16 @@ fn test_case1_diamond_lane_groups() {
     // Equation 19-10 heavy-vehicle/grade form where the example used the
     // split fHV x fg convention on the ramps.
     for (mv, s_pub) in [
-        (EbExtThrough, 3_700.0),
-        (EbIntThrough, 3_568.0),
-        (EbIntLeft, 1_703.0),
-        (WbExtThrough, 3_637.0),
-        (WbIntThrough, 3_535.0),
-        (WbIntLeft, 1_767.0),
-        (NbRampLeft, 1_749.0),
-        (NbRampRight, 1_656.0),
-        (SbRampLeft, 1_734.0),
-        (SbRampRight, 1_638.0),
+        (EB_EXT_THROUGH, 3_700.0),
+        (EB_INT_THROUGH, 3_568.0),
+        (EB_INT_LEFT, 1_703.0),
+        (WB_EXT_THROUGH, 3_637.0),
+        (WB_INT_THROUGH, 3_535.0),
+        (WB_INT_LEFT, 1_767.0),
+        (NB_RAMP_LEFT, 1_749.0),
+        (NB_RAMP_RIGHT, 1_656.0),
+        (SB_RAMP_LEFT, 1_734.0),
+        (SB_RAMP_RIGHT, 1_638.0),
     ] {
         assert_near!(group(&ix, mv).sat_flow.unwrap(), s_pub, 20.0, format!("s {mv:?}"));
     }
@@ -233,14 +229,14 @@ fn test_case1_diamond_lane_groups() {
     // (Exhibits 34-10 / 34-11): effective greens equal the displayed
     // greens.
     for (mv, g_pub) in [
-        (EbExtThrough, 63.0),
-        (EbIntThrough, 97.0),
-        (EbIntLeft, 29.0),
-        (WbExtThrough, 63.0),
-        (WbIntThrough, 111.0),
-        (WbIntLeft, 43.0),
-        (NbRampLeft, 53.0),
-        (SbRampLeft, 39.0),
+        (EB_EXT_THROUGH, 63.0),
+        (EB_INT_THROUGH, 97.0),
+        (EB_INT_LEFT, 29.0),
+        (WB_EXT_THROUGH, 63.0),
+        (WB_INT_THROUGH, 111.0),
+        (WB_INT_LEFT, 43.0),
+        (NB_RAMP_LEFT, 53.0),
+        (SB_RAMP_LEFT, 39.0),
     ] {
         assert_near!(
             group(&ix, mv).effective_green_s.unwrap(),
@@ -268,16 +264,16 @@ fn test_case1_diamond_lane_groups() {
     // engine follows the equation and the EP1 worksheet is treated as a book
     // defect. See the note in src/hcm/ramp_terminals/ramp_terminals.rs.
     for (mv, d_engine) in [
-        (EbExtThrough, 41.99), // published 44.1
-        (EbIntLeft, 55.0),
-        (EbIntThrough, 7.8),
-        (WbExtThrough, 34.61), // published 37.5
-        (WbIntLeft, 45.2),
-        (WbIntThrough, 2.3),
-        (NbRampLeft, 43.4),
-        (NbRampRight, 43.4),
-        (SbRampLeft, 55.9),
-        (SbRampRight, 54.6),
+        (EB_EXT_THROUGH, 41.99), // published 44.1
+        (EB_INT_LEFT, 55.0),
+        (EB_INT_THROUGH, 7.8),
+        (WB_EXT_THROUGH, 34.61), // published 37.5
+        (WB_INT_LEFT, 45.2),
+        (WB_INT_THROUGH, 2.3),
+        (NB_RAMP_LEFT, 43.4),
+        (NB_RAMP_RIGHT, 43.4),
+        (SB_RAMP_LEFT, 55.9),
+        (SB_RAMP_RIGHT, 54.6),
     ] {
         assert_near!(
             group(&ix, mv).control_delay_s.unwrap(),
@@ -352,7 +348,7 @@ fn test_case1_diamond_od_results() {
 /// documented deltas).
 #[test]
 fn test_case2_ddi_results() {
-    use InterchangeMovement::*;
+    use movements::*;
     use LevelOfService as L;
     use OdMovement::*;
     let mut ix = load_case("case2.json");
@@ -366,14 +362,14 @@ fn test_case2_ddi_results() {
     // Equation 23-15 left-turn form on the ramp lefts (the example used
     // the through-movement form).
     for (mv, s_pub, tol) in [
-        (EbExtThrough, 3_563.0, 55.0),
-        (WbExtThrough, 2_045.0, 5.0),
-        (EbIntThrough, 3_229.0, 5.0),
-        (WbIntThrough, 3_156.0, 5.0),
-        (NbRampLeft, 1_682.0, 25.0),
-        (NbRampRight, 1_601.0, 5.0),
-        (SbRampLeft, 1_674.0, 20.0),
-        (SbRampRight, 1_601.0, 5.0),
+        (EB_EXT_THROUGH, 3_563.0, 55.0),
+        (WB_EXT_THROUGH, 2_045.0, 5.0),
+        (EB_INT_THROUGH, 3_229.0, 5.0),
+        (WB_INT_THROUGH, 3_156.0, 5.0),
+        (NB_RAMP_LEFT, 1_682.0, 25.0),
+        (NB_RAMP_RIGHT, 1_601.0, 5.0),
+        (SB_RAMP_LEFT, 1_674.0, 20.0),
+        (SB_RAMP_RIGHT, 1_601.0, 5.0),
     ] {
         assert_near!(group(&ix, mv).sat_flow.unwrap(), s_pub, tol, format!("s {mv:?}"));
     }
@@ -381,14 +377,14 @@ fn test_case2_ddi_results() {
     // Effective green times (Exhibit 34-63 publishes rounded-down
     // values: 31, 20, 35, 25, 24, 20, 14, 30 s).
     for (mv, g_pub, tol) in [
-        (EbExtThrough, 31.0, 0.1), // M6
-        (WbExtThrough, 21.0, 0.1), // M2: published 20 (VERIFY-HCM: 25+5-9)
-        (EbIntThrough, 35.0, 0.1), // M1
-        (WbIntThrough, 25.0, 0.1), // M5
-        (NbRampLeft, 24.5, 0.1),   // M3: published 24
-        (NbRampRight, 20.1, 0.1),  // M4: published 20
-        (SbRampLeft, 14.5, 0.1),   // M7: published 14
-        (SbRampRight, 30.1, 0.1),  // M8: published 30
+        (EB_EXT_THROUGH, 31.0, 0.1), // M6
+        (WB_EXT_THROUGH, 21.0, 0.1), // M2: published 20 (VERIFY-HCM: 25+5-9)
+        (EB_INT_THROUGH, 35.0, 0.1), // M1
+        (WB_INT_THROUGH, 25.0, 0.1), // M5
+        (NB_RAMP_LEFT, 24.5, 0.1),   // M3: published 24
+        (NB_RAMP_RIGHT, 20.1, 0.1),  // M4: published 20
+        (SB_RAMP_LEFT, 14.5, 0.1),   // M7: published 14
+        (SB_RAMP_RIGHT, 30.1, 0.1),  // M8: published 30
     ] {
         assert_near!(
             group(&ix, mv).effective_green_s.unwrap(),
@@ -400,7 +396,7 @@ fn test_case2_ddi_results() {
 
     // DDIs have no demand starvation lost time (Chapter 23 Step 4).
     assert_near!(
-        group(&ix, EbIntThrough)
+        group(&ix, EB_INT_THROUGH)
             .demand_starvation_lost_time_s
             .unwrap(),
         0.0,
@@ -448,13 +444,10 @@ fn test_case2_ddi_results() {
 }
 
 /// Chapter 34, Example Problem 2 (Parclo A-2Q): the Step 4 common green
-/// and downstream-queue free functions against Exhibits 34-23 and 34-24.
-///
-/// The full example cannot be assembled as an `Interchange` (see the
-/// module notes on the missing external-left and internal-right lane
-/// groups), but its Step 4 intermediates depend only on green intervals,
-/// feeding flows, and lane counts, so they exercise the same code path
-/// the diamond fixtures use. I-75 at Newberry Avenue, C = 140 s,
+/// and downstream-queue free functions against Exhibits 34-23 and 34-24,
+/// driven directly rather than through `case6.json`, so that the free
+/// functions stay pinned to the published intermediates independently of
+/// how the fixture composes them. I-75 at Newberry Avenue, C = 140 s,
 /// D = 800 ft, both offsets zero, PHF = 0.95.
 #[test]
 fn test_ep2_parclo_a2q_common_green_and_downstream_queues() {
@@ -511,12 +504,264 @@ fn test_ep2_parclo_a2q_common_green_and_downstream_queues() {
     }
 }
 
+/// Chapter 34, Example Problem 2 (Parclo A-2Q): lane-group intermediates
+/// against Exhibits 34-21 / 34-22 / 34-24 / 34-25 / 34-26 / 34-27 / 34-28.
+///
+/// This is the first fixture whose lane groups are not the diamond
+/// skeleton. Each arterial direction has an external through, an external
+/// left onto the loop ramp, and an internal shared through-and-right, and
+/// the two internal approaches have no left turn at all.
+#[test]
+fn test_ep2_parclo_a2q_lane_groups() {
+    use movements::*;
+    let mut ix = load_case("case6.json");
+    ix.analyze();
+
+    // Adjusted saturation flows, Exhibits 34-21 and 34-22 (lane group
+    // totals; the exhibits print the northbound and southbound values
+    // per lane and those groups have one lane each). ±5 veh/h: the
+    // published traffic pressure and turn radius factors are rounded to
+    // three decimals. The two internal through-and-right groups are
+    // excluded and asserted separately.
+    for (mv, s_pub) in [
+        (EB_EXT_THROUGH, 3_786.0),
+        (EB_EXT_LEFT, 1_798.0),
+        (WB_EXT_THROUGH, 3_310.0),
+        (WB_EXT_LEFT, 1_733.0),
+        (NB_RAMP_LEFT, 1_674.0),
+        (NB_RAMP_RIGHT, 1_658.0),
+        (SB_RAMP_LEFT, 1_701.0),
+        (SB_RAMP_RIGHT, 1_617.0),
+    ] {
+        assert_near!(group(&ix, mv).sat_flow.unwrap(), s_pub, 5.0, format!("s {mv:?}"));
+    }
+
+    // Effective greens (Exhibit 34-24 for the four movements it covers,
+    // Exhibits 34-25 and 34-26 for the rest). Every approach carries the
+    // same 6 s total lost time, so g' is the displayed green minus 1 s,
+    // and every value is exact. The westbound external through is the
+    // case that needs the wrapping green window: 95 s of displayed green
+    // across the cycle boundary, not the 90 s the two windows of
+    // Exhibit 34-23 add up to.
+    for (mv, g_pub) in [
+        (EB_EXT_THROUGH, 89.0),
+        (EB_EXT_LEFT, 24.0),
+        (EB_INT_THROUGH_RIGHT, 64.0),
+        (WB_EXT_THROUGH, 94.0),
+        (WB_EXT_LEFT, 24.0),
+        (WB_INT_THROUGH_RIGHT, 59.0),
+        (NB_RAMP_LEFT, 34.0),
+        (NB_RAMP_RIGHT, 34.0),
+        (SB_RAMP_LEFT, 39.0),
+        (SB_RAMP_RIGHT, 39.0),
+    ] {
+        assert_near!(
+            group(&ix, mv).effective_green_s.unwrap(),
+            g_pub,
+            0.01,
+            format!("g {mv:?}")
+        );
+    }
+
+    // Exhibit 34-24: every DQ clears the 200 ft threshold on an 800 ft
+    // internal link, so no approach carries additional lost time due to a
+    // downstream queue, and neither internal approach is starved. The
+    // starvation term is zero here for a structural reason rather than an
+    // arithmetic one: a parclo A internal approach has no left turn, so
+    // every Intersection I phase feeds the eastbound link.
+    for mv in [EB_EXT_THROUGH, WB_EXT_THROUGH, NB_RAMP_LEFT, SB_RAMP_LEFT] {
+        assert_near!(
+            group(&ix, mv).downstream_queue_lost_time_s.unwrap(),
+            0.0,
+            1e-12,
+            format!("L_D {mv:?}")
+        );
+    }
+    for mv in [EB_INT_THROUGH_RIGHT, WB_INT_THROUGH_RIGHT] {
+        assert_near!(
+            group(&ix, mv).demand_starvation_lost_time_s.unwrap(),
+            0.0,
+            1e-12,
+            format!("L_DS {mv:?}")
+        );
+    }
+
+    // Capacities, v/c ratios, upstream filtering factors, and control
+    // delays (Exhibits 34-25 through 34-28). The Equation 19-6 filtering
+    // factors on the internal groups are the first check of the composed
+    // reading on a shared through-and-right: 0.90 eastbound off X_u = 0.44
+    // and 0.81 westbound off X_u = 0.56, both published.
+    // The v/c tolerance is ±0.01 rather than the ±0.005 Example Problem 3
+    // gets, because the four ramp groups carry a capacity 1 to 2 veh/h
+    // below the published one (the exhibits round f_HVg and f_v to three
+    // decimals on a single-lane group, where that rounding is worth 0.2%
+    // of the saturation flow) and that is enough to move the second
+    // decimal of X. The capacities those ratios come from are asserted
+    // against the published values on the same row.
+    for (mv, c_pub, x_pub, i_pub, d_pub) in [
+        (EB_EXT_THROUGH, 2_407.0, 0.44, 1.00, 13.5),
+        (EB_EXT_LEFT, 308.0, 1.02, 1.00, 115.7),
+        (WB_EXT_THROUGH, 2_222.0, 0.56, 1.00, 13.2),
+        (WB_EXT_LEFT, 297.0, 0.58, 1.00, 61.6),
+        (NB_RAMP_LEFT, 407.0, 0.56, 1.00, 52.1),
+        (NB_RAMP_RIGHT, 403.0, 0.65, 1.00, 55.7),
+        (SB_RAMP_LEFT, 474.0, 0.61, 1.00, 49.7),
+        (SB_RAMP_RIGHT, 450.0, 0.28, 1.00, 41.1),
+    ] {
+        let r = group(&ix, mv);
+        assert_near!(r.capacity.unwrap(), c_pub, 2.0, format!("c {mv:?}"));
+        assert_near!(r.vc_ratio.unwrap(), x_pub, 0.01, format!("X {mv:?}"));
+        assert_near!(r.upstream_filtering.unwrap(), i_pub, 0.005, format!("I {mv:?}"));
+        assert_near!(
+            r.control_delay_s.unwrap(),
+            d_pub,
+            0.15,
+            format!("d {mv:?}")
+        );
+    }
+    for mv in [EB_INT_THROUGH_RIGHT, WB_INT_THROUGH_RIGHT] {
+        assert_near!(
+            group(&ix, mv).upstream_filtering.unwrap(),
+            if mv == EB_INT_THROUGH_RIGHT { 0.90 } else { 0.81 },
+            0.005,
+            format!("I {mv:?}")
+        );
+    }
+
+    // Exhibit 34-25: the eastbound external left is the movement that
+    // fails, at v/c 1.02 and a queue 1.96 times its 200 ft bay.
+    assert!(group(&ix, EB_EXT_LEFT).vc_ratio.unwrap() > 1.0, "EB EXT-L v/c");
+    assert_near!(
+        group(&ix, EB_EXT_LEFT).queue_storage_ratio.unwrap(),
+        1.96,
+        0.01,
+        "EB EXT-L R_Q"
+    );
+}
+
+/// Chapter 34, Example Problem 2: Exhibit 34-22 gives the two internal
+/// shared through-and-right groups a lane utilization factor of 1.000,
+/// where the engine applies the Chapter 19 Exhibit 19-15 default of 0.908
+/// for a three-lane through group. This test pins both readings and the
+/// evidence for choosing the default.
+///
+/// Chapter 23 Step 3 sends every approach that is not an external arterial
+/// approach to "the procedures of Chapter 19", and Example Problems 1, 3,
+/// and 4 all print the Chapter 19 default in their own f_LU column
+/// (Exhibit 34-34 prints 0.908 for exactly this three-lane internal
+/// through group). Example Problem 2 is the only one that prints 1.000, so
+/// the text and three worked examples outvote one column, the same grounds
+/// on which the Equation 19-26 d2 convention was settled.
+///
+/// The measurement, held here so a later reader does not have to redo it:
+/// overriding f_LU to the published 1.000 reproduces the published
+/// saturation flows to within 4 veh/h, which shows the factor is the whole
+/// of that gap, but it does not improve the published O-D table. Mean
+/// absolute error against the ten Exhibit 34-29 ETTs is 0.26 s/veh at
+/// 0.908 and 0.63 s/veh at 1.000, because O-Ds A, H, and J each move about
+/// 1.7 s/veh away from their published values. Exhibit 34-22 is therefore
+/// inconsistent with Exhibits 34-27 through 34-29 of its own example.
+#[test]
+fn test_ep2_parclo_a2q_internal_lane_utilization_defect() {
+    use movements::*;
+    let mut ix = load_case("case6.json");
+    ix.analyze();
+
+    for (mv, f_lu_engine, s_engine, s_published) in [
+        (EB_INT_THROUGH_RIGHT, 0.908, 4_766.5, 5_253.0),
+        (WB_INT_THROUGH_RIGHT, 0.908, 4_784.1, 5_271.0),
+    ] {
+        let r = group(&ix, mv);
+        assert_near!(
+            r.lane_utilization.unwrap(),
+            f_lu_engine,
+            1e-9,
+            format!("f_LU {mv:?}")
+        );
+        assert_near!(r.sat_flow.unwrap(), s_engine, 0.5, format!("s {mv:?}"));
+        // The published value is the engine value divided by the Chapter 19
+        // default, to within the exhibit's own three-decimal rounding.
+        assert_near!(
+            r.sat_flow.unwrap() / f_lu_engine,
+            s_published,
+            4.0,
+            format!("s {mv:?} at the published f_LU")
+        );
+    }
+
+    // Control delays, engine against published (Exhibit 34-27).
+    assert_near!(
+        group(&ix, EB_INT_THROUGH_RIGHT).control_delay_s.unwrap(),
+        21.03, // published 20.3
+        0.05,
+        "EB INT-TH&R d"
+    );
+    assert_near!(
+        group(&ix, WB_INT_THROUGH_RIGHT).control_delay_s.unwrap(),
+        26.85, // published 26.8
+        0.05,
+        "WB INT-TH&R d"
+    );
+}
+
+/// Chapter 34, Example Problem 2 (Parclo A-2Q): O-D results against
+/// Exhibit 34-29.
+///
+/// This is the routing check for the family. Every O-D of a parclo A-2Q
+/// takes a different turn from its diamond counterpart at one terminal or
+/// the other, and the published delay column decomposes cleanly into the
+/// Exhibits 34-27 and 34-28 movement delays, which is what fixes the
+/// routing: O-D E is the external through plus the internal
+/// through-and-right (13.5 + 20.3 = 33.8), where a diamond would send it
+/// through an internal left; O-D F is the external left alone (115.7),
+/// where a diamond would share it with the external through; and O-D A is
+/// the ramp left plus the opposite internal through-and-right
+/// (52.1 + 26.8 = 78.9).
+#[test]
+fn test_ep2_parclo_a2q_od_results() {
+    use LevelOfService as L;
+    use OdMovement::*;
+    let mut ix = load_case("case6.json");
+    ix.analyze();
+
+    // (O-D, PHF-adjusted demand, published ETT, published LOS, v/c flag).
+    // Column 3 is asserted at ±0.8 s/veh. What is left is the internal
+    // lane utilization defect above, which reaches the six O-Ds that use an
+    // internal through-and-right, plus a uniform 0.05 s/veh on every
+    // diverted O-D from Equation 23-50's printed 1.47 conversion.
+    let expected = [
+        (A, 229.0, 99.5, L::E, false),
+        (B, 263.0, 40.1, L::C, false),
+        (C, 126.0, 25.5, L::B, false),
+        (D, 289.0, 90.6, L::E, false),
+        (E, 198.0, 71.5, L::D, false),
+        (F, 316.0, 136.3, L::F, true),
+        (G, 174.0, 82.2, L::D, false),
+        (H, 368.0, 77.7, L::D, false),
+        (I, 868.0, 33.8, L::C, false),
+        (J, 881.0, 40.0, L::C, false),
+    ];
+    for (m, demand, ett, los, flagged) in expected {
+        let r = od(&ix, m);
+        assert_near!(r.demand, demand, 1.0, format!("demand {m:?}"));
+        assert_near!(r.ett_s, ett, 0.8, format!("ETT {m:?}"));
+        assert_eq!(r.los, los, "LOS {m:?} (ETT {})", r.ett_s);
+        assert_eq!(r.vc_exceeds_one, flagged, "{m:?} v/c flag");
+        assert_eq!(r.rq_exceeds_one, flagged, "{m:?} R_Q flag");
+    }
+
+    // Interchange ETT 61.5 s/veh against the published 61.3 (Exhibit 34-29
+    // totals row), LOS D as published.
+    assert_near!(ix.interchange_ett_s.unwrap(), 61.3, 0.5, "interchange ETT");
+    assert_eq!(ix.interchange_los.unwrap(), L::D, "interchange LOS");
+}
+
 /// Chapter 34, Example Problem 3 (diamond with queue spillback):
 /// lane-group intermediates against Exhibits 34-34 / 34-35 / 34-37 /
 /// 34-39 / 34-41 / 34-42.
 #[test]
 fn test_ep3_diamond_spillback_lane_groups() {
-    use InterchangeMovement::*;
+    use movements::*;
     let mut ix = load_case("case3.json");
     ix.analyze();
 
@@ -524,16 +769,16 @@ fn test_ep3_diamond_spillback_lane_groups() {
     // ±6 veh/h (±0.4%): the ramp groups carry the published f_HVg of
     // 0.990 rounded to three decimals.
     for (mv, s_pub) in [
-        (EbExtThrough, 3_400.0),
-        (EbIntThrough, 4_807.0),
-        (EbIntLeft, 1_676.0),
-        (WbExtThrough, 4_021.0),
-        (WbIntThrough, 4_822.0),
-        (WbIntLeft, 1_764.0),
-        (NbRampLeft, 1_628.0),
-        (NbRampRight, 1_703.0),
-        (SbRampLeft, 1_600.0),
-        (SbRampRight, 1_606.0),
+        (EB_EXT_THROUGH, 3_400.0),
+        (EB_INT_THROUGH, 4_807.0),
+        (EB_INT_LEFT, 1_676.0),
+        (WB_EXT_THROUGH, 4_021.0),
+        (WB_INT_THROUGH, 4_822.0),
+        (WB_INT_LEFT, 1_764.0),
+        (NB_RAMP_LEFT, 1_628.0),
+        (NB_RAMP_RIGHT, 1_703.0),
+        (SB_RAMP_LEFT, 1_600.0),
+        (SB_RAMP_RIGHT, 1_606.0),
     ] {
         assert_near!(group(&ix, mv).sat_flow.unwrap(), s_pub, 6.0, format!("s {mv:?}"));
     }
@@ -543,12 +788,12 @@ fn test_ep3_diamond_spillback_lane_groups() {
     // queue and the 5.5 s lost time are the headline numbers of this
     // example problem.
     assert_near!(
-        group(&ix, SbRampLeft).downstream_queue_lost_time_s.unwrap(),
+        group(&ix, SB_RAMP_LEFT).downstream_queue_lost_time_s.unwrap(),
         5.5,
         0.05,
         "SB-L L_D"
     );
-    for mv in [EbExtThrough, WbExtThrough, NbRampLeft] {
+    for mv in [EB_EXT_THROUGH, WB_EXT_THROUGH, NB_RAMP_LEFT] {
         assert_near!(
             group(&ix, mv).downstream_queue_lost_time_s.unwrap(),
             0.0,
@@ -558,7 +803,7 @@ fn test_ep3_diamond_spillback_lane_groups() {
     }
     // Exhibit 34-38: neither internal through movement is starved, so
     // both keep their full displayed green plus the change interval.
-    for mv in [EbIntThrough, WbIntThrough] {
+    for mv in [EB_INT_THROUGH, WB_INT_THROUGH] {
         assert_near!(
             group(&ix, mv).demand_starvation_lost_time_s.unwrap(),
             0.0,
@@ -571,16 +816,16 @@ fn test_ep3_diamond_spillback_lane_groups() {
     // (Exhibits 34-39 / 34-40), with the Exhibit 34-39 v/c ratios and the
     // Equation 19-6 upstream filtering factors.
     for (mv, g_pub, c_pub, x_pub, i_pub) in [
-        (EbExtThrough, 59.0, 1_672.0, 1.23, 1.00),
-        (EbIntThrough, 71.0, 2_844.0, 0.29, 0.09),
-        (EbIntLeft, 27.0, 377.0, 0.18, 0.09),
-        (WbExtThrough, 39.0, 1_307.0, 0.80, 1.00),
-        (WbIntThrough, 83.0, 3_336.0, 0.27, 0.49),
-        (WbIntLeft, 19.0, 279.0, 1.09, 0.49),
-        (NbRampLeft, 39.0, 529.0, 0.26, 1.00),
-        (NbRampRight, 39.0, 553.0, 0.86, 1.00),
-        (SbRampLeft, 21.5, 287.0, 0.20, 1.00),
-        (SbRampRight, 27.0, 362.0, 0.30, 1.00),
+        (EB_EXT_THROUGH, 59.0, 1_672.0, 1.23, 1.00),
+        (EB_INT_THROUGH, 71.0, 2_844.0, 0.29, 0.09),
+        (EB_INT_LEFT, 27.0, 377.0, 0.18, 0.09),
+        (WB_EXT_THROUGH, 39.0, 1_307.0, 0.80, 1.00),
+        (WB_INT_THROUGH, 83.0, 3_336.0, 0.27, 0.49),
+        (WB_INT_LEFT, 19.0, 279.0, 1.09, 0.49),
+        (NB_RAMP_LEFT, 39.0, 529.0, 0.26, 1.00),
+        (NB_RAMP_RIGHT, 39.0, 553.0, 0.86, 1.00),
+        (SB_RAMP_LEFT, 21.5, 287.0, 0.20, 1.00),
+        (SB_RAMP_RIGHT, 27.0, 362.0, 0.30, 1.00),
     ] {
         let r = group(&ix, mv);
         // ±0.01 s: every green but the SB off-ramp left is exact, and
@@ -594,16 +839,16 @@ fn test_ep3_diamond_spillback_lane_groups() {
 
     // Uniform delays, Exhibits 34-41 and 34-42 (±0.15 s/veh).
     for (mv, d1_pub) in [
-        (EbExtThrough, 30.5),
-        (EbIntThrough, 5.8),
-        (EbIntLeft, 37.5),
-        (WbExtThrough, 37.0),
-        (WbIntThrough, 1.5),
-        (WbIntLeft, 50.5),
-        (NbRampLeft, 29.9),
-        (NbRampRight, 37.9),
-        (SbRampLeft, 41.9),
-        (SbRampRight, 38.6),
+        (EB_EXT_THROUGH, 30.5),
+        (EB_INT_THROUGH, 5.8),
+        (EB_INT_LEFT, 37.5),
+        (WB_EXT_THROUGH, 37.0),
+        (WB_INT_THROUGH, 1.5),
+        (WB_INT_LEFT, 50.5),
+        (NB_RAMP_LEFT, 29.9),
+        (NB_RAMP_RIGHT, 37.9),
+        (SB_RAMP_LEFT, 41.9),
+        (SB_RAMP_RIGHT, 38.6),
     ] {
         assert_near!(
             group(&ix, mv).uniform_delay_s.unwrap(),
@@ -618,14 +863,14 @@ fn test_ep3_diamond_spillback_lane_groups() {
     // `test_ep3_diamond_spillback_od_results` with the d2 convention
     // note).
     for (mv, d_pub) in [
-        (EbIntThrough, 5.8),
-        (EbIntLeft, 37.6),
-        (WbIntThrough, 1.6),
-        (WbIntLeft, 114.6),
-        (NbRampLeft, 31.1),
-        (NbRampRight, 53.6),
-        (SbRampLeft, 43.5),
-        (SbRampRight, 40.7),
+        (EB_INT_THROUGH, 5.8),
+        (EB_INT_LEFT, 37.6),
+        (WB_INT_THROUGH, 1.6),
+        (WB_INT_LEFT, 114.6),
+        (NB_RAMP_LEFT, 31.1),
+        (NB_RAMP_RIGHT, 53.6),
+        (SB_RAMP_LEFT, 43.5),
+        (SB_RAMP_RIGHT, 40.7),
     ] {
         assert_near!(
             group(&ix, mv).control_delay_s.unwrap(),
@@ -638,12 +883,12 @@ fn test_ep3_diamond_spillback_lane_groups() {
     // Queue storage ratio, Exhibit 34-39: the WB internal left spills
     // back out of its 200 ft bay (R_Q = 1.65).
     assert_near!(
-        group(&ix, WbIntLeft).queue_storage_ratio.unwrap(),
+        group(&ix, WB_INT_LEFT).queue_storage_ratio.unwrap(),
         1.65,
         0.01,
         "WB INT-L R_Q"
     );
-    assert!(group(&ix, EbExtThrough).queue_storage_ratio.unwrap() > 1.0, "EB EXT R_Q > 1");
+    assert!(group(&ix, EB_EXT_THROUGH).queue_storage_ratio.unwrap() > 1.0, "EB EXT R_Q > 1");
 }
 
 /// Chapter 34, Example Problem 3 (diamond with queue spillback): O-D
@@ -656,24 +901,37 @@ fn test_ep3_diamond_spillback_od_results() {
     let mut ix = load_case("case3.json");
     ix.analyze();
 
-    // GAP 1 — no external right-turn lane group. Exhibits 34-34 / 34-39 /
-    // 34-41 analyze exclusive EB and WB external right-turn lanes
-    // (s = 1,675 / 1,614 veh/h, c = 824 / 524 veh/h, X = 0.38 / 0.13,
-    // d = 20.3 / 29.1 s/veh) that the engine cannot represent:
-    // `InterchangeMovement`
-    // (src/hcm/ramp_terminals/ramp_terminals.rs:879-900) has no
-    // `EbExtRight` / `WbExtRight` variant, and all ten of its variants
-    // are needed by the rest of this interchange. With
-    // `eb/wb_external_right_shared = false` the right-turn O-Ds are
-    // removed from the external through group demand, which is what the
-    // published example does, but `Interchange::od_path`
-    // (src/hcm/ramp_terminals/ramp_terminals.rs:2024-2037) then returns
-    // an empty path for O-D F and O-D G and Step 9
-    // (src/hcm/ramp_terminals/ramp_terminals.rs:2088-2089) scores them as
-    // free-flowing. Published Exhibit 34-43: F = 19.1 s/veh LOS B and
-    // G = 27.9 s/veh LOS B.
-    assert_near!(od(&ix, F).ett_s, -1.2, 0.05, "O-D F ETT (gap: published 19.1)");
-    assert_near!(od(&ix, G).ett_s, -1.2, 0.05, "O-D G ETT (gap: published 27.9)");
+    // The exclusive external right-turn lane groups of Exhibits 34-34 /
+    // 34-39 / 34-41, which the diamond skeleton had no composition for and
+    // which used to leave O-Ds F and G scored as free-flowing at -1.2
+    // s/veh. Published against engine: s 1,675 / 1,674.998 and 1,614 /
+    // 1,613.69, c 824 / 823.54 and 524 / 524.45, X 0.38 / 0.3755 and
+    // 0.13 / 0.1337, d 20.3 / 20.32 and 29.1 / 29.11 s/veh, R_Q 0.23 /
+    // 0.2274 and 0.06 / 0.0617.
+    for (mv, s_pub, c_pub, x_pub, d_pub, rq_pub) in [
+        (movements::EB_EXT_RIGHT, 1_675.0, 824.0, 0.38, 20.3, 0.23),
+        (movements::WB_EXT_RIGHT, 1_614.0, 524.0, 0.13, 29.1, 0.06),
+    ] {
+        let r = group(&ix, mv);
+        assert_near!(r.sat_flow.unwrap(), s_pub, 1.0, format!("s {mv:?}"));
+        assert_near!(r.capacity.unwrap(), c_pub, 1.0, format!("c {mv:?}"));
+        assert_near!(r.vc_ratio.unwrap(), x_pub, 0.005, format!("X {mv:?}"));
+        assert_near!(r.control_delay_s.unwrap(), d_pub, 0.05, format!("d {mv:?}"));
+        assert_near!(
+            r.queue_storage_ratio.unwrap(),
+            rq_pub,
+            0.005,
+            format!("R_Q {mv:?}")
+        );
+    }
+
+    // Exhibit 34-43 O-Ds F and G, now scored through those lane groups
+    // rather than as free-flowing: published 19.1 and 27.9 s/veh, both
+    // LOS B.
+    assert_near!(od(&ix, F).ett_s, 19.1, 0.1, "O-D F ETT");
+    assert_eq!(od(&ix, F).los, L::B, "O-D F LOS");
+    assert_near!(od(&ix, G).ett_s, 27.9, 0.1, "O-D G ETT");
+    assert_eq!(od(&ix, G).los, L::B, "O-D G LOS");
 
     // The remaining eight O-Ds. Column 1: equation-based expectation
     // (asserted); column 2 in the comment: published Exhibit 34-43 value.
@@ -710,10 +968,11 @@ fn test_ep3_diamond_spillback_od_results() {
         assert!(!od(&ix, m).rq_exceeds_one, "{m:?} R_Q flag");
     }
 
-    // Interchange ETT 108.3 s/veh against the published 110.3 (Exhibit 34-43
-    // totals row); what remains is the zeroed F / G contributions from the
-    // missing external right-turn lane group.
-    assert_near!(ix.interchange_ett_s.unwrap(), 108.3, 0.5, "interchange ETT");
+    // Interchange ETT 110.24 s/veh against the published 110.3 (Exhibit
+    // 34-43 totals row). It was 108.3 while O-Ds F and G were scored as
+    // free-flowing; the 1.9 s/veh those two were costing the aggregate is
+    // the demand-weighted share of their published delays.
+    assert_near!(ix.interchange_ett_s.unwrap(), 110.3, 0.1, "interchange ETT");
 
     // Interchange LOS E, matching the published letter. Exhibit 23-10 applies
     // the v/c and R_Q flags to an individual O-D, so O-Ds E, H, and I are F
@@ -729,7 +988,7 @@ fn test_ep3_diamond_spillback_od_results() {
 /// 34-51 / 34-53 / 34-55 / 34-56.
 #[test]
 fn test_ep4_diamond_demand_starvation_lane_groups() {
-    use InterchangeMovement::*;
+    use movements::*;
     let mut ix = load_case("case4.json");
     ix.analyze();
 
@@ -737,30 +996,30 @@ fn test_ep4_diamond_demand_starvation_lane_groups() {
     // Equation 23-17 with the Exhibit 23-24 three-lane diamond
     // coefficients reproduces the published %V_L1 (0.3879 EB, 0.4032 WB)
     // and hence f_LU exactly, so this example needs no override.
-    assert_near!(group(&ix, EbExtThrough).lane_utilization.unwrap(), 0.8593, 0.001, "f_LU EB");
-    assert_near!(group(&ix, WbExtThrough).lane_utilization.unwrap(), 0.8266, 0.001, "f_LU WB");
+    assert_near!(group(&ix, EB_EXT_THROUGH).lane_utilization.unwrap(), 0.8593, 0.001, "f_LU EB");
+    assert_near!(group(&ix, WB_EXT_THROUGH).lane_utilization.unwrap(), 0.8266, 0.001, "f_LU WB");
 
     // Adjusted saturation flows, Exhibits 34-48 and 34-49 (±5 veh/h; the
     // ramp groups carry the published f_HVg of 0.990 rounded to three
     // decimals).
     for (mv, s_pub) in [
-        (EbExtThrough, 4_597.0),
-        (EbIntThrough, 4_834.0),
-        (EbIntLeft, 1_714.0),
-        (WbExtThrough, 4_428.0),
-        (WbIntThrough, 4_799.0),
-        (WbIntLeft, 1_741.0),
-        (NbRampLeft, 1_617.0),
-        (NbRampRight, 1_625.0),
-        (SbRampLeft, 1_635.0),
-        (SbRampRight, 1_606.0),
+        (EB_EXT_THROUGH, 4_597.0),
+        (EB_INT_THROUGH, 4_834.0),
+        (EB_INT_LEFT, 1_714.0),
+        (WB_EXT_THROUGH, 4_428.0),
+        (WB_INT_THROUGH, 4_799.0),
+        (WB_INT_LEFT, 1_741.0),
+        (NB_RAMP_LEFT, 1_617.0),
+        (NB_RAMP_RIGHT, 1_625.0),
+        (SB_RAMP_LEFT, 1_635.0),
+        (SB_RAMP_RIGHT, 1_606.0),
     ] {
         assert_near!(group(&ix, mv).sat_flow.unwrap(), s_pub, 5.0, format!("s {mv:?}"));
     }
 
     // Exhibit 34-51: no approach loses time to a downstream queue (both
     // DQ values clear the 200 ft threshold at 369 and 360 ft).
-    for mv in [EbExtThrough, WbExtThrough, NbRampLeft, SbRampLeft] {
+    for mv in [EB_EXT_THROUGH, WB_EXT_THROUGH, NB_RAMP_LEFT, SB_RAMP_LEFT] {
         assert_near!(
             group(&ix, mv).downstream_queue_lost_time_s.unwrap(),
             0.0,
@@ -772,13 +1031,13 @@ fn test_ep4_diamond_demand_starvation_lane_groups() {
     // Exhibit 34-52: both internal through movements are starved. These
     // are the headline numbers of this example problem.
     assert_near!(
-        group(&ix, EbIntThrough).demand_starvation_lost_time_s.unwrap(),
+        group(&ix, EB_INT_THROUGH).demand_starvation_lost_time_s.unwrap(),
         14.7,
         0.05,
         "EB INT-TH L_DS"
     );
     assert_near!(
-        group(&ix, WbIntThrough).demand_starvation_lost_time_s.unwrap(),
+        group(&ix, WB_INT_THROUGH).demand_starvation_lost_time_s.unwrap(),
         18.6,
         0.05,
         "WB INT-TH L_DS"
@@ -786,16 +1045,16 @@ fn test_ep4_diamond_demand_starvation_lane_groups() {
 
     // Effective greens, Exhibits 34-51 / 34-52 / 34-53.
     for (mv, g_pub) in [
-        (EbExtThrough, 25.0),
-        (EbIntThrough, 45.3),
-        (EbIntLeft, 25.0),
-        (WbExtThrough, 30.0),
-        (WbIntThrough, 41.4),
-        (WbIntLeft, 30.0),
-        (NbRampLeft, 30.0),
-        (NbRampRight, 30.0),
-        (SbRampLeft, 30.0),
-        (SbRampRight, 30.0),
+        (EB_EXT_THROUGH, 25.0),
+        (EB_INT_THROUGH, 45.3),
+        (EB_INT_LEFT, 25.0),
+        (WB_EXT_THROUGH, 30.0),
+        (WB_INT_THROUGH, 41.4),
+        (WB_INT_LEFT, 30.0),
+        (NB_RAMP_LEFT, 30.0),
+        (NB_RAMP_RIGHT, 30.0),
+        (SB_RAMP_LEFT, 30.0),
+        (SB_RAMP_RIGHT, 30.0),
     ] {
         assert_near!(
             group(&ix, mv).effective_green_s.unwrap(),
@@ -810,14 +1069,14 @@ fn test_ep4_diamond_demand_starvation_lane_groups() {
     // approaches are handled in
     // `test_ep4_diamond_demand_starvation_external_capacity_defect`.
     for (mv, d_pub) in [
-        (EbIntThrough, 13.5),
-        (EbIntLeft, 32.3),
-        (WbIntThrough, 16.0),
-        (WbIntLeft, 30.1),
-        (NbRampLeft, 28.0),
-        (NbRampRight, 31.2),
-        (SbRampLeft, 30.1),
-        (SbRampRight, 27.8),
+        (EB_INT_THROUGH, 13.5),
+        (EB_INT_LEFT, 32.3),
+        (WB_INT_THROUGH, 16.0),
+        (WB_INT_LEFT, 30.1),
+        (NB_RAMP_LEFT, 28.0),
+        (NB_RAMP_RIGHT, 31.2),
+        (SB_RAMP_LEFT, 30.1),
+        (SB_RAMP_RIGHT, 27.8),
     ] {
         assert_near!(
             group(&ix, mv).control_delay_s.unwrap(),
@@ -881,13 +1140,13 @@ fn test_ep4_demand_starvation_intermediates() {
 /// external approach.
 #[test]
 fn test_ep4_diamond_demand_starvation_external_capacity_defect() {
-    use InterchangeMovement::*;
+    use movements::*;
     let mut ix = load_case("case4.json");
     ix.analyze();
 
     for (mv, s_pub, g_pub, c_equation, c_published, x_equation) in [
-        (EbExtThrough, 4_597.0, 25.0, 1_149.3, 1_198.0, 1.085),
-        (WbExtThrough, 4_428.0, 30.0, 1_328.4, 1_383.0, 0.982),
+        (EB_EXT_THROUGH, 4_597.0, 25.0, 1_149.3, 1_198.0, 1.085),
+        (WB_EXT_THROUGH, 4_428.0, 30.0, 1_328.4, 1_383.0, 0.982),
     ] {
         let r = group(&ix, mv);
         assert_near!(r.capacity.unwrap(), c_equation, 1.0, format!("c {mv:?}"));
@@ -976,7 +1235,7 @@ fn test_ep4_diamond_demand_starvation_od_results() {
 /// Equation 23-48.
 #[test]
 fn test_ep6_ddi_yield_control_capacity() {
-    use InterchangeMovement::*;
+    use movements::*;
     let mut ix = load_case("case5.json");
     ix.analyze();
 
@@ -984,10 +1243,10 @@ fn test_ep6_ddi_yield_control_capacity() {
     // conversion (the example states Steps 1 through 5 are unchanged), so
     // they still carry the Example Problem 5 saturation flows.
     for (mv, s_pub, tol) in [
-        (EbExtThrough, 3_563.0, 55.0),
-        (WbExtThrough, 2_045.0, 5.0),
-        (EbIntThrough, 3_229.0, 5.0),
-        (WbIntThrough, 3_156.0, 5.0),
+        (EB_EXT_THROUGH, 3_563.0, 55.0),
+        (WB_EXT_THROUGH, 2_045.0, 5.0),
+        (EB_INT_THROUGH, 3_229.0, 5.0),
+        (WB_INT_THROUGH, 3_156.0, 5.0),
     ] {
         assert_near!(group(&ix, mv).sat_flow.unwrap(), s_pub, tol, format!("s {mv:?}"));
     }
@@ -1001,10 +1260,10 @@ fn test_ep6_ddi_yield_control_capacity() {
     // acceptance regime (Equations 23-42 / 23-43), and the Exhibit 34-69
     // no-opposing-flow regime (Equations 23-44 / 23-45).
     for (mv, v_pub, x_pub) in [
-        (SbRampLeft, 300.0, 0.38),   // M7
-        (SbRampRight, 200.0, 0.16),  // M8
-        (NbRampLeft, 350.0, 0.35),   // M3
-        (NbRampRight, 200.0, 0.19),  // M4
+        (SB_RAMP_LEFT, 300.0, 0.38),   // M7
+        (SB_RAMP_RIGHT, 200.0, 0.16),  // M8
+        (NB_RAMP_LEFT, 350.0, 0.35),   // M3
+        (NB_RAMP_RIGHT, 200.0, 0.19),  // M4
     ] {
         let r = group(&ix, mv);
         assert_near!(r.flow_rate, v_pub, 0.5, format!("v {mv:?}"));
@@ -1025,7 +1284,7 @@ fn test_ep6_ddi_yield_control_capacity() {
     // capacity is carried by the no-opposing-flow regime alone. Exhibit
     // 34-69 publishes c_NOF = 1,385 veh/h over C − g = 50 s of the 70-s
     // cycle, so 1,385 x 50/70 = 989 veh/h.
-    assert_near!(group(&ix, NbRampLeft).capacity.unwrap(), 989.0, 7.0, "M3 c_YCT");
+    assert_near!(group(&ix, NB_RAMP_LEFT).capacity.unwrap(), 989.0, 7.0, "M3 c_YCT");
 }
 
 /// Chapter 34, Example Problem 6: the Exhibit 34-70 control delays are not
@@ -1043,7 +1302,7 @@ fn test_ep6_ddi_yield_control_capacity() {
 /// Exhibit 34-70 disagree with each other. The engine follows the equation.
 #[test]
 fn test_ep6_ddi_yield_control_delay_defect() {
-    use InterchangeMovement::*;
+    use movements::*;
     let mut ix = load_case("case5.json");
     ix.analyze();
 
@@ -1063,10 +1322,10 @@ fn test_ep6_ddi_yield_control_delay_defect() {
     };
 
     for (mv, v, d_published, d_engine) in [
-        (SbRampLeft, 300.0, 34.7, 9.11),   // M7
-        (SbRampRight, 200.0, 13.4, 4.28),  // M8
-        (NbRampLeft, 350.0, 31.0, 7.32),   // M3
-        (NbRampRight, 200.0, 16.3, 5.24),  // M4
+        (SB_RAMP_LEFT, 300.0, 34.7, 9.11),   // M7
+        (SB_RAMP_RIGHT, 200.0, 13.4, 4.28),  // M8
+        (NB_RAMP_LEFT, 350.0, 31.0, 7.32),   // M3
+        (NB_RAMP_RIGHT, 200.0, 16.3, 5.24),  // M4
     ] {
         let r = group(&ix, mv);
         let cap = r.capacity.unwrap();
