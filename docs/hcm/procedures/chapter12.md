@@ -17,7 +17,7 @@ The full sequence is orchestrated by `BasicFreeways::run_operational_analysis()`
 | Step 4: demand adjustment | Eq 12-9 (`v_p = V/(PHF·N·f_HV)`), Eq 12-10 (`f_HV = 1/(1+P_T(E_T−1))`), Exhibit 12-25/12-26 PCE | `estimate_demand_volume`, private `adjustment_heavy_vehicle_factor` (uses `ET_TABLE_30SUT/50SUT/70SUT` from `src/hcm/common/pce_table.rs` keyed by SUT mix) | `basicfreeways.rs` | `demand_flow_i` (veh/h), `phf`, `lane_count`, `p_t` (decimal), terrain, grade (%), length (mi) | `v_p` pc/h/ln |
 | Step 5: speed-flow curve | Eq 12-1 with Exhibit 12-6 parameters (breakpoint `BP = [1000 + 40(75 − FFS_adj)]·CAF²` basic; BP = 1,400 constant multilane; exponent a = 2.0 basic / 1.31 multilane; density at capacity 45 pc/mi/ln) | `calculate_breakpoint`, `calculate_speed` | `basicfreeways.rs` | `v_p`, `ffs_adj`, `capacity_adj` | space mean speed S, mi/h (0.0 sentinel when demand > capacity) |
 | Step 5: density | Eq 12-11 (`D = v_p/S`) | `estimate_density` | `basicfreeways.rs` | `v_p` (pc/h/ln), S (mi/h) | pc/mi/ln (sentinel 46.0 when oversaturated) |
-| Step 6: LOS | Exhibit 12-15 | `determine_segment_los` (v/c check then delegates to `common::FacilityCalculation::los_from_density`) | `basicfreeways.rs` | density, v/c | `LevelOfService` A-F |
+| Step 6: LOS | Exhibit 12-15 | `determine_segment_los` (v/c check then `common::los_tables::los_basic_freeway`; no area-type split, unlike the Exhibit 10-6 facility table) | `basicfreeways.rs` | density, v/c | `LevelOfService` A-F |
 
 ### Equations (Steps 2-6)
 

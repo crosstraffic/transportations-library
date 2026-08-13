@@ -763,7 +763,14 @@ impl FacilityCalculation {
         facility_density
    }
 
-    /// Common method to determine Level of Service based on density
+    /// Determine FACILITY Level of Service from facility average density, Exhibit 10-6.
+    ///
+    /// Not a segment lookup. Segment LOS is Exhibit 12-15
+    /// ([`los_tables::los_basic_freeway`]), which has no urban/rural split, and routing a
+    /// segment through here silently applied the Exhibit 10-6 rural bands. The Exhibit 10-6
+    /// implementation is `freeway_facilities::exhibits::los_freeway_facility`, which also
+    /// carries the "any component segment over capacity forces F" rule that this method has
+    /// no way to see.
     pub fn los_from_density(&self, density: f64, vc_ratio: Option<f64>) -> LevelOfService {
         if self.city_types == CityType::Urban {
             return self.urban_los_from_density(density, vc_ratio);
