@@ -1,5 +1,5 @@
 //! Integration tests for HCM Chapter 14 (Freeway Merge and Diverge Segments)
-//! against the published results of HCM Chapter 28 Example Problems 1-5.
+//! against the published results of HCM Chapter 28 Example Problems 1-5, including the second (downstream) ramp of Example Problems 2 and 3.
 //!
 //! Tolerances: flows +-5 pc/h (published values are rounded to whole numbers
 //! and the book carries rounded intermediates); speeds +-0.5 mi/h; densities
@@ -94,6 +94,55 @@ fn example_problem_2_first_off_ramp_six_lane() {
     assert_approx(seg.get_speed_avg(), 56.0, 0.5, "S (mi/h)");
 }
 
+/// HCM Chapter 28, Example Problem 2 (second off-ramp): the downstream half of the same
+/// problem, 750 ft past the first off-ramp. Ramp FFS drops to 25 mi/h and the deceleration
+/// lane to 300 ft.
+///
+/// The example applies Equation 14-9, the isolated form, and says why: adjacent UPSTREAM
+/// off-ramps do not affect the lane distribution of arriving vehicles at a downstream
+/// off-ramp, so no L_EQ test is run at all. The engine reaches the same place from the other
+/// direction, since `calculate_pfd` only opens the Equation 14-10 branch for an upstream
+/// ON-ramp. That agreement is the point of asserting P_FD here.
+///
+/// Published: v_F = 5,093 - 340 = 4,753 pc/h, v_R = 566 pc/h, P_FD = 0.615,
+/// v_12 = 3,141 pc/h, D_R = 28.6 pc/mi/ln (LOS D), S_R = 49.0, S_O = 63.4, S = 53.1 mi/h.
+/// Exhibit 28-2 checks 4,400 pc/h against v_12 and 1,900 pc/h against the second ramp.
+///
+/// Because both ramps carry the same 7.5% truck stream, the approach volume converts
+/// cleanly: 4,200 veh/h at f_HV = 0.930 and PHF 0.95 gives 4,752.6 pc/h against the
+/// published 4,753. Example Problem 3 below is the case where that does not hold.
+#[test]
+fn example_problem_2_second_off_ramp_six_lane() {
+    let mut seg = load_case("case2b.json");
+    let los = seg.run_analysis();
+
+    assert_approx(seg.get_flow_freeway(), 4753.0, 2.0, "v_F at ramp 2 (pc/h)");
+    assert_approx(seg.get_flow_ramp(), 566.0, 2.0, "v_R2 (pc/h)");
+
+    // Step 2: Equation 14-9 despite the 750-ft upstream off-ramp.
+    assert_approx(seg.p_f.unwrap(), 0.615, 0.002, "P_FD");
+    assert_approx(seg.get_v12(), 3141.0, 5.0, "v_12 (pc/h)");
+
+    // Step 3 (Exhibit 28-2). Ramp capacity is 1,900 pc/h at a 25-mi/h ramp FFS, not the
+    // 2,000 pc/h of the 40-mi/h first ramp.
+    assert_approx(seg.get_capacity_freeway(), 6900.0, 1e-9, "freeway capacity (pc/h)");
+    assert_approx(seg.get_capacity_ramp(), 1900.0, 1e-9, "ramp capacity (pc/h)");
+    assert_eq!(seg.demand_exceeds_capacity, Some(false));
+    assert_eq!(seg.exceeds_max_desirable, Some(false));
+
+    // Step 4 (Equation 14-23, Exhibit 14-3). The first ramp is LOS C at 27.9; the two
+    // influence areas overlap and the book assigns the worse letter to the overlap.
+    assert_approx(seg.get_density(), 28.6, 0.5, "D_R (pc/mi/ln)");
+    assert_eq!(los, Some(LevelOfService::D));
+
+    // Step 5 (Exhibits 14-14/14-15). S_O exceeds the 60-mi/h freeway FFS and the book
+    // endorses that, so the FFS ceiling belongs only on the weighted all-lane speed.
+    assert_approx(seg.get_speed_ramp(), 49.0, 0.5, "S_R (mi/h)");
+    assert_approx(seg.get_speed_outer().unwrap(), 63.4, 0.5, "S_O (mi/h)");
+    assert_approx(seg.get_speed_avg(), 53.1, 0.5, "S (mi/h)");
+    assert!(seg.get_speed_avg() <= seg.freeway_ffs, "all-lane speed must not exceed FFS");
+}
+
 /// HCM Chapter 28, Example Problem 3 (first ramp): one-lane on-ramp on an
 /// eight-lane freeway (FFS = 65 mi/h, ramp FFS = 30 mi/h, L_A = 260 ft).
 /// The lane-distribution check fails and Equation 14-19 governs:
@@ -128,6 +177,64 @@ fn example_problem_3_on_ramp_eight_lane() {
     // Step 5 (Exhibit 14-13): S_R = 56.2, S_O = 59.9
     assert_approx(seg.get_speed_ramp(), 56.2, 0.5, "S_R (mi/h)");
     assert_approx(seg.get_speed_outer().unwrap(), 59.9, 0.5, "S_O (mi/h)");
+}
+
+/// HCM Chapter 28, Example Problem 3 (second ramp): the one-lane off-ramp 1,300 ft past the
+/// on-ramp, on the same eight-lane freeway. Off-ramp FFS 25 mi/h, L_D = 260 ft.
+///
+/// Ramps on eight-lane freeways are treated as isolated, so P_FD is the Exhibit 14-9
+/// constant 0.436 with no equation and no L_EQ test.
+///
+/// This test does NOT let the fixture convert its own approach volume, and the reason is
+/// worth stating because it is invisible in the output. The HCM builds the downstream
+/// segment's approach flow by ADDING the already-converted pc/h flows, v_F + v_R =
+/// 6,425 + 458 = 6,883 pc/h. The two streams have different truck percentages here (10% on
+/// the freeway, 5% on the on-ramp), so converting the summed 5,900 veh/h volume through the
+/// freeway's own f_HV = 0.909 instead gives 6,904 pc/h, 21 pc/h high. Both are defensible
+/// readings of the same segment; only the first reproduces the book. The fixture keeps the
+/// honest 5,900 veh/h volume and the test overrides the flow, asserting both values so the
+/// gap between them is pinned rather than silently absorbed by a tolerance.
+///
+/// Published: v_F = 6,883 pc/h, v_R = 702 pc/h, P_FD = 0.436, v_12 = 3,397 pc/h,
+/// D_R = 31.1 pc/mi/ln (LOS D), S_R = 50.7, S_O = 68.4, S = 58.3 mi/h. Exhibit 28-3 checks
+/// 9,400 / 1,900 / 4,400 pc/h.
+#[test]
+fn example_problem_3_second_off_ramp_eight_lane() {
+    let mut seg = load_case("case3b.json");
+    seg.determine_demand_flow();
+
+    // The fixture's own conversion, kept as a control on the paragraph above.
+    assert_approx(seg.get_flow_freeway(), 6904.0, 2.0, "v_F from the summed volume (pc/h)");
+    assert_approx(seg.get_flow_ramp(), 702.0, 2.0, "v_R2 (pc/h)");
+
+    seg.flow_freeway = Some(6883.0);
+
+    // Step 2: Exhibit 14-9 constant for eight-lane freeways.
+    seg.estimate_v12();
+    assert_approx(seg.p_f.unwrap(), 0.436, 1e-9, "P_FD");
+    assert_approx(seg.get_v12(), 3397.0, 5.0, "v_12 (pc/h)");
+    // The Equation 14-17 reasonableness check passes, so v_12 is accepted as computed:
+    // v_av34 = (6,883 - 3,397)/2 = 1,743 pc/h/ln, under both 2,700 and 1.5 x 1,699.
+    assert_approx(seg.v_oa.unwrap(), 1743.0, 3.0, "v_av34 (pc/h/ln)");
+
+    // Step 3 (Exhibit 28-3)
+    seg.determine_capacity();
+    assert_approx(seg.get_capacity_freeway(), 9400.0, 1e-9, "freeway capacity (pc/h)");
+    assert_approx(seg.get_capacity_ramp(), 1900.0, 1e-9, "ramp capacity (pc/h)");
+    assert_eq!(seg.demand_exceeds_capacity, Some(false));
+
+    // Step 4 (Equation 14-23, Exhibit 14-3). The on-ramp influence area is LOS C at 27.2 and
+    // the two overlap across the whole 1,300 ft, so LOS D governs the pair.
+    seg.determine_density();
+    let los = seg.determine_los();
+    assert_approx(seg.get_density(), 31.1, 0.5, "D_R (pc/mi/ln)");
+    assert_eq!(los, Some(LevelOfService::D));
+
+    // Step 5 (Exhibits 14-14/14-15)
+    seg.estimate_speed();
+    assert_approx(seg.get_speed_ramp(), 50.7, 0.5, "S_R (mi/h)");
+    assert_approx(seg.get_speed_outer().unwrap(), 68.4, 0.5, "S_O (mi/h)");
+    assert_approx(seg.get_speed_avg(), 58.3, 0.5, "S (mi/h)");
 }
 
 /// HCM Chapter 28, Example Problem 4: single-lane, left-hand on-ramp on a

@@ -1,8 +1,16 @@
 //! Integration tests for HCM Chapter 12 (Basic Freeway and Highway Segments),
 //! including the Chapter 26 supplemental example problems that extend it.
 //!
+//! Chapter 26 coverage: Example Problems 1-3 (operational and design, case1-3 fixtures),
+//! 4 (five-lane highway with a TWLTL), 6 (severe weather), and 7 (basic managed lane) are
+//! pinned at published values. Example Problem 5 is covered only in its PCE-comparison half;
+//! its mixed-flow half is blocked for the reason below.
+//!
 //! NOT COVERED: HCM Chapter 25, Example Problem 11 (Estimating Freeway
-//! Composite Grade Operations with the Mixed-Flow Model). The mixed-flow model
+//! Composite Grade Operations with the Mixed-Flow Model), and the mixed-flow half of
+//! Chapter 26, Example Problem 5 (Steps 2 through 8, Equations 26-1 through 26-16;
+//! published targets are mixed-flow capacity 1,725 veh/h/ln and mixed-flow density
+//! 32.6 veh/mi/ln). The mixed-flow model
 //! is not implemented anywhere in this library, so there is nothing to assert
 //! against. Every module that could reach it instead refuses the input or
 //! substitutes an approximation and says so:
@@ -496,4 +504,206 @@ fn test_ch26_ep7_managed_lane_case2_gp_friction() {
     assert!((ml.speed - 41.9).abs() < 0.1, "ML Case 2 speed {}", ml.speed);
     assert!((ml.density - 36.3).abs() < 0.1, "ML Case 2 density {}", ml.density);
     assert_eq!(los, LevelOfService::E, "ML Case 2 LOS");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Chapter 26, Example Problems 4-6
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// These live in tests/ExampleCases/hcm/Chapter26/ rather than alongside case1-3 in
+// BasicFreeways/ because `read_test_files` above walks that directory and the tests that
+// consume it index a three-element expectation vector by sort position. Dropping a fourth
+// file in there silently re-pairs every case with the wrong expected value.
+
+/// Load a Chapter 26 fixture by name. Unlike `read_test_files`, this is positional-free.
+fn load_ch26(name: &str) -> BasicFreeways {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/ExampleCases/hcm/Chapter26");
+    path.push(name);
+    let f = File::open(&path).unwrap_or_else(|_| panic!("Unable to open {path:?}"));
+    serde_json::from_reader(BufReader::new(f)).expect("Failed to parse fixture JSON")
+}
+
+fn assert_approx(actual: f64, expected: f64, tol: f64, label: &str) {
+    assert!(
+        (actual - expected).abs() <= tol,
+        "{label}: got {actual}, expected {expected} (+-{tol})"
+    );
+}
+
+/// The BasicFreeways fixture directory is a positional contract: `read_test_files` sorts it
+/// and the expectation vectors above are indexed by that order. A file added, removed, or
+/// renamed there shifts every pairing, and for a rename or removal it shifts them silently
+/// rather than panicking on a short vector. Pin the set so that failure is loud.
+#[test]
+fn basic_freeways_fixture_set_is_exactly_the_three_positional_cases() {
+    let names: Vec<String> = read_test_files()
+        .iter()
+        .map(|p| {
+            PathBuf::from(p)
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert_eq!(
+        vec!["case1.json", "case2.json", "case3.json"],
+        names,
+        "tests/ExampleCases/hcm/BasicFreeways/ is indexed by sort position; add new fixtures \
+         under tests/ExampleCases/hcm/Chapter26/ instead",
+    );
+}
+
+/// HCM Chapter 26, Example Problem 4: LOS on a five-lane highway with a two-way left-turn
+/// lane. A 6,600-ft (1.25 mi) segment of a four-lane multilane highway plus a TWLTL, on a
+/// 3.5% grade, analyzed separately in each direction. No base FFS is given, so the example
+/// takes BFFS = speed limit + 7 = 52 mi/h. Lane width (12 ft), total lateral clearance
+/// (6 + 6 = 12 ft, the TWLTL counting as a 6-ft median clearance) and median type are all
+/// base conditions, so only access-point density moves FFS.
+///
+/// Eastbound is the 3.5% downgrade with 10 access points/mi; westbound is the 3.5% upgrade
+/// with none. Published: FFS 49.5 / 52.0 mi/h, c 1,990 / 2,040 pc/h/ln, E_T 2.24 / 3.97,
+/// f_HV 0.93 / 0.85, v_p 896 / 980 pc/h/ln, both below the 1,400 pc/h/ln multilane
+/// breakpoint so S = FFS, D 18.1 / 18.8 pc/mi/ln, LOS C both directions.
+///
+/// The example gives no area type. It is set to Urban in both fixtures because Exhibit 12-15
+/// has a single density-to-LOS table for basic freeway and multilane segments with no
+/// urban/rural split, and Urban is the setting under which `determine_segment_los` reproduces
+/// those thresholds (see `rural_area_type_reads_the_facility_los_table` below).
+#[test]
+fn ch26_ep4_five_lane_highway_with_twltl() {
+    // (fixture, FFS, capacity, E_T, f_HV, v_p, density)
+    let cases = [
+        ("ep4_eastbound_downgrade.json", 49.5, 1990.0, 2.24, 0.93, 896.0, 18.1),
+        ("ep4_westbound_upgrade.json", 52.0, 2040.0, 3.97, 0.85, 980.0, 18.8),
+    ];
+
+    for (name, ffs, capacity, e_t, f_hv, v_p, density) in cases {
+        let mut seg = load_ch26(name);
+        let los = seg.run_operational_analysis().expect(name);
+
+        assert_approx(seg.ffs, ffs, 0.05, &format!("{name} FFS (mi/h)"));
+        assert_approx(seg.capacity, capacity, 0.5, &format!("{name} capacity (pc/h/ln)"));
+        assert_approx(seg.e_t.unwrap(), e_t, 1e-9, &format!("{name} E_T"));
+        // The example rounds f_HV to two decimals before dividing; the engine rounds to
+        // three, which is why v_p lands within about 1.5 pc/h/ln of the printed value
+        // rather than on it (WB: 1,500/(0.9 x 2 x 0.849) = 981.5 against the book's
+        // 1,500/(0.9 x 2 x 0.85) = 980.4).
+        assert_approx(seg.phv, f_hv, 0.005, &format!("{name} f_HV"));
+        assert_approx(seg.v_p, v_p, 2.0, &format!("{name} v_p (pc/h/ln)"));
+        // Below the multilane breakpoint, so Equation 12-1 returns FFS unchanged.
+        assert_approx(seg.breakpoint, 1400.0, 1e-9, &format!("{name} breakpoint"));
+        assert_approx(seg.speed, ffs, 0.05, &format!("{name} S (mi/h)"));
+        // Same rounding chain as v_p, so the density residual is about 0.08 pc/mi/ln.
+        assert_approx(seg.density, density, 0.1, &format!("{name} D (pc/mi/ln)"));
+        assert_eq!(LevelOfService::C, los, "{name} LOS");
+    }
+}
+
+/// HCM Chapter 26, Example Problem 5, the "Comparison with the PCE-Based Approach" half.
+///
+/// The mixed-flow half of this example (Steps 2 through 8, Equations 26-1 through 26-16) is
+/// NOT covered, for the reason given in the module header: the mixed-flow model is not
+/// implemented and its published solution reads truck travel-time rates off nomographs by
+/// eye. Published mixed-flow targets, so a future implementation has something to hit:
+/// mixed-flow capacity 1,725 veh/h/ln and mixed-flow density 32.6 veh/mi/ln.
+///
+/// The PCE comparison is expressible today and is worth pinning on its own, because it is
+/// the only published example that exercises grade interpolation between two tabulated rows
+/// (5% falls between the Exhibit 12-26 4.5% and 5.5% rows) together with the rule that the
+/// longest tabulated grade length applies to anything longer (the exhibit stops at 1 mi for
+/// these grades; the segment is 2 mi).
+///
+/// Published: E_T 3.31 by interpolation between 3.11 and 3.51, f_HV 0.743, v_p 2,019
+/// pc/h/ln, S 59.6 mi/h, D 33.9 pc/mi/ln, D_mix = D x f_HV = 25.2 veh/mi/ln. The example
+/// deliberately assigns no LOS letter, since D_mix is a mixed-flow density and the book says
+/// it cannot be used to derive one.
+#[test]
+fn ch26_ep5_pce_comparison_branch() {
+    let mut seg = load_ch26("ep5_pce_comparison.json");
+    seg.run_operational_analysis().expect("EP5 PCE comparison");
+
+    // Lane width, lateral clearance and ramp density are all set to base conditions because
+    // the example explicitly neglects those three adjustments, leaving FFS = BFFS = 65.
+    assert_approx(seg.ffs, 65.0, 1e-9, "FFS (mi/h)");
+    assert_approx(seg.capacity, 2350.0, 1e-9, "capacity (pc/h/ln)");
+    assert_approx(seg.e_t.unwrap(), 3.31, 1e-9, "E_T (5% grade, 2 mi, 15% trucks)");
+    assert_approx(seg.phv, 0.743, 0.001, "f_HV");
+    assert_approx(seg.v_p, 2019.0, 1.0, "v_p (pc/h/ln)");
+    assert_approx(seg.speed, 59.6, 0.05, "S (mi/h)");
+    assert_approx(seg.density, 33.9, 0.05, "D (pc/mi/ln)");
+    assert_approx(seg.density * seg.phv, 25.2, 0.05, "D_mix (veh/mi/ln)");
+}
+
+/// HCM Chapter 26, Example Problem 6: severe weather effects on a basic freeway segment.
+/// Same four-lane freeway as Example Problem 1 (BFFS 75.4, 11-ft lanes, 2-ft right-side
+/// clearance, 4 ramps/mi, FFS 60.8 mi/h) in rolling terrain under heavy snow, with the
+/// Exhibit 11-5 SAF of 0.86 and CAF of 0.78.
+///
+/// Published: FFS_adj = 60.8 x 0.86 = 52.3 mi/h, E_T 3.0 (Exhibit 12-25, rolling),
+/// f_HV 0.909, v_p 1,195 pc/h/ln, BP_adj 1,161 pc/h/ln, S 52.3 mi/h, D 22.8 pc/mi/ln,
+/// LOS C. The discussion also prints the unadjusted capacity, 2,308 pc/h/ln.
+///
+/// The adjusted capacity is the one value where this test does NOT assert what the seventh
+/// edition prints. Chapter 26 as printed applies Equation 12-6 to FFS_adj and gets
+/// c = 0.78 x (2,200 + 10 x [52.3 - 50]) = 1,734 pc/h/ln (quoted again as 1,743 two
+/// paragraphs later, one of the two being a typo). The December 2022 errata reworks exactly
+/// this computation to read the unadjusted FFS, giving
+/// c = 0.78 x (2,200 + 10 x [60.8 - 50]) = 1,800 pc/h/ln, which is what the library
+/// implements and what is asserted here. See VERIFICATION.md, Chapter 26 row.
+///
+/// The correction barely moves the outputs: it raises c_adj by 66 pc/h/ln, and because
+/// v_p sits just past the breakpoint where the speed-flow curve is nearly flat, S changes by
+/// about 0.01 mi/h and D by about 0.005 pc/mi/ln. The residual against the printed 22.8 is
+/// the book's own rounding (it divides 1,195 by 52.3), not the errata.
+#[test]
+fn ch26_ep6_heavy_snow_basic_freeway() {
+    let mut seg = load_ch26("ep6_heavy_snow.json");
+    let los = seg.run_operational_analysis().expect("EP6");
+
+    assert_approx(seg.ffs, 60.8, 0.05, "FFS (mi/h)");
+    assert_approx(seg.ffs_adj, 52.3, 0.05, "FFS_adj (mi/h)");
+    assert_approx(seg.e_t.unwrap(), 3.0, 1e-9, "E_T (rolling terrain)");
+    assert_approx(seg.phv, 0.909, 0.001, "f_HV");
+    assert_approx(seg.v_p, 1195.0, 1.0, "v_p (pc/h/ln)");
+    assert_approx(seg.breakpoint, 1161.0, 1.0, "BP_adj (pc/h/ln)");
+    assert_approx(seg.capacity, 2308.0, 0.5, "unadjusted capacity (pc/h/ln)");
+    assert_approx(seg.capacity_adj, 1800.0, 0.5, "c_adj, December 2022 errata (pc/h/ln)");
+    assert_approx(seg.speed, 52.3, 0.1, "S (mi/h)");
+    assert_approx(seg.density, 22.8, 0.1, "D (pc/mi/ln)");
+    assert_eq!(LevelOfService::C, los, "EP6 LOS");
+}
+
+/// KNOWN DEFECT, documented rather than fixed here because this change set does not touch
+/// `src/`. `BasicFreeways::determine_segment_los` routes through
+/// `FacilityCalculation::los_from_density`, which branches on `city_type` and applies the
+/// Exhibit 10-6 FACILITY criteria. Exhibit 12-15, the SEGMENT criteria its own doc comment
+/// cites, has no area-type split at all, and `los_tables::los_basic_freeway` already
+/// implements it correctly but is not what this path calls.
+///
+/// The Exhibit 10-6 urban row happens to match Exhibit 12-15 value for value, so every
+/// existing fixture (all Urban) hides this. The rural row does not: it breaks at
+/// 6/14/22/29/39 instead of 11/18/26/35/45. A rural basic freeway segment at 33.9 pc/mi/ln
+/// therefore reports LOS E where Chapter 12 says LOS D.
+///
+/// Recorded in docs/hcm/REVIEW_NOTES.md. When it is fixed, this test should be deleted, not
+/// re-pointed, and `ch26_ep5_pce_comparison_branch` should gain the LOS D assertion.
+#[test]
+fn rural_area_type_reads_the_facility_los_table() {
+    let mut rural = load_ch26("ep5_pce_comparison.json");
+    let rural_los = rural.run_operational_analysis().expect("rural");
+
+    let mut urban = load_ch26("ep5_pce_comparison.json");
+    urban.city_type = transportations_library::common::CityType::Urban;
+    let urban_los = urban.run_operational_analysis().expect("urban");
+
+    // Identical density, two different letters, decided only by the area type.
+    assert_approx(rural.density, urban.density, 1e-9, "density must not depend on area type");
+    assert_eq!(LevelOfService::D, urban_los, "Exhibit 12-15 band for 33.9 pc/mi/ln");
+    assert_eq!(
+        LevelOfService::E,
+        rural_los,
+        "defect: rural segments read the Exhibit 10-6 facility bands",
+    );
 }
