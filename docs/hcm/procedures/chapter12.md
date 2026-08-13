@@ -13,7 +13,7 @@ The full sequence is orchestrated by `BasicFreeways::run_operational_analysis()`
 | Step 2: FFS estimation (multilane) | Eq 12-3, Eq 12-4 (TLC) | private `estimate_multi_lane_ffs`; `calculate_total_lateral_clearance` | `basicfreeways.rs` | `bffs`, `lw`, `lc_r`+`lc_l` (ft, each capped 6 ft), median type, access point density `apd` (pts/mi) | `ffs` mi/h; `FFS = BFFS − f_LW − f_TLC − f_M − f_A` |
 | Step 2 adjustments | Exhibit 12-20 (lane width), Exhibit 12-21 (right clearance), Exhibit 12-22 (TLC, with linear interpolation), Exhibit 12-24 (access points) | `adjustment_average_lane_width`, `adjustment_right_side_lateral_clearance` (+ `_interpolated` variant), `adjustment_total_lateral_clearance`, `adjustment_median_type`, `adjustment_access_point_density` (formula `min(0.25·APD, 10)`; a table-lookup variant `adjustment_access_point_density_table` exists but is `#[allow(dead_code)]`) | `basicfreeways.rs` | as above | mi/h reductions |
 | Step 2: adjusted FFS | Eq 12-5 | `determine_free_flow_speed` (tail) | `basicfreeways.rs` | `saf` (unitless) | `ffs_adj = ffs × SAF`, mi/h |
-| Step 3: capacity | Eq 12-6 (basic, `2200 + 10(FFS−50)`, max 2,400), Eq 12-7 (multilane, `1900 + 20(FFS−45)`, max 2,300), Eq 12-8 (`c_adj = c × CAF`) | `estimate_capacity`, `estimate_adjusted_capacity` | `basicfreeways.rs` | `ffs_adj` (mi/h), `caf` | pc/h/ln |
+| Step 3: capacity | Eq 12-6 (basic, `2200 + 10(FFS−50)`, max 2,400), Eq 12-7 (multilane, `1900 + 20(FFS−45)`, max 2,300), Eq 12-8 (`c_adj = c × CAF`). Both read the UNADJUSTED FFS, per the December 2022 errata | `estimate_capacity`, `estimate_adjusted_capacity` | `basicfreeways.rs` | `ffs` (mi/h), `caf` | pc/h/ln |
 | Step 4: demand adjustment | Eq 12-9 (`v_p = V/(PHF·N·f_HV)`), Eq 12-10 (`f_HV = 1/(1+P_T(E_T−1))`), Exhibit 12-25/12-26 PCE | `estimate_demand_volume`, private `adjustment_heavy_vehicle_factor` (uses `ET_TABLE_30SUT/50SUT/70SUT` from `src/hcm/common/pce_table.rs` keyed by SUT mix) | `basicfreeways.rs` | `demand_flow_i` (veh/h), `phf`, `lane_count`, `p_t` (decimal), terrain, grade (%), length (mi) | `v_p` pc/h/ln |
 | Step 5: speed-flow curve | Eq 12-1 with Exhibit 12-6 parameters (breakpoint `BP = [1000 + 40(75 − FFS_adj)]·CAF²` basic; BP = 1,400 constant multilane; exponent a = 2.0 basic / 1.31 multilane; density at capacity 45 pc/mi/ln) | `calculate_breakpoint`, `calculate_speed` | `basicfreeways.rs` | `v_p`, `ffs_adj`, `capacity_adj` | space mean speed S, mi/h (0.0 sentinel when demand > capacity) |
 | Step 5: density | Eq 12-11 (`D = v_p/S`) | `estimate_density` | `basicfreeways.rs` | `v_p` (pc/h/ln), S (mi/h) | pc/mi/ln (sentinel 46.0 when oversaturated) |
@@ -76,10 +76,10 @@ Implemented in: basicfreeways/basicfreeways.rs::calculate_speed; breakpoint in c
 ```
 
 ```
-Equation 12-6 (Step 3, basic freeway base capacity):     c = 2,200 + 10 × (FFS_adj − 50)   [capped at 2,400 pc/h/ln, valid 55 <= FFS <= 75]
-Equation 12-7 (Step 3, multilane highway base capacity): c = 1,900 + 20 × (FFS_adj − 45)   [capped at 2,300 pc/h/ln, valid 45 <= FFS <= 70]
+Equation 12-6 (Step 3, basic freeway base capacity):     c = 2,200 + 10 × (FFS − 50)   [capped at 2,400 pc/h/ln, valid 55 <= FFS <= 75]
+Equation 12-7 (Step 3, multilane highway base capacity): c = 1,900 + 20 × (FFS − 45)   [capped at 2,300 pc/h/ln, valid 45 <= FFS <= 70]
   c = base segment capacity, pc/h/ln
-  FFS_adj = adjusted free-flow speed, mi/h (Eq 12-5)
+  FFS = free-flow speed BEFORE the Equation 12-5 SAF adjustment, mi/h
 Implemented in: basicfreeways/basicfreeways.rs::estimate_capacity
 ```
 
@@ -90,6 +90,8 @@ Equation 12-8 (Step 3, adjusted capacity, basic freeway only):  c_adj = c × CAF
   CAF = capacity adjustment factor, decimal (struct field `caf`, default 1.0 = base conditions; per the book, no CAF adjustment is defined for multilane highways either)
 Implemented in: basicfreeways/basicfreeways.rs::estimate_adjusted_capacity
 ```
+
+Equations 12-6 and 12-7 as originally printed read FFS_adj. The December 2022 corrections replace that with the unadjusted FFS, so a SAF reaches capacity only through the separate CAF of Equation 12-8, never twice. Chapter 26 reworks one of its own worked examples to demonstrate it: Example Problem 6's heavy-snow capacity becomes `c = 0.78 x (2,200 + 10 x [60.8 - 50]) = 1,800 pc/h/ln` where the chapter as printed computes `0.78 x (2,200 + 10 x [52.3 - 50]) = 1,734`. `estimate_capacity` therefore reads `self.ffs`, not `self.ffs_adj`, while `calculate_speed` and `calculate_breakpoint` keep reading `ffs_adj`. That asymmetry is deliberate and is pinned by `ch26_ep6_heavy_snow_basic_freeway` in `tests/chapter12_integration.rs`. See the Chapter 26 row of `docs/hcm/VERIFICATION.md`.
 
 ```
 Equation 12-9 (Step 4, demand flow rate):  v_p = V / (PHF × N × f_HV)

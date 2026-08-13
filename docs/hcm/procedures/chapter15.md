@@ -18,7 +18,8 @@ This pass re-verified every equation below directly against the HCM 7th Edition 
 | Step 8 (PC/PZ path): follower density | Eq 15-35 | `determine_follower_density_pc_pz` | `twolanehighways.rs` | `seg_num` (`avg_speed`, `pf`, `flow_rate`) | followers/mi/ln |
 | Step 9: adjustment for upstream passing lane | Eq 15-36 to 15-38 (confirmed against the EPUB this pass — see "Step 9 detail" below) | `determine_adjustment_to_follower_density` | `twolanehighways.rs` | `seg_num` | follower-density adjustment, followers/mi/ln |
 | Step 10: segment LOS | Exhibit 15-6 | `determine_segment_los` | `twolanehighways.rs` | `seg_num`, `s_pl` (posted speed limit, mi/h — **not** average speed, see Unit footguns), `cap` (veh/h) | LOS char `'A'..'F'` |
-| Step 11: facility LOS | Eq 15-39 | `determine_facility_los` | `twolanehighways.rs` | length-weighted `fd` (followers/mi/ln), `s_pl` (mi/h) | LOS char `'A'..'F'` |
+| Step 11: facility follower density | Eq 15-39 | `determine_facility_follower_density` | `twolanehighways.rs` | (none; walks `self.segments` in order) | FD_F, followers/mi/ln |
+| Step 11: facility LOS | Exhibit 15-6 | `determine_facility_los` | `twolanehighways.rs` | `fd` (followers/mi/ln, from `determine_facility_follower_density`), `s_pl` (posted speed limit, mi/h — **not** average speed, see Unit footguns) | LOS char `'A'..'F'` |
 
 The recommended per-segment call order is documented directly on `TwoLaneHighways` (module-level `# Analysis Workflow` doc comment) and matches `tests/common/mod.rs::run_complete_analysis()`: `identify_vertical_class` → `determine_demand_flow` → `determine_vertical_alignment` → `determine_free_flow_speed` → `estimate_average_speed` → `estimate_percent_followers` → (`determine_follower_density_pl` if `passing_type == 2` else `determine_follower_density_pc_pz`) → `determine_adjustment_to_follower_density`.
 
@@ -252,17 +253,23 @@ Implemented in: twolanehighways/twolanehighways.rs::determine_adjustment_to_foll
 
 One nuance worth a reviewer's attention, extending the existing TODO in the code: `pl_loc` is found by scanning **all** segments in the facility (`for s_num in 0..seg_len`) and taking the last one with `passing_type == 2`, not the nearest passing lane strictly upstream of `seg_num` — the existing `// TODO: if there are more than three PL section` comment already flags that only one PL location is tracked at all. Additionally, `vd_u` (the flow rate "entering the passing lane segment," per the manual's definition) is read from `self.segments[seg_num - 1]` rather than `self.segments[pl_loc - 1]`; these coincide only when `seg_num == pl_loc` (i.e., in the branch where the current segment is itself the PL segment, which is exactly the situation where this line executes), so it happens to be correct in the one branch that reads it, but is worth flagging as fragile if the method's branching is ever restructured.
 
-## Step 10 and Step 11 (unchanged from prior verification)
+## Step 10 and Step 11
 
-Step 10 (`determine_segment_los`, Exhibit 15-6) and Step 11 (`determine_facility_los`, Eq 15-39) were not part of this pass's re-verification scope beyond confirming their equation citations are still accurate; the Eq 15-39 form is:
+Step 10 is `determine_segment_los` against Exhibit 15-6. Step 11 is two methods, `determine_facility_follower_density` for Equation 15-39 and then `determine_facility_los` for the facility letter.
 
 ```
 Equation 15-39:  FD_F = Sum_i(FD_i * L_i) / Sum_i(L_i)
   FD_F = average follower density for the facility in the analysis direction, followers/mi/ln
   FD_i = follower density (or adjusted follower density) for segment i, followers/mi/ln
   L_i = actual segment length for segment i, mi (Step 1 min/max constraints do not apply to this sum)
-Implemented in: twolanehighways/twolanehighways.rs::determine_facility_los (caller supplies the pre-computed length-weighted fd; the summation itself is done by the caller, not inside this method)
+Implemented in: twolanehighways/twolanehighways.rs::determine_facility_follower_density
 ```
+
+Until 0.3.1 no aggregation existed in the library at all, and every caller reweighted the unadjusted per-segment column itself, which discarded the entire Step 9 downstream passing-lane benefit that most of Chapter 26 Example Problem 3 is spent computing. `determine_facility_follower_density` now implements Equation 15-39 in one place, and it is the "or adjusted follower density" clause that makes it more than a weighted mean: the term each segment contributes is `FD_PLmid` on a passing lane segment, the Step 9 adjusted density on any segment inside the effective downstream length of an upstream passing lane, and the plain Step 8 density everywhere else.
+
+That ordering matters to callers. The method walks segments in index order and calls `determine_adjustment_to_follower_density` on every one of them, including the passing lanes themselves, because that method records the effective downstream length `l_de` when it reaches a passing lane and every later segment is measured against it. Segments must already have been carried through Steps 1 to 8.
+
+Example Problem 3's facility moved from 8.041 followers/mi and LOS D to 7.271 and LOS C against the published 7.3 and LOS C in Exhibit 26-27; Example Problem 4 moved from 20.219 to 19.897 against a published 20.0, staying inside the LOS E band that had been masking the same omission. The River Falls case study is unaffected, because the Step 9 chain cannot activate on a facility with no passing lane segment, and a regression test states that dependency rather than leaving it implicit.
 
 ## Bicycle LOS methodology (Section 4)
 
@@ -321,15 +328,16 @@ Exhibit 15-11's vertical-alignment table (used by the motorized methodology, Ste
 
 ## Unit footguns
 
-Two unit conventions are easy to get backwards and are not enforced by the type system (both fields are plain `f64`/`Option<f64>`):
+Three conventions are easy to get backwards and are not enforced by the type system (the fields are all plain `f64`/`Option<f64>`):
 
 - **`Segment.spl` is the *posted* speed limit** (mi/h), and Step 4's base free-flow speed is `BFFS = 1.14 * spl` (`determine_free_flow_speed`, and duplicated inline in `estimate_average_speed` as `bffs = round_to_significant_digits(1.14 * spl, 3)` and again in `estimate_average_speed_sf` as `bffs = 1.14 * spl`) — i.e., **BFFS is derived, not itself a stored/settable field**; passing an already-adjusted FFS-like value as `spl` will silently double-inflate BFFS by 14%.
 - **`SubSegment.length` is in FEET**, while **`Segment.length` is in MILES** — both are documented correctly in the field doc comments (`/// Length of subsegment, ft.` vs. `/// Length of segment, mi.`), and the conversion is applied consistently at each subsegment read site (`get_length() / 5280.0` in `estimate_average_speed` and `determine_follower_density_pl`). The Python binding's constructor docstring in `src/copython/twolanehighways.rs` (`SubSegment::new`) previously stated the length was in miles, which contradicted the Rust field and every use site; **this has been fixed** — the docstring now reads "Length of the sub-segment in FEET (default: 0.0). Note: unlike Segment.length (miles), sub-segment lengths are in feet; the engine divides by 5,280 internally." (checked directly in the current `src/copython/twolanehighways.rs`, which itself is the renamed file — it was previously `src/copython/chapter15.rs`).
+- **The `s_pl` argument to `determine_segment_los` and `determine_facility_los` is the POSTED speed limit, not the computed average travel speed.** Exhibit 15-6 prints its two columns as "Posted Speed Limit >= 50 mi/h" and "Posted Speed Limit < 50 mi/h", and the chapter text states the split as "On higher-speed two-lane highways (>= 50 mi/h)". Both methods always documented the parameter that way, but until 0.3.2 every caller in the repository passed the computed average speed instead: both analysis scripts, the River Falls gate, the Rust integration and example-problem harnesses, `tests/common/mod.rs`, the README, and the crate's own doc examples. No published value moved when they were corrected, because on all four Chapter 26 fixtures and on River Falls the posted limit and the average speed fall on the same side of 50 mi/h, which is exactly what makes this a latent trap rather than a visible one. HCM Step 11 defines no facility-level posted limit for a facility with mixed limits, so the facility callers length-weight it, which reduces to the common value when every segment shares one.
 - **`Segment.is_hc` gates whether horizontal-class/curve data is used at all.** Supplying `subsegments` with real `design_rad`/`sup_ele` data but leaving `is_hc` at its default (`false`, via `get_is_hc()`'s `unwrap_or(false)`) means Step 5 silently falls back to the tangent-only `calc_speed` path and never reads the subsegment curve data — there is no warning or error, the curve data is simply inert.
 
 ## Deviations
 
-No `docs/hcm/VERIFICATION.md` exists to cross-reference, so the deviations below are called out inline rather than cross-referenced to an existing ledger entry:
+This section predates `docs/hcm/VERIFICATION.md`, which now exists and carries the consolidated book-discrepancy ledger; the deviations below are code-level and are called out inline:
 
 1. ~~Step 3 (`determine_vertical_alignment`) has a missing length bucket~~ **Fixed in code and re-verified against Exhibit 15-11 this pass — no longer a live deviation.** See "Step 3 detail" above; the current code matches the manual's vertical-class table exactly for every length bin and grade column, including the two rows where the manual itself skips a class.
 2. Step 9 (`determine_adjustment_to_follower_density`) still has no HCM equation-number comments in the code itself, unlike every other step, but **this document now confirms the source is Eq 15-36 to 15-38** (not Eq 15-30 to 15-33 as previously guessed) — see "Step 9 detail" above. It also still only tracks one upstream passing-lane location (`// TODO: if there are more than three PL section`), and this pass additionally found that `vd_u` is read from `segments[seg_num-1]` rather than `segments[pl_loc-1]`, which only coincide in the branch where they're currently used.
