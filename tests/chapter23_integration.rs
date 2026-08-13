@@ -19,32 +19,19 @@
 //! * `case6.json` — Chapter 34, Example Problem 2: Parclo A-2Q
 //!   interchange (published O-D results in Exhibit 34-29).
 //!
-//! Example Problem 7 (SPUI, Exhibits 34-72 through 34-82) has no fixture.
-//! A SPUI needs ten signalized lane groups — an exclusive left, a through,
-//! and an exclusive right on each of the four approaches, minus the two
-//! north–south throughs that carry no demand — and `InterchangeMovement`
-//! (src/hcm/ramp_terminals/ramp_terminals.rs:894-919) has exactly ten
-//! variants but no external right. Parking the two external rights in the
-//! unused `EbIntThrough` / `WbIntThrough` slots would misroute every O-D,
-//! because `Interchange::od_path`
-//! (src/hcm/ramp_terminals/ramp_terminals.rs:1991-2070) reads those slots as
-//! internal arterial throughs. The harder gap is the arterial left turns:
-//! Exhibit 34-75 splits each of them into a protected and a permitted lane
-//! group (f_LT = 0.930 protected against 0.136 / 0.125 permitted, adjusted
-//! saturation flows 1,560 / 228 eastbound and 1,561 / 211 westbound) and
-//! Exhibit 34-77 combines them through the Chapter 19 protected-plus-
-//! permitted uniform delay procedure, which `Interchange::step_3_saturation_flows`
-//! (src/hcm/ramp_terminals/ramp_terminals.rs:1486) and
-//! `Interchange::step_8_control_delay`
-//! (src/hcm/ramp_terminals/ramp_terminals.rs:1919) do not model — a lane
-//! group carries one saturation flow and one effective green. Published
-//! targets for whoever adds the surface: Exhibit 34-80 / 34-81 control
-//! delays (EB left / through / right 31.0 / 54.6 / 25.4, WB 34.6 / 51.0 /
-//! 29.1, NB 27.9 / 23.6 / 63.6, SB 56.0 / 23.6 / 53.0 s/veh) and the
-//! Exhibit 34-82 O-D table, whose ETTs are those movement delays unchanged
-//! because a SPUI has one intersection and no extra distance traveled
-//! (A 27.9 B, B 63.6 D, C 53.0 C, D 56.0 D, E 31.0 C, F 25.4 B, G 29.1 B,
-//! H 34.6 C, I 54.6 C, J 51.0 C; interchange ETT 48.3 s/veh, LOS C).
+//! * `case7.json` — Chapter 34, Example Problem 7: single-point urban
+//!   interchange (published O-D results in Exhibit 34-82).
+//!
+//! The SPUI is a single signalized point. Every one of its O-Ds resolves onto
+//! exactly one lane group, so `od_path` returns a one-element path and the
+//! O-D delay is the movement delay unchanged, which is what Exhibit 34-82
+//! shows (its ETT column equals the Exhibit 34-80 / 34-81 movement delays,
+//! there being one intersection and no extra distance traveled). The two
+//! arterial left turns operate with a protected phase and a permitted phase
+//! from the same exclusive lane; that is one lane group with two phase
+//! components, not two lane groups, because Exhibit 34-78 carries a single
+//! saturation flow, effective green, capacity and v/c for each of them and
+//! Steps 6, 7 and 9 read only those. See `ProtectedPermittedLeft`.
 //!
 //! Example Problem 8 (diamond with an adjacent closely spaced intersection,
 //! Exhibits 34-83 through 34-98) has no fixture. Its Step 4 intermediates are
@@ -137,6 +124,20 @@
 //!   asserted at ±0.8 s/veh against the published Exhibit 34-29 values, with
 //!   LOS letters and the v/c and R_Q flags exact, and the interchange ETT
 //!   reads 61.5 s/veh against the published 61.3, LOS D either way.
+//! * Example Problem 7 — the Exhibit 34-75 and 34-76 saturation flow
+//!   exhibits are not reproducible from the HCM 7 equations, so O-D ETTs are
+//!   asserted at the equation-based values with the published Exhibit 34-82
+//!   ones inline. Eight of the ten O-D LOS letters and the interchange LOS
+//!   land exactly, and the interchange reads 45.4 s/veh against the published
+//!   48.3, LOS C either way. Three defects account for the gap and each has
+//!   its own test: a lane width factor of 0.967 that HCM 7 Exhibit 19-20
+//!   cannot produce for any width in its flat 10.0-to-12.9-ft tier, a
+//!   heavy-vehicle factor of 1.000 on the ramp approaches that the example's
+//!   own 5% heavy vehicles contradicts, and four left-turn traffic pressure
+//!   values that Equation 23-15 does not give (it reproduces the other ten
+//!   columns exactly). The protected-plus-permitted uniform delay itself is
+//!   validated directly against Exhibit 34-77, reproducing 22.1 and 22.8
+//!   s/veh from the published component saturation flows.
 //! * Example Problem 8 — Exhibit 34-89 common greens exact, Exhibit 34-90
 //!   queue lengths ±0.15 ft and additional lost times ±0.05 s.
 //! * Example Problem 9 — Chapter 22 entry capacities ±1 pc/h of the
@@ -152,9 +153,13 @@
 use transportations_library::hcm::ramp_terminals::{
     adjacent_intersection_lost_time, common_green_time, demand_starvation_initial_queue,
     demand_starvation_lost_time, downstream_queue_length_ft, downstream_queue_lost_time,
-    extra_distance_travel_time, los_roundabout_interchange_od, movements, GreenInterval,
-    Interchange, InterchangeMovement, OdMovement,
+    extra_distance_travel_time, los_roundabout_interchange_od, movements,
+    traffic_pressure_factor, GreenInterval, Interchange, InterchangeMovement, OdMovement,
 };
+use transportations_library::hcm::signalized::exhibits::{
+    heavy_vehicle_grade_factor, lane_width_factor,
+};
+use transportations_library::hcm::signalized::signalized::{qap_evaluate, QapInterval};
 use transportations_library::hcm::common::delay::control_delay_roundabout;
 use transportations_library::hcm::common::LevelOfService;
 use transportations_library::hcm::roundabouts::{capacity_exponential, capacity_single_lane};
@@ -1757,5 +1762,325 @@ fn test_serde_round_trip() {
         ix.interchange_ett_s.unwrap(),
         1e-12,
         "ETT round trip"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Example Problem 7: single-point urban interchange (Exhibits 34-72 to 34-82)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Chapter 34, Example Problem 7 (`case7.json`): the SPUI routes as a single
+/// signalized point, and the two arterial left turns operate with both a
+/// protected and a permitted phase.
+///
+/// The single-point convention: `turning_movements_from_od` sends every SPUI
+/// O-D through exactly one lane group, an `Ext` group for the arterial
+/// approaches and a `Ramp` group for the off-ramps, so `od_path` returns a
+/// one-element path for all ten O-Ds and the O-D delay is that movement's
+/// delay unchanged. Exhibit 34-82 is what confirms it: its ETT column equals
+/// the Exhibit 34-80 / 34-81 movement delays exactly, because a SPUI has one
+/// intersection and no extra distance traveled.
+#[test]
+fn test_case7_spui_is_a_single_signalized_point() {
+    let mut ix = load_case("case7.json");
+    ix.analyze();
+    for (m, want) in [
+        (OdMovement::A, "NbRampLeft"),
+        (OdMovement::B, "NbRampRight"),
+        (OdMovement::C, "SbRampRight"),
+        (OdMovement::D, "SbRampLeft"),
+        (OdMovement::E, "EbExtLeft"),
+        (OdMovement::F, "EbExtRight"),
+        (OdMovement::G, "WbExtRight"),
+        (OdMovement::H, "WbExtLeft"),
+        (OdMovement::I, "EbExtThrough"),
+        (OdMovement::J, "WbExtThrough"),
+    ] {
+        let path = ix.od_path(m);
+        assert_eq!(path.len(), 1, "O-D {m:?} should traverse one lane group");
+        assert_eq!(path[0].name(), want, "O-D {m:?} lane group");
+        // Exhibit 34-82: ETT is the movement delay, with no EDTT.
+        let o = od(&ix, m);
+        assert_near!(o.edtt_s, 0.0, 1e-12, "EDTT for O-D {m:?}");
+        assert_near!(o.ett_s, o.control_delay_s, 1e-12, "ETT = d for O-D {m:?}");
+    }
+}
+
+/// Exhibit 34-75: the eastbound and westbound left turns are the only lane
+/// groups with two phase components, and their recombination is capacity
+/// addition.
+///
+/// The published pair is a protected saturation flow over the protected green
+/// and a permitted saturation flow over the permitted green, and Exhibit
+/// 34-78 collapses them into one saturation flow, one effective green, one
+/// capacity and one v/c before Steps 6, 7 and 9 ever run. This test pins that
+/// the engine does the same: the collapsed capacity equals the sum of the two
+/// component capacities, and the collapsed effective green is the sum of the
+/// two displayed greens (48 s, the published value).
+#[test]
+fn test_case7_protected_permitted_recombination_is_capacity_addition() {
+    let mut ix = load_case("case7.json");
+    ix.analyze();
+    let c = ix.get_cycle_length();
+    for m in [movements::EB_EXT_LEFT, movements::WB_EXT_LEFT] {
+        let r = group(&ix, m);
+        let g_prot = 16.0;
+        let g_perm = 32.0;
+        let g_u = if m == movements::EB_EXT_LEFT { 13.01 } else { 11.78 };
+        let s_prot = r.protected_sat_flow.expect("protected component");
+        let s_perm = r.permitted_sat_flow.expect("permitted component");
+        // Exhibit 34-80 publishes g' = 48.0 s for both left turns.
+        assert_near!(r.effective_green_s.unwrap(), 48.0, 1e-9, "{m:?} g'");
+        // Capacity addition (Equation 31-124 without its sneaker term, which
+        // Chapter 34 omits; see `test_ep7_capacity_omits_the_sneaker_term`).
+        let want_c = (s_prot * g_prot + s_perm * g_u) / c;
+        assert_near!(r.capacity.unwrap(), want_c, 1e-9, "{m:?} capacity");
+        // ... re-expressed over the summed green, which is the single
+        // saturation flow Exhibit 34-78 reports.
+        let want_s = (s_prot * g_prot + s_perm * g_u) / (g_prot + g_perm);
+        assert_near!(r.sat_flow.unwrap(), want_s, 1e-9, "{m:?} recombined s");
+    }
+    // Every other lane group stays single-component.
+    for r in ix.get_results() {
+        if r.movement == movements::EB_EXT_LEFT || r.movement == movements::WB_EXT_LEFT {
+            continue;
+        }
+        assert!(
+            r.protected_sat_flow.is_none() && r.permitted_sat_flow.is_none(),
+            "{:?} should carry no phase components",
+            r.movement
+        );
+    }
+}
+
+/// Exhibit 34-77 against the Chapter 31 Exhibit 31-15 queue accumulation
+/// polygon: the uniform delay of a leading protected-plus-permitted left turn
+/// in an exclusive lane.
+///
+/// This drives `qap_evaluate` with the *published* Exhibit 34-75 component
+/// saturation flows rather than with the engine's own, so it validates the
+/// polygon shape chosen in Step 8 independently of the Chapter 23 saturation
+/// flow chain. The permitted discharge rate is the Equation 31-100
+/// gap-acceptance rate `s_l`, recovered from the published permitted
+/// saturation flow by undoing the `g_u / G_perm` proration that Exhibit
+/// 34-75's permitted f_LT embeds (Chapter 19: for a permitted movement the
+/// tabulated saturation flow "is an average for the permitted green period").
+///
+/// Both published uniform delays reproduce, and doing so resolves a
+/// contradiction inside the example: Exhibit 34-77 prints 22.7 s/veh for the
+/// westbound left while Exhibit 34-80 prints 22.8 for the same movement, and
+/// 22.8 is the live one (it is what Exhibit 34-80's own d = d1 + d2 + d3 =
+/// 22.8 + 11.8 = 34.6 adds up to).
+#[test]
+fn test_ep7_uniform_delay_polygon_reproduces_exhibit_34_77() {
+    let cycle = 110.0;
+    let g_prot = 16.0;
+    let g_perm = 32.0;
+    for (name, v, s_prot, s_perm_avg, g_u, published_d1) in [
+        // v = Exhibit 34-78 demand; s_prot / s_perm_avg = Exhibit 34-75.
+        ("eastbound left", 177.0, 1_560.0, 228.0, 13.01, 22.1),
+        ("westbound left", 194.0, 1_561.0, 211.0, 11.78, 22.8),
+    ] {
+        let q = v / 3_600.0;
+        let s_l = s_perm_avg * g_perm / g_u; // undo the g_u / G_perm proration
+        let intervals = [
+            QapInterval {
+                duration_s: cycle - g_prot - g_perm,
+                discharge_veh_h: 0.0,
+                arrival_veh_s: q,
+                sneakers_veh: 0.0,
+            },
+            QapInterval {
+                duration_s: g_prot,
+                discharge_veh_h: s_prot,
+                arrival_veh_s: q,
+                sneakers_veh: 0.0,
+            },
+            QapInterval {
+                duration_s: g_perm - g_u,
+                discharge_veh_h: 0.0,
+                arrival_veh_s: q,
+                sneakers_veh: 0.0,
+            },
+            QapInterval {
+                duration_s: g_u,
+                discharge_veh_h: s_l,
+                arrival_veh_s: q,
+                sneakers_veh: 0.0,
+            },
+        ];
+        let got = qap_evaluate(&intervals, cycle, q);
+        assert_near!(got.uniform_delay_s, published_d1, 0.05, "{name} d1");
+        // Exhibit 34-77's breakpoint queues, which it mislabels "ft": they
+        // are vehicles (Chapter 31 defines every polygon breakpoint queue in
+        // veh). Q_A = q_a r is the queue at the end of effective red.
+        let q_a = q * (cycle - g_prot - g_perm);
+        assert!(
+            (3.0..=3.4).contains(&q_a),
+            "{name} Q_A {q_a} should match the published 3.0 / 3.3 veh"
+        );
+    }
+}
+
+/// Example Problem 7 O-D results against Exhibit 34-82.
+///
+/// Asserted at the equation-based values with the published ones inline,
+/// because Exhibits 34-75 and 34-76 are not reproducible from the HCM 7
+/// equations (see `test_ep7_saturation_flow_factor_defects`). Eight of the
+/// ten O-D LOS letters and the interchange LOS still land exactly.
+#[test]
+fn test_ep7_spui_od_results() {
+    let mut ix = load_case("case7.json");
+    ix.analyze();
+    // (O-D, demand, engine ETT, published Exhibit 34-82 ETT, published LOS)
+    let published = [
+        (OdMovement::A, 174.0, 27.68, 27.9, LevelOfService::B),
+        (OdMovement::B, 168.0, 64.01, 63.6, LevelOfService::D),
+        (OdMovement::C, 126.0, 53.17, 53.0, LevelOfService::C),
+        (OdMovement::D, 547.0, 50.77, 56.0, LevelOfService::D),
+        (OdMovement::E, 177.0, 29.18, 31.0, LevelOfService::C),
+        (OdMovement::F, 84.0, 25.54, 25.4, LevelOfService::B),
+        (OdMovement::G, 221.0, 29.60, 29.1, LevelOfService::B),
+        (OdMovement::H, 194.0, 32.33, 34.6, LevelOfService::C),
+        (OdMovement::I, 911.0, 50.27, 54.6, LevelOfService::C),
+        (OdMovement::J, 881.0, 47.64, 51.0, LevelOfService::C),
+    ];
+    // The two O-Ds whose LOS letter differs from the published one are the
+    // two that sit closest to an Exhibit 23-10 boundary: O-D D runs 5.2 s/veh
+    // short and crosses the C/D line at 55, and O-D E runs 1.8 s/veh short and
+    // crosses the B/C line at 30. Both differences are inside the saturation
+    // flow deviation documented below.
+    let los_differs = [OdMovement::D, OdMovement::E];
+    for (m, demand, engine, book, book_los) in published {
+        let r = od(&ix, m);
+        assert_near!(r.demand, demand, 0.6, "O-D {m:?} demand");
+        assert_near!(r.ett_s, engine, 0.05, format!("O-D {m:?} ETT (published {book})"));
+        assert!(!r.vc_exceeds_one, "O-D {m:?} v/c should not exceed 1");
+        assert!(!r.rq_exceeds_one, "O-D {m:?} R_Q should not exceed 1");
+        if !los_differs.contains(&m) {
+            assert_eq!(r.los, book_los, "O-D {m:?} LOS");
+        }
+    }
+    // Interchange ETT 45.35 s/veh against the published 48.3; LOS C either way.
+    assert_near!(ix.get_interchange_ett().unwrap(), 45.35, 0.05, "interchange ETT");
+    assert_eq!(ix.get_interchange_los().unwrap(), LevelOfService::C);
+}
+
+/// Book defects in the Example Problem 7 saturation flow exhibits.
+///
+/// Every one of the ten lane group columns of Exhibits 34-75 and 34-76 lists
+/// a lane width adjustment of f_w = 0.967 for the stated 10.3 ft lanes. HCM 7
+/// Exhibit 19-20 is a three-tier lookup that returns 1.000 for every width
+/// from 10.0 to 12.9 ft, so 0.967 cannot be produced for any width the
+/// example could have meant; it is the HCM 2000 continuous form
+/// `f_w = 1 + (W - 12)/30` evaluated at 11 ft. The exhibits were carried over
+/// from a superseded edition.
+///
+/// Exhibit 34-76 then lists f_HVg = 1.000 for the northbound and southbound
+/// approaches, which the example's own text gives 5% heavy vehicles. Equation
+/// 19-10 gives 0.961 there, and 0.961 is exactly what the exhibit prints for
+/// the eastbound and westbound approaches (3.4% heavy vehicles on a 2% grade,
+/// which also evaluates to 0.961). The two deviations nearly cancel on the
+/// ramp approaches, which is why their delays still reproduce within
+/// 0.5 s/veh while the arterial ones do not.
+#[test]
+fn test_ep7_saturation_flow_factor_defects() {
+    // f_w: no width in the flat tier can produce the published 0.967.
+    for w in [10.0, 10.3, 11.0, 12.0, 12.9] {
+        assert_near!(lane_width_factor(w), 1.000, 1e-12, "f_w at {w} ft");
+    }
+    // f_HVg: the northbound / southbound value the exhibit omits.
+    assert_near!(
+        heavy_vehicle_grade_factor(5.0, 0.0),
+        0.961,
+        0.0005,
+        "f_HVg at 5% heavy vehicles, level (Exhibit 34-76 prints 1.000)"
+    );
+    // ... and the eastbound / westbound value it does print, which coincides.
+    assert_near!(
+        heavy_vehicle_grade_factor(3.4, 2.0),
+        0.961,
+        0.0005,
+        "f_HVg at 3.4% heavy vehicles on a 2% grade (Exhibit 34-75)"
+    );
+
+    // The traffic pressure row reproduces exactly for all ten columns that
+    // are not a left-turn phase component, and for none of the four that are.
+    let cycle = 110.0;
+    for (name, v, lanes, left, published) in [
+        ("EB through", 911.0, 2.0, false, 0.998),
+        ("EB right", 84.0, 1.0, false, 0.946),
+        ("WB through", 881.0, 2.0, false, 0.995),
+        ("WB right", 221.0, 1.0, false, 0.964),
+        ("NB left", 174.0, 1.0, true, 0.967),
+        ("NB right", 168.0, 1.0, false, 0.957),
+        ("SB left", 547.0, 1.0, true, 1.044),
+        ("SB right", 126.0, 1.0, false, 0.951),
+    ] {
+        let f_v = traffic_pressure_factor(v * cycle / 3_600.0 / lanes, left);
+        assert_near!(f_v, published, 0.0006, format!("f_v for {name}"));
+    }
+    // The four left-turn phase components do not: Equation 23-15 gives 0.967
+    // eastbound and 0.971 westbound, against the published 0.950 / 0.951 and
+    // 0.950 / 0.954. The published protected and permitted values also differ
+    // from each other for a single movement at a single demand, which the
+    // equation cannot do.
+    assert_near!(
+        traffic_pressure_factor(177.0 * cycle / 3_600.0, true),
+        0.967,
+        0.0006,
+        "f_v for the eastbound left (Exhibit 34-75 prints 0.950 / 0.951)"
+    );
+    assert_near!(
+        traffic_pressure_factor(194.0 * cycle / 3_600.0, true),
+        0.971,
+        0.0006,
+        "f_v for the westbound left (Exhibit 34-75 prints 0.950 / 0.954)"
+    );
+}
+
+/// Exhibit 34-77 contradicts itself on the westbound left turn.
+///
+/// The exhibit's own relation between the opposing queue service time and the
+/// unblocked permitted green is `g_u = G_perm - g_q - l_1`, which closes
+/// eastbound (32 - 17 - 2 = 13.0 against the published 13.01) and does not
+/// close westbound (32 - 20 - 2 = 10.0 against the published 11.78; the
+/// published g_u instead implies g_q = 18.22). `g_u` is the live value of the
+/// pair, because it is what enters the polygon, and both published g_u values
+/// reproduce their published uniform delays. `case7.json` therefore carries
+/// g_u and not g_q.
+#[test]
+fn test_ep7_exhibit_34_77_westbound_queue_service_time_inconsistent() {
+    let g_perm: f64 = 32.0;
+    let l1: f64 = 2.0;
+    assert_near!(g_perm - 17.0 - l1, 13.01, 0.02, "eastbound g_u closes");
+    let wb_from_gq: f64 = g_perm - 20.0 - l1;
+    assert!(
+        (wb_from_gq - 11.78).abs() > 1.5,
+        "westbound g_q = 20 implies g_u = {wb_from_gq}, not the published 11.78"
+    );
+}
+
+/// Chapter 34 drops the sneaker term that Chapter 31 requires.
+///
+/// Equation 31-124 gives the capacity of a protected-plus-permitted left turn
+/// in an exclusive lane as
+/// `c = [g_l s_lt / C + (g_u s_l + 3,600 n_s) / C] N`, with n_s = 2.0 veh of
+/// left turns that clear on the change interval each cycle. Exhibit 34-78's
+/// published 293 veh/h for the eastbound left omits that term; including it
+/// would give 359 veh/h. The interchange path follows Chapter 34, so the
+/// engine omits it too, and this test pins the size of the choice rather than
+/// leaving it implicit.
+#[test]
+fn test_ep7_capacity_omits_the_sneaker_term() {
+    let mut ix = load_case("case7.json");
+    ix.analyze();
+    let r = group(&ix, movements::EB_EXT_LEFT);
+    let c = ix.get_cycle_length();
+    let with_sneakers = r.capacity.unwrap() + 3_600.0 * 2.0 / c;
+    assert!(
+        with_sneakers - r.capacity.unwrap() > 60.0,
+        "the omitted sneaker term is worth {} veh/h",
+        with_sneakers - r.capacity.unwrap()
     );
 }

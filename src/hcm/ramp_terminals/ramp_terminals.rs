@@ -69,7 +69,8 @@ use crate::hcm::signalized::exhibits::{
 };
 use crate::hcm::signalized::signalized::{
     accel_decel_delay, average_vehicle_spacing, first_term_back_of_queue,
-    queue_storage_ratio_eq, second_term_back_of_queue,
+    permitted_left_saturation_flow, qap_evaluate, queue_storage_ratio_eq,
+    second_term_back_of_queue, QapInterval,
 };
 use crate::hcm::common::delay::{
     control_delay_roundabout, incremental_delay_signalized, initial_queue_delay,
@@ -1298,6 +1299,64 @@ pub struct YieldTurnInput {
     pub proportion_on_green: Option<f64>,
 }
 
+/// The permitted phase of a left turn served from an exclusive lane that
+/// also receives a protected phase (the "Left Prot." / "Left Perm." column
+/// pair of Chapter 34 Exhibit 34-75).
+///
+/// Such a movement stays ONE lane group with two phase components rather
+/// than becoming two lane groups. Exhibit 34-78 is what settles that: for
+/// the eastbound left it carries a single saturation flow (672 veh/h/ln), a
+/// single effective green (48 s), a single capacity (293 veh/h) and a single
+/// v/c (0.60), and Steps 6, 7 and 9 read only those. The two components
+/// survive in exactly two places, the Step 3 saturation flow and the Step 8
+/// uniform delay.
+///
+/// The recombination is capacity addition. The protected component
+/// discharges at its own adjusted saturation flow for its own effective
+/// green, and the permitted component discharges at the gap-acceptance rate
+/// but only during the part of the permitted green that the opposing queue
+/// leaves free, so
+///
+/// `c = (s_prot g_prot + s_perm g_u) / C`
+///
+/// and the single saturation flow the exhibit reports is that capacity
+/// re-expressed over the summed green,
+/// `s = (s_prot g_prot + s_perm g_u) / (g_prot + G_perm)`. Eastbound
+/// `(1,560 × 16 + 561 × 13.01) / 48 = 672` and westbound
+/// `(1,561 × 16 + 573 × 11.78) / 48 = 661` reproduce the two published
+/// values exactly, which is why the component list lives here and not in a
+/// second lane group.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProtectedPermittedLeft {
+    /// Displayed green of the permitted phase G_perm, s (Exhibit 34-73
+    /// phase 2 for the SPUI of Example Problem 7). The protected component
+    /// takes the remainder of the lane group's green intervals.
+    pub permitted_green_s: f64,
+    /// Permitted green not blocked by the opposing queue g_u, s
+    /// (Equation 31-95).
+    ///
+    // VERIFY-HCM: supplied rather than derived. Exhibit 31-12 builds g_u
+    // from the opposing queue service time g_q, and for this SPUI that
+    // route does not close: the opposing westbound through runs at
+    // X = 0.91 and needs 27.9 s of its 32 s phase to serve its queue,
+    // which leaves about 2 s rather than the 13.01 s Exhibit 34-77
+    // publishes. Both published g_u values do reproduce the published
+    // uniform delays through the queue accumulation polygon below, so
+    // g_u is taken as the published intermediate it is. Replace with the
+    // Exhibit 31-12 derivation if the opposing-queue convention for a
+    // single-point interchange is ever pinned down.
+    pub unblocked_green_s: f64,
+    /// Opposing demand flow rate v_o, veh/h, for the Equation 31-100
+    /// permitted-left saturation flow. For a SPUI this is the opposing
+    /// arterial through movement, which is the only movement running
+    /// concurrently with the permitted phase (Exhibit 34-73 phase 2).
+    pub opposing_flow_veh_h: f64,
+    /// Permitted-phase saturation flow override, veh/h/ln, replacing the
+    /// Equation 31-100 gap-acceptance estimate.
+    #[serde(default)]
+    pub permitted_sat_flow_override: Option<f64>,
+}
+
 /// Input description of one interchange lane group.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LaneGroupInput {
@@ -1367,6 +1426,10 @@ pub struct LaneGroupInput {
     /// Demand flow rate override, veh/h (`None` = composed from the O-D
     /// demands per the Exhibit 34-176 worksheet composition).
     pub demand_override_veh_h: Option<f64>,
+    /// Permitted phase of a protected-plus-permitted left turn (`None` =
+    /// the single-component operation every other lane group has).
+    #[serde(default)]
+    pub protected_permitted_left: Option<ProtectedPermittedLeft>,
 }
 
 impl LaneGroupInput {
@@ -1396,6 +1459,7 @@ impl LaneGroupInput {
             speed_limit_mph: 40.0,
             initial_queue_veh: 0.0,
             demand_override_veh_h: None,
+            protected_permitted_left: None,
         }
     }
 
@@ -1417,8 +1481,19 @@ pub struct LaneGroupResult {
     /// Traffic pressure factor f_v (Step 3, Equation 23-15).
     pub traffic_pressure: Option<f64>,
     /// Adjusted saturation flow rate s, veh/h (lane group total; Step 3,
-    /// Equation 23-14).
+    /// Equation 23-14). For a protected-plus-permitted left turn this is
+    /// the recombined value of Exhibit 34-78, not either component.
     pub sat_flow: Option<f64>,
+    /// Protected-phase saturation flow of a protected-plus-permitted left
+    /// turn, veh/h (Exhibit 34-75 "Left Prot."); `None` for every
+    /// single-component lane group.
+    #[serde(default)]
+    pub protected_sat_flow: Option<f64>,
+    /// Permitted-phase saturation flow of a protected-plus-permitted left
+    /// turn, veh/h/ln (Equation 31-100 gap acceptance, applied over g_u);
+    /// `None` for every single-component lane group.
+    #[serde(default)]
+    pub permitted_sat_flow: Option<f64>,
     /// Additional lost time due to a downstream queue L_D, s (Step 4).
     pub downstream_queue_lost_time_s: Option<f64>,
     /// Additional lost time due to demand starvation L_DS, s (Step 4).
@@ -1751,6 +1826,8 @@ impl Interchange {
                 lane_utilization: None,
                 traffic_pressure: None,
                 sat_flow: None,
+                protected_sat_flow: None,
+                permitted_sat_flow: None,
                 downstream_queue_lost_time_s: None,
                 demand_starvation_lost_time_s: None,
                 adjusted_lost_time_s: None,
@@ -1896,7 +1973,9 @@ impl Interchange {
         let cbd = self.area_type_cbd;
         let s0 = self.base_saturation_flow;
         let c = self.cycle_length_s;
-        let mut computed: Vec<(f64, f64, f64)> = Vec::with_capacity(self.lane_groups.len());
+        #[allow(clippy::type_complexity)] // (f_LU, f_v, s, s_prot, s_perm) per lane group
+        let mut computed: Vec<(f64, f64, f64, Option<f64>, Option<f64>)> =
+            Vec::with_capacity(self.lane_groups.len());
         for (g, r) in self.lane_groups.iter().zip(self.results.iter()) {
             let n = g.lanes.max(1);
             let f_w = lane_width_factor(g.lane_width_ft);
@@ -1960,12 +2039,54 @@ impl Interchange {
             // supplied; the Chapter 34 interchange examples carry none).
             let s = s0 * n as f64 * f_w * f_hvg * f_p * f_bb * f_a * f_lt * f_rt * f_v * f_lu
                 * f_ddi;
-            computed.push((f_lu, f_v, s));
+
+            // Protected-plus-permitted left turn: `s` above is the
+            // protected component (Equation 23-20 gives it the radius
+            // factor, which is what f_lt already is for an exclusive left).
+            // The permitted component discharges at the Equation 31-100
+            // gap-acceptance rate, and only for the g_u of its green that
+            // the opposing queue leaves free, so the two capacities add and
+            // the reported saturation flow is that sum re-expressed over
+            // the summed green (Exhibit 34-78).
+            let (s, s_prot, s_perm) = match &g.protected_permitted_left {
+                None => (s, None, None),
+                Some(pp) => {
+                    let g_perm = pp.permitted_green_s.max(0.0);
+                    let g_prot = (g.total_green_s() - g_perm).max(0.0);
+                    let g_u = pp.unblocked_green_s.clamp(0.0, g_perm);
+                    // Equation 31-110: the permitted-phase saturation flow
+                    // is the Equation 31-100 gap-acceptance rate carried
+                    // through the same Equation 23-14 chain, minus the turn
+                    // radius factors — a permitted left is limited by the
+                    // gaps it accepts, not by its path radius.
+                    let s_perm = pp.permitted_sat_flow_override.unwrap_or_else(|| {
+                        permitted_left_saturation_flow(pp.opposing_flow_veh_h)
+                            * n as f64
+                            * f_w
+                            * f_hvg
+                            * f_p
+                            * f_bb
+                            * f_a
+                            * f_v
+                            * f_lu
+                    });
+                    let span = g_prot + g_perm;
+                    let combined = if span > 0.0 {
+                        (s * g_prot + s_perm * g_u) / span
+                    } else {
+                        s
+                    };
+                    (combined, Some(s), Some(s_perm))
+                }
+            };
+            computed.push((f_lu, f_v, s, s_prot, s_perm));
         }
-        for (r, (f_lu, f_v, s)) in self.results.iter_mut().zip(computed) {
+        for (r, (f_lu, f_v, s, s_prot, s_perm)) in self.results.iter_mut().zip(computed) {
             r.lane_utilization = Some(f_lu);
             r.traffic_pressure = Some(f_v);
             r.sat_flow = Some(s);
+            r.protected_sat_flow = s_prot;
+            r.permitted_sat_flow = s_perm;
         }
     }
 
@@ -2393,7 +2514,64 @@ impl Interchange {
                     } else {
                         1.0
                     };
-                    let d1 = uniform_delay(c, g_eff, x, pf);
+                    // Equation 19-19 assumes one service period per cycle.
+                    // A protected-plus-permitted left turn has two, served
+                    // at different saturation flows, so its uniform delay
+                    // comes from the Exhibit 31-15 queue accumulation
+                    // polygon instead (Equations 31-115 / 31-116, which are
+                    // Equations 19-35 / 19-36).
+                    let d1 = match &g.protected_permitted_left {
+                        None => uniform_delay(c, g_eff, x, pf),
+                        Some(pp) => {
+                            let n = g.lanes.max(1) as f64;
+                            let q = r.flow_rate / n / 3_600.0 / if x > 1.0 { x } else { 1.0 };
+                            let g_perm = pp.permitted_green_s.max(0.0);
+                            let g_prot = (g.total_green_s() - g_perm).max(0.0);
+                            let g_u = pp.unblocked_green_s.clamp(0.0, g_perm);
+                            let red = (c - g_prot - g_perm).max(0.0);
+                            let s_prot_ln = r.protected_sat_flow.unwrap_or(0.0) / n;
+                            // The permitted component discharges at its own
+                            // rate for g_u only; `permitted_sat_flow` is
+                            // that rate, not the g_p average of Exhibit
+                            // 34-75.
+                            let s_perm_ln = r.permitted_sat_flow.unwrap_or(0.0) / n;
+                            // Exhibit 31-15 order for a leading protected
+                            // left: effective red, protected green,
+                            // opposing queue blocking the permitted green,
+                            // then the unblocked permitted green. No
+                            // sneaker term — Chapter 34 omits Equation
+                            // 31-124's `3,600 n_s / C` for the interchange
+                            // path (see the Step 8 note in the module
+                            // header).
+                            let intervals = [
+                                QapInterval {
+                                    duration_s: red,
+                                    discharge_veh_h: 0.0,
+                                    arrival_veh_s: q,
+                                    sneakers_veh: 0.0,
+                                },
+                                QapInterval {
+                                    duration_s: g_prot,
+                                    discharge_veh_h: s_prot_ln,
+                                    arrival_veh_s: q,
+                                    sneakers_veh: 0.0,
+                                },
+                                QapInterval {
+                                    duration_s: (g_perm - g_u).max(0.0),
+                                    discharge_veh_h: 0.0,
+                                    arrival_veh_s: q,
+                                    sneakers_veh: 0.0,
+                                },
+                                QapInterval {
+                                    duration_s: g_u,
+                                    discharge_veh_h: s_perm_ln,
+                                    arrival_veh_s: q,
+                                    sneakers_veh: 0.0,
+                                },
+                            ];
+                            qap_evaluate(&intervals, c, q).uniform_delay_s
+                        }
+                    };
                     // d2 uses the lane group capacity: Equation 19-26 defines
                     // c_A as "the average capacity (veh/h) ... equal to the
                     // capacity c computed in Step 7", and the Step 7 c is the
