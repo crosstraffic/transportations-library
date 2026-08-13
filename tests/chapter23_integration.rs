@@ -642,6 +642,17 @@ fn test_ep2_parclo_a2q_lane_groups() {
         0.01,
         "EB EXT-L R_Q"
     );
+    // The westbound external left is the same 200 ft bay under the lighter
+    // demand, and Exhibit 34-25 publishes R_Q = 0.78 for it. Pinned at the
+    // published value rather than merely bounded below 1.0, so a regression
+    // that inflates the queue has to clear the exhibit and not just the
+    // overflow threshold.
+    assert_near!(
+        group(&ix, WB_EXT_LEFT).queue_storage_ratio.unwrap(),
+        0.78,
+        0.01,
+        "WB EXT-L R_Q"
+    );
 }
 
 /// Chapter 34, Example Problem 2: Exhibit 34-22 gives the two internal

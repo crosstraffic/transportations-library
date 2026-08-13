@@ -567,10 +567,10 @@ fn basic_freeways_fixture_set_is_exactly_the_three_positional_cases() {
 /// f_HV 0.93 / 0.85, v_p 896 / 980 pc/h/ln, both below the 1,400 pc/h/ln multilane
 /// breakpoint so S = FFS, D 18.1 / 18.8 pc/mi/ln, LOS C both directions.
 ///
-/// The example gives no area type. It is set to Urban in both fixtures because Exhibit 12-15
-/// has a single density-to-LOS table for basic freeway and multilane segments with no
-/// urban/rural split, and Urban is the setting under which `determine_segment_los` reproduces
-/// those thresholds (see `rural_area_type_reads_the_facility_los_table` below).
+/// The example gives no area type. Both fixtures carry Urban, which is the constructor default
+/// and no longer decides anything here: Exhibit 12-15 has a single density-to-LOS table for
+/// basic freeway and multilane segments with no urban/rural split, and segment LOS now reads
+/// it directly (see `segment_los_does_not_depend_on_area_type` below).
 #[test]
 fn ch26_ep4_five_lane_highway_with_twltl() {
     // (fixture, FFS, capacity, E_T, f_HV, v_p, density)
@@ -616,13 +616,19 @@ fn ch26_ep4_five_lane_highway_with_twltl() {
 /// these grades; the segment is 2 mi).
 ///
 /// Published: E_T 3.31 by interpolation between 3.11 and 3.51, f_HV 0.743, v_p 2,019
-/// pc/h/ln, S 59.6 mi/h, D 33.9 pc/mi/ln, D_mix = D x f_HV = 25.2 veh/mi/ln. The example
-/// deliberately assigns no LOS letter, since D_mix is a mixed-flow density and the book says
-/// it cannot be used to derive one.
+/// pc/h/ln, S 59.6 mi/h, D 33.9 pc/mi/ln, D_mix = D x f_HV = 25.2 veh/mi/ln.
+///
+/// The LOS letter asserted below is DERIVED, not published. Chapter 26 prints no letter for
+/// this comparison: it stops at the densities and says only that D_mix "is the mixed-flow
+/// density, not an auto-only flow density. As such, it cannot be used to derive LOS." That
+/// caution is about D_mix. D itself is an auto-only PCE-based density and is exactly what
+/// Exhibit 12-15 takes, and 33.9 pc/mi/ln falls in the >26-35 band, so D. The assertion is
+/// here because this is the suite's only rural basic freeway segment and because 33.9 sits in
+/// the one band where the old routing gave E instead (REVIEW_NOTES item 8b).
 #[test]
 fn ch26_ep5_pce_comparison_branch() {
     let mut seg = load_ch26("ep5_pce_comparison.json");
-    seg.run_operational_analysis().expect("EP5 PCE comparison");
+    let los = seg.run_operational_analysis().expect("EP5 PCE comparison");
 
     // Lane width, lateral clearance and ramp density are all set to base conditions because
     // the example explicitly neglects those three adjustments, leaving FFS = BFFS = 65.
@@ -634,6 +640,8 @@ fn ch26_ep5_pce_comparison_branch() {
     assert_approx(seg.speed, 59.6, 0.05, "S (mi/h)");
     assert_approx(seg.density, 33.9, 0.05, "D (pc/mi/ln)");
     assert_approx(seg.density * seg.phv, 25.2, 0.05, "D_mix (veh/mi/ln)");
+    // Derived from the published D via Exhibit 12-15, not printed by the example. See above.
+    assert_eq!(LevelOfService::D, los, "Exhibit 12-15 band for D = 33.9 pc/mi/ln");
 }
 
 /// HCM Chapter 26, Example Problem 6: severe weather effects on a basic freeway segment.
@@ -675,35 +683,49 @@ fn ch26_ep6_heavy_snow_basic_freeway() {
     assert_eq!(LevelOfService::C, los, "EP6 LOS");
 }
 
-/// KNOWN DEFECT, documented rather than fixed here because this change set does not touch
-/// `src/`. `BasicFreeways::determine_segment_los` routes through
-/// `FacilityCalculation::los_from_density`, which branches on `city_type` and applies the
-/// Exhibit 10-6 FACILITY criteria. Exhibit 12-15, the SEGMENT criteria its own doc comment
-/// cites, has no area-type split at all, and `los_tables::los_basic_freeway` already
-/// implements it correctly but is not what this path calls.
+/// Regression guard for REVIEW_NOTES item 8b. Segment LOS is Exhibit 12-15, which prints one
+/// density-to-LOS table with no urban/rural split, so area type must not reach it. It used to:
+/// `determine_segment_los` went through `FacilityCalculation::los_from_density`, which applies
+/// the Exhibit 10-6 FACILITY bands and branches on `city_type`.
 ///
-/// The Exhibit 10-6 urban row happens to match Exhibit 12-15 value for value, so every
-/// existing fixture (all Urban) hides this. The rural row does not: it breaks at
-/// 6/14/22/29/39 instead of 11/18/26/35/45. A rural basic freeway segment at 33.9 pc/mi/ln
-/// therefore reports LOS E where Chapter 12 says LOS D.
+/// The two exhibits agree on the urban row value for value, so an all-Urban suite cannot see
+/// this. The rural row breaks at 6/14/22/29/39 against 11/18/26/35/45, which is why the sweep
+/// below forces both area types on the same fixture rather than trusting the one it ships with.
 ///
-/// Recorded in docs/hcm/REVIEW_NOTES.md. When it is fixed, this test should be deleted, not
-/// re-pointed, and `ch26_ep5_pce_comparison_branch` should gain the LOS D assertion.
+/// 33.9 pc/mi/ln (Example Problem 5) and 22.9 pc/mi/ln (Example Problem 6) are the two
+/// densities in the suite that fall in a band where the exhibits disagree, so they are the
+/// cases with the power to catch a regression here. The remaining fixtures are included
+/// because a cheap sweep is worth more than a curated pair if a fixture's density later moves.
 #[test]
-fn rural_area_type_reads_the_facility_los_table() {
-    let mut rural = load_ch26("ep5_pce_comparison.json");
-    let rural_los = rural.run_operational_analysis().expect("rural");
+fn segment_los_does_not_depend_on_area_type() {
+    for name in [
+        "ep4_eastbound_downgrade.json",
+        "ep4_westbound_upgrade.json",
+        "ep5_pce_comparison.json",
+        "ep6_heavy_snow.json",
+    ] {
+        let mut urban = load_ch26(name);
+        urban.city_type = transportations_library::common::CityType::Urban;
+        let urban_los = urban.run_operational_analysis().expect(name);
 
-    let mut urban = load_ch26("ep5_pce_comparison.json");
-    urban.city_type = transportations_library::common::CityType::Urban;
-    let urban_los = urban.run_operational_analysis().expect("urban");
+        let mut rural = load_ch26(name);
+        rural.city_type = transportations_library::common::CityType::Rural;
+        let rural_los = rural.run_operational_analysis().expect(name);
 
-    // Identical density, two different letters, decided only by the area type.
-    assert_approx(rural.density, urban.density, 1e-9, "density must not depend on area type");
-    assert_eq!(LevelOfService::D, urban_los, "Exhibit 12-15 band for 33.9 pc/mi/ln");
-    assert_eq!(
-        LevelOfService::E,
-        rural_los,
-        "defect: rural segments read the Exhibit 10-6 facility bands",
-    );
+        assert_approx(rural.density, urban.density, 1e-9, &format!("{name} density"));
+        assert_eq!(urban_los, rural_los, "{name} LOS must not depend on area type");
+    }
+
+    // Control: the comparison above is only meaningful if it could have failed. These are the
+    // Exhibit 10-6 bands the old path applied, and they do split on area type at both of the
+    // densities the sweep covers.
+    use transportations_library::hcm::freeway_facilities::exhibits::los_freeway_facility;
+    use transportations_library::common::CityType;
+    for density in [33.9, 22.9] {
+        assert_ne!(
+            los_freeway_facility(density, false, CityType::Urban),
+            los_freeway_facility(density, false, CityType::Rural),
+            "Exhibit 10-6 must disagree at {density} pc/mi/ln for this test to have teeth",
+        );
+    }
 }

@@ -179,3 +179,55 @@ def test_design_analysis_rejects_untabulated_los():
 
     with pytest.raises(ValueError, match="A-F"):
         seg.set_target_los("Z")
+
+
+CH26 = Path(__file__).parent / "ExampleCases" / "hcm" / "Chapter26"
+
+
+def _ep5(city_type):
+    """HCM Chapter 26 Example Problem 5, PCE-comparison branch, at a chosen area type."""
+    data = json.loads((CH26 / "ep5_pce_comparison.json").read_text())
+    return tl.BasicFreeways(
+        bffs=data["bffs"],
+        lane_width=data["lw"],
+        lane_count=data["lane_count"],
+        lc_r=data["lc_r"],
+        lc_l=data["lc_l"],
+        trd=data["trd"],
+        apd=data["apd"],
+        grade=data["grade"],
+        speed_limit=data["speed_limit"],
+        phf=data["phf"],
+        p_t=data["p_t"],
+        demand_flow_i=data["demand_flow_i"],
+        length=data["length"],
+        highway_type=data["highway_type"],
+        city_type=city_type,
+        sut_percentage=data["sut_percentage"],
+    )
+
+
+def test_rural_segment_los_reads_exhibit_12_15():
+    """Segment LOS is Exhibit 12-15, which has no urban/rural split (REVIEW_NOTES 8b).
+
+    Example Problem 5 is the suite's only rural basic freeway segment and its density,
+    33.9 pc/mi/ln, is the one value in the suite that Exhibit 12-15 and the Exhibit 10-6
+    facility table disagree on. This path used to read the facility table and return E.
+    The letter is derived from the published density, not printed by the example.
+    """
+    letters = {}
+    densities = {}
+    for area in ("urban", "rural"):
+        seg = _ep5(area)
+        seg.determine_free_flow_speed()
+        seg.estimate_capacity()
+        seg.estimate_demand_volume()
+        seg.calculate_speed()
+        seg.estimate_density()
+        letters[area] = seg.determine_segment_los()
+        densities[area] = seg.density()
+
+    assert densities["rural"] == pytest.approx(33.9, abs=0.05)
+    assert densities["urban"] == pytest.approx(densities["rural"], abs=1e-9)
+    assert letters["rural"] == "D"
+    assert letters["urban"] == letters["rural"]

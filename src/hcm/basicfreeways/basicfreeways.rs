@@ -1,5 +1,6 @@
 use crate::utils::math;
-use crate::hcm::common::{CommonSegment, LevelOfService, FacilityCalculation, CityType};
+use crate::hcm::common::{CommonSegment, LevelOfService, CityType};
+use crate::hcm::common::los_tables::los_basic_freeway;
 use serde::{Deserialize, Serialize};
 use crate::hcm::common::pce_table::PceTable;
 
@@ -1016,6 +1017,18 @@ impl BasicFreeways {
     /// LOS D: D > 26-35 pc/mi/ln
     /// LOS E: D > 35-45 pc/mi/ln
     /// LOS F: Demand exceeds capacity OR D > 45 pc/mi/ln
+    ///
+    /// Exhibit 12-15 has no urban/rural split, so `city_type` must not reach this lookup. It
+    /// used to: this path went through `FacilityCalculation::los_from_density`, which applies
+    /// the Exhibit 10-6 FACILITY bands and branches on area type. The Exhibit 10-6 urban row
+    /// matches Exhibit 12-15 value for value, so only rural segments saw a wrong letter
+    /// (33.9 pc/mi/ln read E on the 29/39 rural break instead of D). Area type still decides
+    /// FACILITY LOS, which is `freeway_facilities::exhibits::los_freeway_facility`'s business.
+    ///
+    /// This was `city_type`'s only read anywhere in the Chapter 12 operational path, so the
+    /// field is now inert here. It is kept because it is a serde input field and because
+    /// callers set it to pick the Exhibit 12-18 urban or rural default set. The PCE tables
+    /// select on the SUT/TT mix, not on area type.
     pub fn determine_segment_los(&mut self) -> LevelOfService {
         // Check for LOS F based on v/c ratio first
         self.calculate_vc_ratio();
@@ -1024,8 +1037,8 @@ impl BasicFreeways {
             return LevelOfService::F;
         }
 
-        let facility = FacilityCalculation { segments: self.set_segments(), city_types: self.city_type };
-        let los = facility.los_from_density(self.density, Some(self.vc_ratio));
+        // The demand-exceeds-capacity arm is already spent above, so it is false here.
+        let los = los_basic_freeway(self.density, false);
 
         self.los = Some(los);
         los
