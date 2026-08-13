@@ -18,7 +18,7 @@
 
 - **`g_u` is supplied by the fixture rather than derived.** Exhibit 31-12 builds the unblocked permitted green from the opposing queue service time, and for this SPUI that route does not close: the opposing arterial through runs at v/c 0.91 and needs about 27.9 s of its 32-s phase to serve its own queue, which would leave roughly 2 s rather than the 13.01 s Exhibit 34-77 publishes. Both published values do reproduce their published uniform delays through the polygon, so they are taken as the published intermediates they are, with a VERIFY-HCM note at the field.
 
-## 0.3.3 — unreleased
+## 0.3.3 — 2026-08
 
 ### Added
 
