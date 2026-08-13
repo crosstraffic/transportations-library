@@ -1,0 +1,20 @@
+{
+    "ramp_type": "OffRamp",
+    "ramp_side": "Right",
+    "ramp_lanes": "OneLane",
+    "freeway_lanes": 3,
+    "freeway_ffs": 60.0,
+    "ramp_ffs": 25.0,
+    "decel_lane_length": 300.0,
+    "freeway_demand": 4200.0,
+    "ramp_demand": 500.0,
+    "phf": 0.95,
+    "heavy_vehicle_pct": 0.075,
+    "terrain": "Level",
+    "adjacent_upstream": "OffRamp",
+    "upstream_distance": 750.0,
+    "upstream_ramp_flow": 300.0,
+    "adjacent_downstream": "None",
+    "caf": 1.0,
+    "saf": 1.0
+}
