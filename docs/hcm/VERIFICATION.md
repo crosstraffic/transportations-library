@@ -201,10 +201,12 @@ implemented (EPUB `235_Ch30_03.xhtml`, `236_Ch30_04.xhtml`; EP1 intermediates in
     group composition for all six Exhibit 23-17 parclos and the SPUI come from the same Exhibits
     34-171 through 34-177 worksheets that the validated forms use, and every form is exercised end to
     end by `test_every_form_runs_the_pipeline` and `test_every_form_routes_every_od`, but only the
-    diamond (Examples 1, 3, 4), the DDI (Examples 5, 6), and the Parclo A-2Q (Example 2) are pinned
-    to published numbers. Chapter 34 publishes no worked example for the other five parclos or the
-    SPUI at the Part B operational level (Example Problem 7 is a SPUI but needs the Chapter 19
-    protected-plus-permitted left-turn surface, which this module does not model).
+    diamond (Examples 1, 3, 4), the DDI (Examples 5, 6), the Parclo A-2Q (Example 2), and the SPUI
+    (Example 7, since the 0.3.4 protected-plus-permitted left-turn support) are pinned to published
+    numbers. Chapter 34 publishes no worked example for the other five parclos, which remain
+    structurally supported and unvalidated. Example Problem 7's worksheets carry seven documented
+    defects (computed with HCM 2000 factors among them), so eight of its ten O-D letters reproduce
+    and the rest are pinned at engine values with the published figures named.
 
 ## Chapter 23 Part C (feat/hcm-ch23-alternative-intersections)
 Alternative intersections (RCUT / MUT / DLT), EPUB 178–182_Ch23_pt3_*.xhtml, Ch 34 Example
