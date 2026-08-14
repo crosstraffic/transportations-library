@@ -150,7 +150,7 @@ Implemented in: freeway_facilities/planning.rs::PlanningFacility::run_analysis
 Equation 25-42:  f_HV = 1 / (1 + P_T*(E_T - 1))                                   [decimal]
   f_HV = heavy-vehicle adjustment factor                                          [decimal]
   P_T  = combined SUT + TT proportion (pct_sut + pct_tt)                          [decimal]
-  E_T  = passenger-car equivalent of one heavy vehicle (Exhibit 12-25: 2.0 level, 3.0 rolling/mountainous) [PCE]
+  E_T  = passenger-car equivalent of one heavy vehicle (Exhibit 12-25: 2.0 level, 3.0 rolling; mountainous is not tabulated and reads the non-HCM 3.0 stand-in in `Terrain::pce`) [PCE]
 Implemented in: freeway_facilities/planning.rs::PlanningFacility::f_hv
 
 Equation 25-43:  d_i,p = d_(i-1),p + (q_i,p)_in - (q_i,p)_out + d'_i,(p-1)         [pc/h]

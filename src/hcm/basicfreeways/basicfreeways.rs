@@ -777,16 +777,26 @@ impl BasicFreeways {
             match self.terrain_type.as_deref().map(str::to_ascii_lowercase).as_deref() {
                 Some("level") | None => 2.0,
                 Some("rolling") => 3.0,
-                // VERIFY-HCM: Exhibit 12-25 provides no PCE for mountainous terrain;
-                // HCM directs analysts to the Chapter 25/26 mixed-flow model, which now
-                // lives in `basicfreeways::mixed_flow` and `basicfreeways::composite_grade`.
-                // The 2.5 here is a non-HCM approximation retained for API stability, and it
-                // is deliberately left in place: the mixed-flow model needs a grade and a
-                // length, which "mountainous" does not supply, and it returns a speed rather
-                // than a PCE, so it cannot be substituted here without changing what this
-                // function means. The four sites carrying this approximation disagree with
-                // each other (2.5 here, 5.0 in merge_diverge and weaving, 3.0 in
-                // freeway_facilities) and want reconciling as their own change.
+                // VERIFY-HCM: the HCM reading is settled, the disposition is not. Chapter 12
+                // "Equivalents for General Terrain Segments" is explicit that "No PCE is
+                // provided for mountainous terrain" and that the Chapter 25/26 mixed-flow
+                // model "must be used to estimate speeds and densities"; Exhibit 12-25
+                // tabulates level and rolling only. So the 2.5 here is not an approximation of
+                // any published value, it stands in for a quantity the manual declines to
+                // define.
+                //
+                // Routing into the real model is not available as a substitution: MixedFlowSegment
+                // requires a grade percent, a grade length and an SUT/TT split, none of which a
+                // terrain class supplies, and it returns speeds and densities rather than a PCE.
+                // Any mountainous analysis has to enter through mixed_flow/composite_grade
+                // directly, not through this factor.
+                //
+                // The value is kept because the alternative is an error return, and keep-vs-error
+                // is the open user decision recorded in docs/hcm/VERIFICATION.md (Chapter 12-14
+                // item 1), which also lists the three sibling stand-ins that disagree with this
+                // one. Do not harmonize the four values without deciding that item: there is no
+                // published example problem for mountainous general terrain to validate a moved
+                // number against, so any harmonized value would be invented rather than derived.
                 Some("mountainous") => 2.5,
                 Some(other) => {
                     return Err(format!(

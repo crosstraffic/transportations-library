@@ -454,12 +454,20 @@ impl RampSegment {
         let e_t = match self.terrain {
             TerrainType::Level => 2.0,    // Exhibit 12-25
             TerrainType::Rolling => 3.0,  // Exhibit 12-25
-            // VERIFY-HCM: Exhibit 12-25 provides no PCE for mountainous
-            // terrain (HCM directs to the Ch. 25/26 mixed-flow model, now in
-            // basicfreeways::mixed_flow); 5.0 is a non-HCM approximation
-            // retained for API stability. It is not replaced by the mixed-flow
-            // model because that model returns a speed for a specific grade and
-            // length, not a passenger-car equivalent for a terrain class.
+            // VERIFY-HCM: the Equation 14-1 note says the adjustment factors "are the same
+            // as those used in Chapter 12", and Chapter 12 states that "No PCE is provided
+            // for mountainous terrain" and that the Chapter 25/26 mixed-flow model "must be
+            // used" instead. Chapter 14 lists mountainous among its terrain inputs but never
+            // supplies a PCE for it, so 5.0 stands in for a quantity no exhibit defines. It
+            // is not replaced by the mixed-flow model because that model needs a grade
+            // percent and length and returns speeds and densities, not a passenger-car
+            // equivalent for a terrain class.
+            //
+            // Kept rather than made an error for two reasons: keep-vs-error is the open user
+            // decision in docs/hcm/VERIFICATION.md (Chapter 12-14 item 1), and the refusal
+            // would have to travel out through this module's infallible public surface. No
+            // published example problem exercises a mountainous ramp junction, so there is
+            // nothing to validate a different number against.
             TerrainType::Mountainous => 5.0,
         };
         1.0 / (1.0 + pct * (e_t - 1.0))
