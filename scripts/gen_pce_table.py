@@ -126,7 +126,9 @@ impl PceTable {
         if grade > max_grade {
             return Err(format!(
                 "grade {grade}% exceeds the {max_grade}% maximum tabulated in HCM Exhibit 12-26/27/28; \\
-                 steep single grades require the Chapter 25/26 mixed-flow model"
+                 steep single grades require the Chapter 25/26 mixed-flow model \\
+                 (basicfreeways::mixed_flow for a single grade, \\
+                 basicfreeways::composite_grade for consecutive grades)"
             ));
         }
         if length <= 0.0 {

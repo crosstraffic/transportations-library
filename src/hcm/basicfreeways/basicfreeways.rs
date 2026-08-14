@@ -778,8 +778,15 @@ impl BasicFreeways {
                 Some("level") | None => 2.0,
                 Some("rolling") => 3.0,
                 // VERIFY-HCM: Exhibit 12-25 provides no PCE for mountainous terrain;
-                // HCM directs analysts to the Chapter 25/26 mixed-flow model instead.
-                // The 2.5 here is a non-HCM approximation retained for API stability.
+                // HCM directs analysts to the Chapter 25/26 mixed-flow model, which now
+                // lives in `basicfreeways::mixed_flow` and `basicfreeways::composite_grade`.
+                // The 2.5 here is a non-HCM approximation retained for API stability, and it
+                // is deliberately left in place: the mixed-flow model needs a grade and a
+                // length, which "mountainous" does not supply, and it returns a speed rather
+                // than a PCE, so it cannot be substituted here without changing what this
+                // function means. The four sites carrying this approximation disagree with
+                // each other (2.5 here, 5.0 in merge_diverge and weaving, 3.0 in
+                // freeway_facilities) and want reconciling as their own change.
                 Some("mountainous") => 2.5,
                 Some(other) => {
                     return Err(format!(

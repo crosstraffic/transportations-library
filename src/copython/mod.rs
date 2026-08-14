@@ -8,6 +8,8 @@ pub mod freeway_reliability; // HCM Chapter 11
 #[cfg(feature = "with-python")]
 pub mod basicfreeways; // HCM Chapter 12
 #[cfg(feature = "with-python")]
+pub mod mixed_flow; // HCM Chapters 25 and 26 (mixed-flow model)
+#[cfg(feature = "with-python")]
 pub mod weaving; // HCM Chapter 13
 #[cfg(feature = "with-python")]
 pub mod merge_diverge; // HCM Chapter 14

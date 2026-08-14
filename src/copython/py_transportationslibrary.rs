@@ -25,6 +25,7 @@ fn transportations_library(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()>
     super::freeway_facilities::register(m)?;
     super::freeway_reliability::register(m)?;
     super::basicfreeways::register(m)?;
+    super::mixed_flow::register(m)?;
     super::weaving::register(m)?;
     super::merge_diverge::register(m)?;
     super::twolanehighways::register(m)?;
@@ -48,6 +49,8 @@ fn transportations_library(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()>
         - SubSegment, Segment, TwoLaneHighways: HCM Chapter 15 (two-lane highways)\n\
         - BasicFreeways, ManagedLanes: HCM Chapter 12 (basic freeway, multilane\n\
           highway, and basic managed lane segments)\n\
+        - analyze_mixed_flow, analyze_composite_grade: HCM Chapters 26 and 25\n\
+          (mixed-flow model for single and composite grades)\n\
         - WeavingSegment: HCM Chapter 13 (freeway weaving segments)\n\
         - RampSegment: HCM Chapter 14 (freeway merge and diverge segments)\n\
         - FreewayFacility: HCM Chapter 10 (freeway facilities core methodology)\n\

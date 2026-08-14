@@ -3,63 +3,33 @@
 //!
 //! Chapter 26 coverage: Example Problems 1-3 (operational and design, case1-3 fixtures),
 //! 4 (five-lane highway with a TWLTL), 6 (severe weather), and 7 (basic managed lane) are
-//! pinned at published values. Example Problem 5 is covered only in its PCE-comparison half;
-//! its mixed-flow half is blocked for the reason below.
+//! pinned at published values. Example Problem 5 is covered in both halves: the
+//! PCE-comparison half against `BasicFreeways`, and the mixed-flow half against
+//! `basicfreeways::mixed_flow`.
 //!
-//! NOT COVERED: HCM Chapter 25, Example Problem 11 (Estimating Freeway
-//! Composite Grade Operations with the Mixed-Flow Model), and the mixed-flow half of
-//! Chapter 26, Example Problem 5 (Steps 2 through 8, Equations 26-1 through 26-16;
-//! published targets are mixed-flow capacity 1,725 veh/h/ln and mixed-flow density
-//! 32.6 veh/mi/ln). The mixed-flow model
-//! is not implemented anywhere in this library, so there is nothing to assert
-//! against. Every module that could reach it instead refuses the input or
-//! substitutes an approximation and says so:
-//!   - src/hcm/basicfreeways/basicfreeways.rs:780 returns 2.5 as a non-HCM PCE
-//!     stand-in for mountainous terrain, and :786 rejects any other terrain
-//!     name, both pointing at the Chapter 25/26 mixed-flow model;
-//!   - src/hcm/common/pce_table.rs:327 rejects grades steeper than the
-//!     Exhibit 12-26/27/28 maximum for the same reason;
-//!   - src/hcm/merge_diverge/merge_diverge.rs:458,
-//!     src/hcm/weaving/weaving.rs:370, and
-//!     src/hcm/freeway_facilities/freeway_facilities.rs:108 carry the same
-//!     mountainous-terrain approximation.
+//! The mixed-flow model (Chapter 26 Equations 26-1 through 26-22, and Chapter 25 Equations
+//! 25-53 through 25-70 for composite grades) now lives in
+//! `src/hcm/basicfreeways/mixed_flow.rs` and `src/hcm/basicfreeways/composite_grade.rs`, on
+//! top of the digitised truck-performance curves in `src/hcm/common/truck_curves.rs`.
+//! Chapter 25 Example Problem 11 is covered in `tests/chapter25_composite_grade_integration.rs`.
 //!
-//! Closing the gap needs Equations 25-53 through 25-70 (mixed-flow CAF, truck
-//! and auto spot and space-based travel time rates, the traffic interaction
-//! term, and the mixed-flow aggregation) plus the Exhibit 25-20/25-21 truck
-//! spot-rate curves and the Exhibit 25-A7/25-A16 space-based travel time
-//! curves. The last two are the harder half: the published solution reads
-//! truck kinematic rates off nomographs by eye ("its spot rate can be read at
-//! 6,780 ft and is approximately 75 s/mi"), so a faithful reproduction needs
-//! those curve families digitized, not just the equations transcribed.
+//! The PCE path is unchanged and still refuses the inputs it cannot serve, which remains
+//! correct: a caller asking for a passenger-car equivalent wants a PCE, not a mixed-flow
+//! speed, and the two methods are not interchangeable. Those sites point at the new modules
+//! rather than at an unimplemented method.
 //!
-//! Published target values for Example Problem 11, so a future implementation
-//! has something to hit. Facts: three basic segments (1.5 mi at 3%, 2.0 mi at
-//! 2%, 1.0 mi at 5%), six-lane freeway, 5% SUTs and 10% TTs, FFS 65 mi/h,
-//! 1,500 veh/h/ln at PHF 1.0.
-//!   - Governing mixed-flow capacity across the three segments: 1,746 veh/h/ln.
-//!   - Mixed-flow space mean speed by segment (Equation 25-68): 57.7, 58.7,
-//!     and 47.9 mi/h.
-//!   - Mixed-flow travel time by segment (Equation 25-69): 93.6, 122.7, and
-//!     75.2 s.
-//!   - Overall mixed-flow speed (Equation 25-70): 55.6 mi/h.
-//!   - Spot speeds at the end of each segment (Exhibit 25-109), autos / SUTs /
-//!     TTs: 59.5 / 56.1 / 56.4, then 60.9 / 60.9 / 54.0, then 45.2 / 42.2 /
-//!     31.8 mi/h. The facility entry values are 59.5 for all three modes.
-//!   - Space mean speeds by segment (Exhibit 25-110): 58.7 / 57.0 / 50.6, then
-//!     59.5 / 60.9 / 51.8, then 49.9 / 46.6 / 36.3 mi/h.
-//!   - Overall space mean speeds (Exhibit 25-111): autos 56.8, SUTs 55.8, TTs
-//!     47.0 mi/h.
-//!
-//! One inconsistency in the source, so a future implementation does not chase
-//! it: the Step 7 prose states the overall mixed-flow travel time "equals
-//! 294 s", but the three published segment travel times sum to 291.5 s, and it
-//! is 291.5 that the book substitutes into Equation 25-70 to get 55.6 mi/h
-//! (3,600 x 4.5 / 291.5 = 55.6; 3,600 x 4.5 / 294 would give 55.1). Target
-//! 291.5 s, not 294 s.
+//! Two published values in Example Problem 5 contradict each other, and this file asserts the
+//! one the printed chain actually produces:
+//!   - Step 8 prints a mixed-flow density of 31.7 veh/mi/ln, which is what
+//!     1,500 / 47.3 gives. The comparison paragraph later in the same example instead says
+//!     the PCE result is "about 22% lower than 32.6 veh/mi/ln, which is the density predicted
+//!     in Step 8". No step produces 32.6; it would need a mixed-flow speed of 46.0 mi/h. The
+//!     22% claim is self-consistent with 32.6 (25.2/32.6 = 0.77) and not with 31.7 (that
+//!     would be 20.5%), so the defect is confined to that paragraph. Target 31.7.
 
 use transportations_library::math;
 use transportations_library::basicfreeways::BasicFreeways;
+use transportations_library::basicfreeways::mixed_flow::MixedFlowSegment;
 use transportations_library::common::LevelOfService;
 
 use std::fs::{self, File};
@@ -728,4 +698,82 @@ fn segment_los_does_not_depend_on_area_type() {
             "Exhibit 10-6 must disagree at {density} pc/mi/ln for this test to have teeth",
         );
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HCM Chapter 26, Example Problem 5 — mixed-flow half
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Load a Chapter 26 mixed-flow fixture.
+fn load_mixed_flow(name: &str) -> MixedFlowSegment {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/ExampleCases/hcm/Chapter26");
+    path.push(name);
+    let f = File::open(&path).unwrap_or_else(|_| panic!("Unable to open {path:?}"));
+    serde_json::from_reader(BufReader::new(f)).expect("Failed to parse fixture JSON")
+}
+
+#[test]
+fn ch26_ep5_mixed_flow_capacity() {
+    let r = load_mixed_flow("ep5_mixed_flow.json").analyze().expect("EP5 mixed flow");
+    assert_approx(r.caf_t_mix, 0.135, 0.001, "CAF_T,mix");
+    assert_approx(r.rho_g_mix, 0.1215, 1e-9, "rho_g,mix");
+    assert_approx(r.caf_g_mix, 0.131, 0.001, "CAF_g,mix (Equation 26-3, EPUB form)");
+    assert_approx(r.caf_mix, 0.734, 0.001, "CAF_mix");
+    assert_approx(r.capacity_ao, 2350.0, 1e-9, "C_ao (pc/h/ln)");
+    // The example carries CAF_mix rounded to three decimals into Equation 26-5, which is where
+    // the last veh/h/ln goes: 2,350 x 0.734 = 1,724.9, against 1,726.2 unrounded.
+    assert_approx(r.capacity_mix, 1725.0, 2.0, "C_mix (veh/h/ln)");
+    assert!(!r.oversaturated, "1,500 veh/h/ln is below the mixed-flow capacity");
+}
+
+#[test]
+fn ch26_ep5_mixed_flow_free_flow_speed() {
+    let r = load_mixed_flow("ep5_mixed_flow.json").analyze().expect("EP5 mixed flow");
+    assert_approx(r.tau_sut_kin, 71.1, 0.5, "tau_SUT,kin (s/mi, Equation 26-12)");
+    assert_approx(r.tau_tt_kin, 92.2, 0.5, "tau_TT,kin (s/mi, Equation 26-12)");
+    assert_approx(r.tau_a_ffs, 55.4, 0.1, "tau_a at free flow (s/mi)");
+    assert_approx(r.tau_mix_ffs, 59.87, 0.1, "tau_mix at free flow (s/mi)");
+    assert_approx(r.ffs_mix, 60.1, 0.1, "FFS_mix (mi/h)");
+    assert_approx(r.saf_mix, 0.92, 0.01, "SAF_mix");
+}
+
+/// Equation 26-16 is implemented as printed, `max[0, e^(30g) + 1]`, which drives the
+/// breakpoint to zero here. See the VERIFY-HCM note on `breakpoint_mixed`: the `+ 1` is very
+/// likely a typo for `- 1`, but the printed form is what produces the published speed and
+/// density, and the example rationalises the zero rather than treating it as an error.
+#[test]
+fn ch26_ep5_mixed_flow_breakpoint_as_printed() {
+    let r = load_mixed_flow("ep5_mixed_flow.json").analyze().expect("EP5 mixed flow");
+    assert_approx(r.bp_ao, 1400.0, 1e-9, "BP_ao (veh/h/ln)");
+    assert_approx(r.bp_mix, 0.0, 1e-9, "BP_mix (veh/h/ln)");
+}
+
+#[test]
+fn ch26_ep5_mixed_flow_speed_and_density() {
+    let r = load_mixed_flow("ep5_mixed_flow.json").analyze().expect("EP5 mixed flow");
+    assert_approx(r.s_calib_cap, 37.5, 0.3, "S_calib at capacity (mi/h)");
+    assert_approx(r.s_calib_90cap, 44.3, 0.3, "S_calib at 90% of capacity (mi/h)");
+    assert_approx(r.phi_mix, 4.07, 0.1, "phi_mix");
+    assert_approx(r.s_mix.expect("undersaturated"), 47.3, 0.3, "S_mix (mi/h)");
+    // 31.7 from Step 8, not the 32.6 the comparison paragraph quotes. See the file header.
+    assert_approx(r.d_mix.expect("undersaturated"), 31.7, 0.3, "D_mix (veh/mi/ln)");
+}
+
+/// The two halves of Example Problem 5 describe the same segment, and the point the example
+/// makes is that they disagree. Pin the direction and rough size of that disagreement, so
+/// that a change which quietly makes the mixed-flow half track the PCE half is caught.
+#[test]
+fn ch26_ep5_mixed_flow_density_exceeds_the_pce_estimate() {
+    let mut pce = load_ch26("ep5_pce_comparison.json");
+    pce.run_operational_analysis().expect("EP5 PCE comparison");
+    let pce_d_mix = pce.density * pce.phv;
+    let mf = load_mixed_flow("ep5_mixed_flow.json").analyze().expect("EP5 mixed flow");
+    let mf_d_mix = mf.d_mix.expect("undersaturated");
+    assert_approx(pce_d_mix, 25.2, 0.05, "PCE-path D_mix (veh/mi/ln)");
+    assert!(
+        mf_d_mix > pce_d_mix,
+        "the mixed-flow model should find the steep grade worse than the PCE path does: \
+         mixed flow {mf_d_mix:.1}, PCE {pce_d_mix:.1} veh/mi/ln"
+    );
 }
