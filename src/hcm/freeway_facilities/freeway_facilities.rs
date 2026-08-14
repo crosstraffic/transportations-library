@@ -104,13 +104,22 @@ impl Default for Terrain {
 
 impl Terrain {
     /// Passenger-car equivalent E_T (Exhibit 12-25: level 2.0, rolling 3.0).
-    /// VERIFY-HCM: Exhibit 12-25 provides no PCE for mountainous terrain (HCM
-    /// directs to the Chapter 25/26 mixed-flow model, now in
-    /// basicfreeways::mixed_flow and basicfreeways::composite_grade); 3.0 is a
-    /// non-HCM stand-in retained for API stability. It is NOT consistent with
-    /// the other chapter modules, which use 2.5 (basicfreeways) and 5.0
-    /// (merge_diverge, weaving); the earlier claim of consistency here was
-    /// wrong. Reconciling the four values is its own change.
+    ///
+    /// VERIFY-HCM: Exhibit 12-25 tabulates level and rolling only, and the Chapter 12 text is
+    /// explicit that "No PCE is provided for mountainous terrain" and that the Chapter 25/26
+    /// mixed-flow model "must be used" instead. Chapter 10 does not disagree, it never offers
+    /// the category at all: its required-input exhibit lists terrain as level, rolling, or
+    /// specific grade. So the 3.0 here stands in for a quantity neither chapter defines, and
+    /// it is not an approximation of any published value.
+    ///
+    /// It is NOT consistent with the other chapter modules, which use 2.5 (basicfreeways) and
+    /// 5.0 (merge_diverge, weaving); the earlier claim of consistency here was wrong. Worse,
+    /// the inconsistency is reachable inside a single facility run: `to_weave` and `to_ramp`
+    /// below map Mountainous straight through, so one mountainous facility charges E_T = 3.0
+    /// on its basic segments and E_T = 5.0 on its weaving and ramp segments. Reconciling the
+    /// four values is the open user decision in docs/hcm/VERIFICATION.md (Chapter 12-14 item
+    /// 1), and no published example problem covers mountainous terrain to validate a moved
+    /// number against.
     pub fn pce(self) -> f64 {
         match self {
             Terrain::Level => 2.0,

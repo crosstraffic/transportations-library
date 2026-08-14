@@ -350,6 +350,6 @@ Per the `freeway_facilities/mod.rs` and `freeway_facilities.rs` module doc comme
 - Managed-lane facilities (Steps A-9/A-13/A-14) — implemented separately on `feat/hcm-ch10-managed-lanes` (`src/hcm/freeway_facilities/managed_lanes.rs`, `planning.rs`).
 - The Chapter 25 planning-level method.
 - The Chapter 25 Section 5 special work zone configuration tables (Exhibits 25-8 through 25-14) — only the general NCHRP 03-107 work zone CAF/SAF model (Equations 10-7 through 10-12) is implemented, not the specific configuration-table lookups.
-- Exhibit 12-25 provides no PCE for mountainous terrain; `Terrain::pce()` uses 3.0 (the rolling-terrain value) as a conservative stand-in rather than the Chapter 25/26 mixed-flow model the manual directs to.
+- Exhibit 12-25 provides no PCE for mountainous terrain, and Chapter 10's own required-input exhibit offers only level, rolling, and specific grade; `Terrain::pce()` reuses the rolling-terrain 3.0 as a stand-in rather than the Chapter 25/26 mixed-flow model the manual directs to. Not a conservative choice: it is the lowest of the four stand-ins in the library, and because `to_weave`/`to_ramp` pass Mountainous through unchanged, one mountainous facility charges 3.0 on its basic segments and 5.0 on its weaving and ramp segments. Pending the keep-vs-error decision in `VERIFICATION.md` (Chapter 12-14 item 1).
 
 No hooks (stub types, `todo!()`, or feature flags) for these deferrals are present in this module; they are simply unimplemented.
