@@ -104,9 +104,13 @@ impl Default for Terrain {
 
 impl Terrain {
     /// Passenger-car equivalent E_T (Exhibit 12-25: level 2.0, rolling 3.0).
-    /// VERIFY-HCM: Exhibit 12-25 provides no PCE for mountainous terrain
-    /// (HCM directs to the Chapter 25/26 mixed-flow model); 3.0 is used as
-    /// a conservative stand-in, consistent with the other chapter modules.
+    /// VERIFY-HCM: Exhibit 12-25 provides no PCE for mountainous terrain (HCM
+    /// directs to the Chapter 25/26 mixed-flow model, now in
+    /// basicfreeways::mixed_flow and basicfreeways::composite_grade); 3.0 is a
+    /// non-HCM stand-in retained for API stability. It is NOT consistent with
+    /// the other chapter modules, which use 2.5 (basicfreeways) and 5.0
+    /// (merge_diverge, weaving); the earlier claim of consistency here was
+    /// wrong. Reconciling the four values is its own change.
     pub fn pce(self) -> f64 {
         match self {
             Terrain::Level => 2.0,

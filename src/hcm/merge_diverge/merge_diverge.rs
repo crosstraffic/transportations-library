@@ -455,8 +455,11 @@ impl RampSegment {
             TerrainType::Level => 2.0,    // Exhibit 12-25
             TerrainType::Rolling => 3.0,  // Exhibit 12-25
             // VERIFY-HCM: Exhibit 12-25 provides no PCE for mountainous
-            // terrain (HCM directs to the Ch. 25/26 mixed-flow model);
-            // 5.0 is a non-HCM approximation retained for API stability.
+            // terrain (HCM directs to the Ch. 25/26 mixed-flow model, now in
+            // basicfreeways::mixed_flow); 5.0 is a non-HCM approximation
+            // retained for API stability. It is not replaced by the mixed-flow
+            // model because that model returns a speed for a specific grade and
+            // length, not a passenger-car equivalent for a terrain class.
             TerrainType::Mountainous => 5.0,
         };
         1.0 / (1.0 + pct * (e_t - 1.0))

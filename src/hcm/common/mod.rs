@@ -15,6 +15,7 @@ pub mod los_tables;
 pub mod pce_table;
 pub mod reliability;
 pub mod time_period;
+pub mod truck_curves;
 pub mod version;
 
 pub use version::HcmVersion;
