@@ -34,6 +34,7 @@ use crate::hcm::common::truck_curves::{self, TruckClass};
 
 /// One grade of a composite grade.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GradeSegment {
     /// Length of this segment (mi).
     pub length: f64,
@@ -42,7 +43,12 @@ pub struct GradeSegment {
 }
 
 /// Inputs to a composite-grade mixed-flow analysis (HCM Chapter 25).
+///
+/// `deny_unknown_fields` here and on [`GradeSegment`] for the same reason as
+/// [`super::mixed_flow::MixedFlowSegment`]: `caf_ao` is serde-defaulted, so a
+/// misspelled key must fail loudly rather than silently analyze unadjusted.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CompositeGrade {
     /// Free-flow speed of the facility (mi/h). Shared by every segment, and the index into
     /// the delta exhibits regardless of which travel time curve a segment reads.
@@ -337,6 +343,25 @@ impl CompositeGrade {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A misspelled key must be rejected at either level, not silently dropped
+    /// (`deny_unknown_fields` on both structs).
+    #[test]
+    fn misspelled_keys_are_rejected_at_both_levels() {
+        let top = CompositeGrade::from_json(
+            r#"{"ffs":65,"v_mix":1500,"p_sut":0.05,"p_tt":0.10,"caf_a0":0.85,
+                "segments":[{"length":1.0,"grade":2.0}]}"#,
+        )
+        .unwrap_err();
+        assert!(top.contains("caf_a0"), "error names the unknown key: {top}");
+
+        let nested = CompositeGrade::from_json(
+            r#"{"ffs":65,"v_mix":1500,"p_sut":0.05,"p_tt":0.10,
+                "segments":[{"length":1.0,"grade":2.0,"gradient":3.0}]}"#,
+        )
+        .unwrap_err();
+        assert!(nested.contains("gradient"), "error names the unknown key: {nested}");
+    }
 
     /// Chapter 25 Example Problem 11: three segments, six-lane freeway, FFS 65 mi/h.
     fn ep11() -> CompositeGrade {

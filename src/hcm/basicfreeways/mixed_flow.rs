@@ -149,7 +149,12 @@ pub(crate) fn breakpoint_mixed(bp_ao: f64, p_t: f64, grade_pct: f64, length_mi: 
 }
 
 /// Inputs to a single-grade mixed-flow analysis (HCM Chapter 26).
+///
+/// `deny_unknown_fields` so a misspelled `caf_ao` key is an error rather than a
+/// silent fall-through to the 1.0 default — the only field with a serde default,
+/// and therefore the only one a typo could silently erase.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MixedFlowSegment {
     /// Free-flow speed of the segment (mi/h).
     pub ffs: f64,
@@ -391,6 +396,28 @@ pub(crate) fn branch_for(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A misspelled `caf_ao` key must be rejected, not silently dropped in favor
+    /// of the 1.0 default (`deny_unknown_fields` on the struct).
+    #[test]
+    fn misspelled_caf_ao_key_is_rejected() {
+        let err = MixedFlowSegment::from_json(
+            r#"{"ffs":65,"length":2,"grade":5,"v_mix":1500,"p_sut":0.05,"p_tt":0.10,"caf_a0":0.85}"#,
+        )
+        .unwrap_err();
+        assert!(err.contains("caf_a0"), "error names the unknown key: {err}");
+    }
+
+    /// Omitting `caf_ao` entirely stays legal: the 1.0 default is the genuine
+    /// no-adjustment case, not a fallback.
+    #[test]
+    fn omitted_caf_ao_still_defaults_to_unity() {
+        let seg = MixedFlowSegment::from_json(
+            r#"{"ffs":65,"length":2,"grade":5,"v_mix":1500,"p_sut":0.05,"p_tt":0.10}"#,
+        )
+        .unwrap();
+        assert_eq!(seg.caf_ao, 1.0);
+    }
 
     fn ep5() -> MixedFlowSegment {
         MixedFlowSegment {
