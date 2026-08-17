@@ -544,3 +544,155 @@ fn test_planning_carryover_propagates_downstream() {
     assert!(fac.dc_ratio(0, 1) > 1.0, "section 1 should be oversaturated in p2");
     assert!(fac.facility_results[1].total_queue_mi > 0.0, "queue reported");
 }
+
+// ═════════════════════════════════════════════════════════════════════════
+// Segmentation, reconstructed from ramp stations
+// ═════════════════════════════════════════════════════════════════════════
+
+/// Half of the weaving segment's overhang past the gores. Chapter 10 Section
+/// 2: "the weave influence area extends 500 ft upstream and 500 ft downstream
+/// of the two respective gore areas (see Exhibit 10-2)."
+///
+/// Deliberately local to the tests. `segment_ramp_section` does not apply this
+/// itself, so it is the caller's arithmetic, and the test below is what pins
+/// that fact down.
+const WEAVE_EXTENSION_FT: f64 = 500.0;
+
+/// Example Problem 1's three ramp sections as an analyst would place them:
+/// `(on-ramp gore, off-ramp gore, auxiliary lane)` in ft from the upstream
+/// terminus. Read off Exhibit 25-43 by accumulating the published segment
+/// lengths, with the two weave gores pulled 500 ft inside the weaving
+/// segment's boundaries per Exhibit 10-2.
+const EP1_RAMP_SECTIONS: [(f64, f64, bool); 3] = [
+    (5280.0, 10560.0, false),
+    (16340.0, 17980.0, true),
+    (23760.0, 26400.0, false),
+];
+const EP1_LENGTH_FT: f64 = 31680.0; // 6.00 mi
+const EP1_MAINLINE_LANES: u32 = 3;
+
+/// Apply the Chapter 10 Section 2 segmentation rules to a whole facility
+/// described by where its ramps are, rather than to one section at a time.
+///
+/// `segment_ramp_section` is the per-section half of Step A-2. This is the
+/// other half, and it is only three rules: the section handed to a weave is
+/// extended past each gore (Exhibit 10-2), the auxiliary lane that makes it a
+/// weave is a lane added to the cross section ("A new segment should be
+/// started whenever capacity changes (i.e., when a full or auxiliary lane is
+/// added ...)"), and everything left over is basic ("Any remaining unassigned
+/// segments after all merge, diverge, weave, and overlap segments have been
+/// defined are labeled as basic segments"), which is also what puts basic
+/// segments at both termini.
+fn assemble_from_ramp_gores(
+    length_ft: f64,
+    mainline_lanes: u32,
+    sections: &[(f64, f64, bool)],
+    extend_weaves: bool,
+) -> Vec<(SegmentType, f64, u32)> {
+    let mut out = Vec::new();
+    let mut cursor = 0.0;
+    for &(on_gore, off_gore, aux) in sections {
+        let gore_to_gore = off_gore - on_gore;
+        let ext = if aux && extend_weaves { WEAVE_EXTENSION_FT } else { 0.0 };
+        let start = on_gore - ext;
+        let span = gore_to_gore + 2.0 * ext;
+        if start > cursor {
+            out.push((SegmentType::Basic, start - cursor, mainline_lanes));
+        }
+        for (seg_type, len) in segment_ramp_section(span, aux) {
+            let lanes = if seg_type == SegmentType::Weaving {
+                mainline_lanes + 1
+            } else {
+                mainline_lanes
+            };
+            out.push((seg_type, len, lanes));
+        }
+        cursor = start + span;
+    }
+    if length_ft > cursor {
+        out.push((SegmentType::Basic, length_ft - cursor, mainline_lanes));
+    }
+    out
+}
+
+/// The eleven published segments of Example Problem 1, rebuilt from nothing
+/// but the stations of its six ramps.
+///
+/// `test_segmentation_rules_exhibit_10_11` checks each branch of
+/// `segment_ramp_section` on its own, and every one of those assertions reads
+/// consistently whether the auxiliary-lane argument is taken to be the
+/// gore-to-gore distance or the weaving segment's length, because the function
+/// returns that argument unchanged. This test is what distinguishes them, and
+/// it is the reason the doc comment can state which one it is.
+#[test]
+fn test_example_problem_1_reconstructs_from_ramp_stations() {
+    let published: Vec<(SegmentType, f64, u32)> = ep1_facility()
+        .segments
+        .iter()
+        .map(|s| (s.seg_type, s.length_ft, s.lanes))
+        .collect();
+
+    let rebuilt = assemble_from_ramp_gores(
+        EP1_LENGTH_FT,
+        EP1_MAINLINE_LANES,
+        &EP1_RAMP_SECTIONS,
+        true,
+    );
+
+    assert_eq!(rebuilt.len(), published.len(), "segment count");
+    for (i, (got, want)) in rebuilt.iter().zip(published.iter()).enumerate() {
+        assert_eq!(got.0, want.0, "segment {} type", i + 1);
+        approx(got.1, want.1, 0.001, &format!("segment {} length", i + 1));
+        assert_eq!(got.2, want.2, "segment {} lanes", i + 1);
+    }
+
+    // The lengths have to close on the facility, not merely match one by one.
+    approx(
+        rebuilt.iter().map(|s| s.1).sum::<f64>(),
+        EP1_LENGTH_FT,
+        0.001,
+        "total facility length",
+    );
+
+    // The weaving segment carries the gore-to-gore distance as its short
+    // length, and the difference between the two is the pair of extensions.
+    let weave = rebuilt.iter().find(|s| s.0 == SegmentType::Weaving).unwrap();
+    let gore_to_gore = EP1_RAMP_SECTIONS[1].1 - EP1_RAMP_SECTIONS[1].0;
+    approx(gore_to_gore, 1640.0, 0.001, "weave short length");
+    approx(weave.1 - gore_to_gore, 2.0 * WEAVE_EXTENSION_FT, 0.001, "weave extensions");
+}
+
+/// The control for the test above: without the Exhibit 10-2 extension the
+/// reconstruction fails, and it fails in three places rather than one. Without
+/// this, a reconstruction that happened to be insensitive to the extension
+/// would look like a passing test.
+#[test]
+fn test_a_weave_coded_gore_to_gore_does_not_reconstruct_example_problem_1() {
+    let published: Vec<(SegmentType, f64, u32)> = ep1_facility()
+        .segments
+        .iter()
+        .map(|s| (s.seg_type, s.length_ft, s.lanes))
+        .collect();
+    let rebuilt = assemble_from_ramp_gores(
+        EP1_LENGTH_FT,
+        EP1_MAINLINE_LANES,
+        &EP1_RAMP_SECTIONS,
+        false,
+    );
+
+    assert_eq!(rebuilt.len(), published.len(), "the segment count is unchanged");
+    let wrong: Vec<usize> = rebuilt
+        .iter()
+        .zip(published.iter())
+        .enumerate()
+        .filter(|(_, (g, w))| (g.1 - w.1).abs() > 0.001)
+        .map(|(i, _)| i + 1)
+        .collect();
+    // Segment 5 runs 500 ft long, the weave itself 1,000 ft short, and
+    // segment 7 500 ft long: the two extensions, taken off the weave and given
+    // back to the basic segments on either side.
+    assert_eq!(wrong, vec![5, 6, 7], "lengths that move without the extension");
+    approx(rebuilt[4].1, 5780.0, 0.001, "segment 5 without the extension");
+    approx(rebuilt[5].1, 1640.0, 0.001, "the weave without the extension");
+    approx(rebuilt[6].1, 5780.0, 0.001, "segment 7 without the extension");
+}

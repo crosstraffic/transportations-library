@@ -1263,6 +1263,32 @@ impl FreewayFacility {
 ///   applies over the whole distance — returned as a single overlapping
 ///   ramp segment.
 ///
+/// # What `gore_to_gore_ft` means when `has_auxiliary_lane` is set
+///
+/// The three non-weaving branches take the gore-to-gore distance, which is
+/// what the parameter is named for. The auxiliary-lane branch does not: it
+/// returns the argument unchanged as the weaving segment's length, and a
+/// weaving segment is longer than the distance between the gores. Chapter 10
+/// Section 2 puts its boundaries 500 ft upstream and 500 ft downstream of the
+/// two gore areas (Exhibit 10-2), so a caller that places ramps by gore
+/// station must add 1,000 ft before calling here, and carry the gore-to-gore
+/// distance itself into [`FacilitySegment::short_length_ft`], which is the
+/// Chapter 13 short length L_S.
+///
+/// Example Problem 1 is the check, and its weaving segment is 2,640 ft long
+/// against a 1,640 ft short length. Passing the gore-to-gore distance
+/// straight through instead does not merely shorten the weave, it lengthens
+/// the basic segments on either side of it by 500 ft each;
+/// `test_a_weave_coded_gore_to_gore_does_not_reconstruct_example_problem_1`
+/// pins that, and
+/// `test_example_problem_1_reconstructs_from_ramp_stations` pins the correct
+/// reading. Neither is covered by the per-branch assertions in
+/// `test_segmentation_rules_exhibit_10_11`, because those read the same
+/// either way.
+///
+/// The parameter keeps its name because it is accurate for three of the four
+/// branches and because renaming it would break callers to fix a comment.
+///
 /// Returned tuples are `(SegmentType, length_ft)`; zero-length pieces are
 /// omitted.
 pub fn segment_ramp_section(
