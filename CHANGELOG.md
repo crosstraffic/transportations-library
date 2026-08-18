@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.3.5 — unreleased
+## 0.3.6 — unreleased
+
+### Added
+
+- **`freeway_facilities::WEAVE_INFLUENCE_EXTENSION_FT`, the 500 ft a weaving segment overhangs each of its gores** (Chapter 10 Section 2, Exhibit 10-2). `segment_ramp_section` does not apply the extension itself — the auxiliary-lane branch returns its argument unchanged as the weaving segment's length — so every caller that places ramps by gore station has to add 1,000 ft before calling, and until now each one wrote its own literal. The constant sits beside `RAMP_INFLUENCE_AREA_FT`, which is the same kind of quantity from the same segmentation step. The 500 ft is not a new value and no computed number moves: the segmentation tests added in 0.3.5 held it in a private `WEAVE_EXTENSION_FT` and now read the public one, so there is exactly one definition of it in the crate, and `test_example_problem_1_reconstructs_from_ramp_stations` is still what enforces its meaning against the eleven published segments of Exhibit 25-43.
+
+## 0.3.5 — 2026-08-14
 
 ### Added
 
@@ -26,7 +32,7 @@
 
 - **The four mountainous-terrain PCE stand-ins still disagree with each other** (2.5 in `basicfreeways`, 5.0 in `merge_diverge` and `weaving`, 3.0 in `freeway_facilities`), and `freeway_facilities` previously claimed its value was "consistent with the other chapter modules", which was false against all three. The comments now point at the new mixed-flow modules and the claim is corrected, but the values are deliberately left alone: the mixed-flow model needs a grade and a length, which a terrain class does not supply, and it returns a speed rather than a passenger-car equivalent, so it cannot be substituted at those sites without changing what those functions mean. Reconciling the four values is its own change.
 
-## 0.3.4 — unreleased
+## 0.3.4 — 2026-08-13
 
 ### Added
 
