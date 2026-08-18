@@ -55,6 +55,18 @@ pub const CHAPTER: u32 = 10;
 /// 1,500 ft downstream of an on-ramp gore / upstream of an off-ramp gore).
 pub const RAMP_INFLUENCE_AREA_FT: f64 = 1500.0;
 
+/// Half of a weaving segment's overhang past the gores, ft. Chapter 10
+/// Section 2 puts the weave influence area 500 ft upstream and 500 ft
+/// downstream of the two respective gore areas (Exhibit 10-2), so a weaving
+/// segment is 1,000 ft longer than the distance between its gores.
+///
+/// [`segment_ramp_section`] does not apply this itself — it returns the
+/// auxiliary-lane branch's argument unchanged — so the extension is the
+/// caller's arithmetic, and `test_example_problem_1_reconstructs_from_ramp_stations`
+/// is what enforces that meaning, against the eleven published segments of
+/// Exhibit 25-43.
+pub const WEAVE_INFLUENCE_EXTENSION_FT: f64 = 500.0;
+
 // ═════════════════════════════════════════════════════════════════════════
 // Segment data model
 // ═════════════════════════════════════════════════════════════════════════
@@ -1271,9 +1283,10 @@ impl FreewayFacility {
 /// weaving segment is longer than the distance between the gores. Chapter 10
 /// Section 2 puts its boundaries 500 ft upstream and 500 ft downstream of the
 /// two gore areas (Exhibit 10-2), so a caller that places ramps by gore
-/// station must add 1,000 ft before calling here, and carry the gore-to-gore
-/// distance itself into [`FacilitySegment::short_length_ft`], which is the
-/// Chapter 13 short length L_S.
+/// station must add twice [`WEAVE_INFLUENCE_EXTENSION_FT`] before calling
+/// here, and carry the gore-to-gore distance itself into
+/// [`FacilitySegment::short_length_ft`], which is the Chapter 13 short
+/// length L_S.
 ///
 /// Example Problem 1 is the check, and its weaving segment is 2,640 ft long
 /// against a 1,640 ft short length. Passing the gore-to-gore distance

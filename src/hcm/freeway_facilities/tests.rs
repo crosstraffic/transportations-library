@@ -8,6 +8,7 @@ use crate::hcm::common::{CityType, LevelOfService};
 
 use super::freeway_facilities::{
     segment_ramp_section, FacilitySegment, FreewayFacility, SegmentType, Terrain,
+    WEAVE_INFLUENCE_EXTENSION_FT,
 };
 
 /// Build the Example Problem 1 facility (Exhibits 25-43/25-44) with the
@@ -549,15 +550,6 @@ fn test_planning_carryover_propagates_downstream() {
 // Segmentation, reconstructed from ramp stations
 // ═════════════════════════════════════════════════════════════════════════
 
-/// Half of the weaving segment's overhang past the gores. Chapter 10 Section
-/// 2: "the weave influence area extends 500 ft upstream and 500 ft downstream
-/// of the two respective gore areas (see Exhibit 10-2)."
-///
-/// Deliberately local to the tests. `segment_ramp_section` does not apply this
-/// itself, so it is the caller's arithmetic, and the test below is what pins
-/// that fact down.
-const WEAVE_EXTENSION_FT: f64 = 500.0;
-
 /// Example Problem 1's three ramp sections as an analyst would place them:
 /// `(on-ramp gore, off-ramp gore, auxiliary lane)` in ft from the upstream
 /// terminus. Read off Exhibit 25-43 by accumulating the published segment
@@ -593,7 +585,7 @@ fn assemble_from_ramp_gores(
     let mut cursor = 0.0;
     for &(on_gore, off_gore, aux) in sections {
         let gore_to_gore = off_gore - on_gore;
-        let ext = if aux && extend_weaves { WEAVE_EXTENSION_FT } else { 0.0 };
+        let ext = if aux && extend_weaves { WEAVE_INFLUENCE_EXTENSION_FT } else { 0.0 };
         let start = on_gore - ext;
         let span = gore_to_gore + 2.0 * ext;
         if start > cursor {
@@ -659,7 +651,7 @@ fn test_example_problem_1_reconstructs_from_ramp_stations() {
     let weave = rebuilt.iter().find(|s| s.0 == SegmentType::Weaving).unwrap();
     let gore_to_gore = EP1_RAMP_SECTIONS[1].1 - EP1_RAMP_SECTIONS[1].0;
     approx(gore_to_gore, 1640.0, 0.001, "weave short length");
-    approx(weave.1 - gore_to_gore, 2.0 * WEAVE_EXTENSION_FT, 0.001, "weave extensions");
+    approx(weave.1 - gore_to_gore, 2.0 * WEAVE_INFLUENCE_EXTENSION_FT, 0.001, "weave extensions");
 }
 
 /// The control for the test above: without the Exhibit 10-2 extension the

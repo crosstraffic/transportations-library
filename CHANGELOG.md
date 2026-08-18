@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.6 — unreleased
+
+### Added
+
+- **`freeway_facilities::WEAVE_INFLUENCE_EXTENSION_FT`, the 500 ft a weaving segment overhangs each of its gores** (Chapter 10 Section 2, Exhibit 10-2). `segment_ramp_section` does not apply the extension itself — the auxiliary-lane branch returns its argument unchanged as the weaving segment's length — so every caller that places ramps by gore station has to add 1,000 ft before calling, and until now each one wrote its own literal. The constant sits beside `RAMP_INFLUENCE_AREA_FT`, which is the same kind of quantity from the same segmentation step. The 500 ft is not a new value and no computed number moves: the segmentation tests added in 0.3.5 held it in a private `WEAVE_EXTENSION_FT` and now read the public one, so there is exactly one definition of it in the crate, and `test_example_problem_1_reconstructs_from_ramp_stations` is still what enforces its meaning against the eleven published segments of Exhibit 25-43.
+
 ## 0.3.5 — unreleased
 
 ### Added
