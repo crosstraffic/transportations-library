@@ -738,6 +738,14 @@ impl TwoLaneHighways {
     /// | 4 | Significant | Substantial truck speed reduction |
     /// | 5 | Severe | Trucks at or near crawl speed |
     ///
+    /// A `pdftotext` extract of the exhibit once read the >0.4-0.5 mi row at
+    /// >5-6% grade as class 5 where this table encodes 4. Adjudicated
+    /// 2026-08-18 against the EPUB's real table markup
+    /// (`resources/epub/OEBPS/104_Ch15_03.xhtml`): the row reads
+    /// 1 1 2 2 3 **4** 5 5 5 5, so the code is correct and the extract had
+    /// drifted a column. Trust the EPUB markup over any text extraction of
+    /// this exhibit.
+    ///
     /// # Arguments
     ///
     /// * `seg_num` - Index of the segment to analyze
