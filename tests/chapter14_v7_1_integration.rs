@@ -149,6 +149,141 @@ fn example_problem_2_second_off_ramp() {
     assert_eq!(los, Some(LevelOfService::D));
 }
 
+/// Example Problem 3, first ramp (pp. 28-11 to 28-16): a one-lane on-ramp on an eight-lane
+/// freeway, 1,300 ft upstream of a one-lane off-ramp. The two ramps are far enough apart that no
+/// auxiliary lane connects them, so each is analyzed as an independent junction.
+#[test]
+fn example_problem_3_merge() {
+    let mut seg = RampSegment {
+        version: HcmVersion::V7_1,
+        ramp_type: RampType::OnRamp,
+        ramp_side: RampSide::Right,
+        ramp_lanes: RampLanes::OneLane,
+        freeway_lanes: 4,
+        freeway_ffs: 65.0,
+        ramp_ffs: 30.0,
+        accel_lane_length: Some(260.0),
+        decel_lane_length: None,
+        freeway_demand: 5490.0,
+        ramp_demand: 410.0,
+        phf: 0.94,
+        heavy_vehicle_pct: 0.10,
+        // The on-ramp carries 5% trucks against the freeway's 10% (p. 28-11), so its f_HV differs.
+        ramp_heavy_vehicle_pct: Some(0.05),
+        terrain: TerrainType::Level,
+        ..Default::default()
+    };
+
+    let los = seg.run_analysis();
+    let a = seg.analysis_v7_1.as_ref().expect("7.1 analysis stored");
+
+    approx(a.flow_freeway, 6425.0, 3.0, "v_F (p. 28-12)");
+    approx(a.flow_ramp, 458.0, 1.0, "v_R1 (p. 28-12)");
+    approx(a.flow_influence, 6883.0, 4.0, "v_1 (p. 28-12)");
+    approx(a.flow_per_lane, 1721.0, 1.0, "v_1/N (p. 28-12)");
+    approx(a.breakpoint_adj, 1400.0, 1e-9, "BP_adj (p. 28-13)");
+    approx(a.capacity_basic_adj, 2350.0, 1e-9, "C_b,adj (p. 28-13)");
+    approx(a.speed_basic, 63.54, 0.02, "S_b (p. 28-13)");
+    approx(a.speed_impedance, 8.77, 0.02, "SIM (p. 28-13)");
+    approx(a.speed_avg.unwrap(), 54.77, 0.03, "S_M (p. 28-13)");
+    approx(a.capacity_per_lane.unwrap(), 1841.0, 3.0, "C_M (p. 28-14)");
+    approx(a.capacity_neighboring_freeway, 9400.0, 1e-9, "downstream freeway capacity (p. 28-15)");
+    approx(a.capacity_ramp_roadway, 1900.0, 1e-9, "ramp roadway capacity (p. 28-16)");
+    assert!(!a.demand_exceeds_capacity);
+    approx(a.density, 31.4, 0.1, "D_M (p. 28-16)");
+    assert_eq!(los, Some(LevelOfService::E));
+}
+
+/// Example Problem 3, second ramp (pp. 28-13 to 28-16): the off-ramp 1,300 ft downstream. Its
+/// mainline flow is the flow departing the merge influence area, which the manual carries forward
+/// as v_2 = 6,883 pc/h. That value is already a flow rate under equivalent base conditions, so it
+/// is fed in with PHF = 1.00 and no heavy vehicles rather than re-derived from the two upstream
+/// demand volumes, whose truck percentages differ and so cannot be summed in veh/h.
+#[test]
+fn example_problem_3_diverge() {
+    let mut seg = RampSegment {
+        version: HcmVersion::V7_1,
+        ramp_type: RampType::OffRamp,
+        ramp_side: RampSide::Right,
+        ramp_lanes: RampLanes::OneLane,
+        freeway_lanes: 4,
+        freeway_ffs: 65.0,
+        ramp_ffs: 25.0,
+        accel_lane_length: None,
+        decel_lane_length: Some(260.0),
+        freeway_demand: 6883.0,
+        ramp_demand: 702.0,
+        phf: 1.00,
+        heavy_vehicle_pct: 0.0,
+        terrain: TerrainType::Level,
+        ..Default::default()
+    };
+
+    let los = seg.run_analysis();
+    let a = seg.analysis_v7_1.as_ref().expect("7.1 analysis stored");
+
+    approx(a.flow_freeway, 6883.0, 1e-9, "v_2 (p. 28-12)");
+    approx(a.flow_ramp, 702.0, 1e-9, "v_R2 (p. 28-12)");
+    // A diverge's influence-area flow is the mainline flow, which already contains the exiting
+    // vehicles, so v_R is not added.
+    approx(a.flow_influence, 6883.0, 1e-9, "v_2 (p. 28-12)");
+    approx(a.flow_per_lane, 1721.0, 1.0, "v_2/N (p. 28-12)");
+    approx(a.speed_basic, 63.54, 0.02, "S_b (p. 28-13)");
+    approx(a.speed_impedance, 6.09, 0.02, "SID (p. 28-14)");
+    approx(a.speed_avg.unwrap(), 57.45, 0.03, "S_D (p. 28-14)");
+    approx(a.capacity_per_lane.unwrap(), 1904.0, 3.0, "C_D (p. 28-15)");
+    approx(a.capacity_neighboring_freeway, 9400.0, 1e-9, "upstream freeway capacity (p. 28-15)");
+    approx(a.capacity_ramp_roadway, 1900.0, 1e-9, "ramp roadway capacity (p. 28-16)");
+    assert!(!a.demand_exceeds_capacity);
+    approx(a.density, 29.95, 0.05, "D_D (p. 28-16)");
+    assert_eq!(los, Some(LevelOfService::D));
+}
+
+/// Example Problem 4 (pp. 28-18 to 28-21): a one-lane, left-hand on-ramp on a six-lane freeway.
+/// Edition 7.1 makes no distinction between left- and right-hand junctions in the computation, so
+/// this problem exercises the same path as a right-hand merge and is included for its published
+/// values rather than for a separate branch.
+#[test]
+fn example_problem_4_left_hand_on_ramp() {
+    let mut seg = RampSegment {
+        version: HcmVersion::V7_1,
+        ramp_type: RampType::OnRamp,
+        ramp_side: RampSide::Left,
+        ramp_lanes: RampLanes::OneLane,
+        freeway_lanes: 3,
+        freeway_ffs: 65.0,
+        ramp_ffs: 30.0,
+        accel_lane_length: Some(820.0),
+        decel_lane_length: None,
+        freeway_demand: 4000.0,
+        ramp_demand: 490.0,
+        phf: 0.90,
+        heavy_vehicle_pct: 0.075,
+        ramp_heavy_vehicle_pct: Some(0.03),
+        terrain: TerrainType::Level,
+        ..Default::default()
+    };
+
+    let los = seg.run_analysis();
+    let a = seg.analysis_v7_1.as_ref().expect("7.1 analysis stored");
+
+    approx(a.flow_freeway, 4779.0, 3.0, "v_F (p. 28-19)");
+    approx(a.flow_ramp, 561.0, 1.0, "v_R (p. 28-19)");
+    approx(a.flow_influence, 5340.0, 4.0, "v (p. 28-19)");
+    approx(a.flow_per_lane, 1780.0, 2.0, "v/N (p. 28-19)");
+    approx(a.breakpoint_adj, 1400.0, 1e-9, "BP_adj (p. 28-19)");
+    approx(a.capacity_basic_adj, 2350.0, 1e-9, "C_b,adj (p. 28-19)");
+    approx(a.speed_basic, 62.96, 0.02, "S_b (p. 28-19)");
+    approx(a.speed_impedance, 3.57, 0.02, "SIM (p. 28-20)");
+    approx(a.speed_avg.unwrap(), 59.39, 0.03, "S_M (p. 28-20)");
+    approx(a.capacity_per_lane.unwrap(), 1970.0, 3.0, "C_M (p. 28-21)");
+    approx(a.capacity_neighboring_freeway, 7050.0, 1e-9, "downstream freeway capacity (p. 28-21)");
+    approx(a.capacity_ramp_roadway, 1900.0, 1e-9, "ramp roadway capacity (p. 28-21)");
+    assert!(!a.demand_exceeds_capacity);
+    approx(a.density, 29.97, 0.05, "D_M (p. 28-21)");
+    assert_eq!(los, Some(LevelOfService::D));
+}
+
 /// The two editions are genuinely different models. Under the 7th Edition this junction's density
 /// comes from the Lanes 1-2 flow; under Edition 7.1 it comes from the whole cross-section and a
 /// speed impedance, and the answers differ.
