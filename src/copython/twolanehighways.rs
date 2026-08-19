@@ -1,8 +1,10 @@
 use crate::hcm::twolanehighways::{
+    BicycleLOS as LibBicycleLOS,
     Segment as LibSegment,
     SubSegment as LibSubSegment,
     TwoLaneHighways as LibTwoLaneHighways,
 };
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
 
@@ -556,9 +558,209 @@ impl TwoLaneHighways {
     }
 }
 
+#[cfg(feature = "with-python")]
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct BicycleLOS {
+    pub inner: LibBicycleLOS,
+}
+
+#[cfg(feature = "with-python")]
+#[pymethods]
+impl BicycleLOS {
+    /// Create a new BicycleLOS input set.
+    ///
+    /// Every argument is required and the order is exactly `BicycleLOS::new`'s on the Rust side. The other classes in this module default their trailing arguments, but every input here enters Equation 15-47 directly and none of them has an HCM-stated default that is safe to assume: a defaulted `pavement_condition` alone moves the score by more than a whole LOS letter through the 7.066 * (1/P)^2 term. Keeping the order identical to the engine's also means a positional call copied from the Rust doc example means the same thing in Python.
+    ///
+    /// Args:
+    ///     lane_width: Outside through lane width in FEET. Model calibrated over 10-16 ft.
+    ///     shoulder_width: Paved shoulder width in FEET. The 4 ft and 8 ft steps select Equations 15-43, 15-42 and 15-41 respectively.
+    ///     speed_limit: Posted speed limit in mi/h. This is the posted limit, not a free-flow speed, and Equation 15-46 takes ln(Spl - 20), so a limit of 20 mi/h or below has no defined effective speed factor.
+    ///     num_lanes: Directional through lanes (1 for a two-lane highway, 2 or more for multilane).
+    ///     pavement_condition: FHWA 5-point rating, 1 = very poor through 5 = very good.
+    ///     hourly_volume: Hourly directional volume in veh/h.
+    ///     phf: Peak hour factor. The HCM's stated default for this method is 0.88.
+    ///     heavy_vehicle_pct: Heavy vehicle share as a DECIMAL (0.06 = 6%), not a percent.
+    ///     pct_on_highway_parking: Share of the segment with occupied on-highway parking, as a DECIMAL.
+    ///
+    /// Returns:
+    ///     BicycleLOS: A new bicycle LOS input set.
+    #[new]
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        lane_width: f64,
+        shoulder_width: f64,
+        speed_limit: f64,
+        num_lanes: i32,
+        pavement_condition: f64,
+        hourly_volume: f64,
+        phf: f64,
+        heavy_vehicle_pct: f64,
+        pct_on_highway_parking: f64,
+    ) -> Self {
+        BicycleLOS {
+            inner: LibBicycleLOS::new(
+                lane_width,
+                shoulder_width,
+                speed_limit,
+                num_lanes,
+                pavement_condition,
+                hourly_volume,
+                phf,
+                heavy_vehicle_pct,
+                pct_on_highway_parking,
+            ),
+        }
+    }
+
+    /// Get the outside lane width in feet.
+    #[getter]
+    pub fn get_lane_width(&self) -> f64 {
+        self.inner.lane_width
+    }
+
+    /// Get the paved shoulder width in feet.
+    #[getter]
+    pub fn get_shoulder_width(&self) -> f64 {
+        self.inner.shoulder_width
+    }
+
+    /// Get the posted speed limit in mi/h.
+    #[getter]
+    pub fn get_speed_limit(&self) -> f64 {
+        self.inner.speed_limit
+    }
+
+    /// Get the number of directional through lanes.
+    #[getter]
+    pub fn get_num_lanes(&self) -> i32 {
+        self.inner.num_lanes
+    }
+
+    /// Get the FHWA 5-point pavement condition rating.
+    #[getter]
+    pub fn get_pavement_condition(&self) -> f64 {
+        self.inner.pavement_condition
+    }
+
+    /// Get the hourly directional volume in veh/h.
+    #[getter]
+    pub fn get_hourly_volume(&self) -> f64 {
+        self.inner.hourly_volume
+    }
+
+    /// Get the peak hour factor.
+    #[getter]
+    pub fn get_phf(&self) -> f64 {
+        self.inner.phf
+    }
+
+    /// Get the heavy vehicle share as a decimal.
+    #[getter]
+    pub fn get_heavy_vehicle_pct(&self) -> f64 {
+        self.inner.heavy_vehicle_pct
+    }
+
+    /// Get the occupied on-highway parking share as a decimal.
+    #[getter]
+    pub fn get_pct_on_highway_parking(&self) -> f64 {
+        self.inner.pct_on_highway_parking
+    }
+
+    /// Step 2: directional flow rate in the outside lane, veh/h (Equation 15-40).
+    pub fn calculate_flow_rate_outside_lane(&self) -> f64 {
+        self.inner.calculate_flow_rate_outside_lane()
+    }
+
+    /// Step 3: effective width of the outside through lane, ft (Equations 15-41 through 15-45).
+    pub fn calculate_effective_width(&self) -> f64 {
+        self.inner.calculate_effective_width()
+    }
+
+    /// Step 4: effective speed factor (Equation 15-46).
+    pub fn calculate_effective_speed_factor(&self) -> f64 {
+        self.inner.calculate_effective_speed_factor()
+    }
+
+    /// Step 5: bicycle LOS score (Equation 15-47).
+    pub fn calculate_blos_score(&self) -> f64 {
+        self.inner.calculate_blos_score()
+    }
+
+    /// The Exhibit 15-7 LOS letter for this score.
+    pub fn determine_bicycle_los(&self) -> char {
+        self.inner.determine_bicycle_los()
+    }
+
+    /// Run the whole Section 4 chain and return the result as JSON.
+    ///
+    /// Unlike the facility classes in this module this is a pure read: the input set carries no
+    /// computed state, so `analyze` may be called repeatedly and there is no separate `to_json`.
+    ///
+    /// Returns:
+    ///     JSON `BicycleLOSResult` - `flow_rate_outside_lane`, `effective_width`,
+    ///     `effective_speed_factor`, `blos_score` and the Exhibit 15-7 `los` letter.
+    pub fn analyze(&self) -> PyResult<String> {
+        serde_json::to_string(&self.inner.analyze())
+            .map_err(|e| PyValueError::new_err(format!("serialize error: {e}")))
+    }
+
+    pub fn __repr__(&self) -> String {
+        format!(
+            "BicycleLOS(lane_width={:.1}, shoulder_width={:.1}, speed_limit={:.1}, num_lanes={}, pavement_condition={:.1}, hourly_volume={:.1})",
+            self.get_lane_width(),
+            self.get_shoulder_width(),
+            self.get_speed_limit(),
+            self.get_num_lanes(),
+            self.get_pavement_condition(),
+            self.get_hourly_volume()
+        )
+    }
+
+    pub fn __str__(&self) -> String {
+        format!(
+            "Bicycle LOS: score {:.2}, LOS {} ({:.1} ft effective width)",
+            self.calculate_blos_score(),
+            self.determine_bicycle_los(),
+            self.calculate_effective_width()
+        )
+    }
+}
+
+/// Evaluate the bicycle mode on a two-lane or multilane highway segment - HCM
+/// Chapter 15, Section 4 (Steps 2-5, Equations 15-40 through 15-47).
+///
+/// The bicycle method's input set is not the motorized method's: pavement rating and
+/// on-highway parking matter, and segment length does not, so this is a separate entry
+/// point rather than a mode argument on `TwoLaneHighways`.
+///
+/// Args:
+///     config_json: JSON `BicycleLOS` config - `lane_width` and `shoulder_width` in feet,
+///         `speed_limit` in mi/h (the posted limit, not a free-flow speed), `num_lanes`
+///         (directional through lanes), `pavement_condition` on the FHWA 5-point scale,
+///         `hourly_volume` in veh/h, `phf`, and `heavy_vehicle_pct` and
+///         `pct_on_highway_parking` as decimals rather than percents. All nine are required.
+///
+/// Returns:
+///     JSON `BicycleLOSResult` - the Step 2 outside-lane flow rate, the Step 3 effective
+///     width, the Step 4 effective speed factor, the Step 5 BLOS score, and the Exhibit
+///     15-7 LOS letter.
+///
+/// Raises:
+///     ValueError: if the config is malformed or a field is missing.
+#[pyfunction]
+pub fn analyze_bicycle_los(config_json: &str) -> PyResult<String> {
+    let blos: LibBicycleLOS = serde_json::from_str(config_json)
+        .map_err(|e| PyValueError::new_err(format!("invalid bicycle LOS config: {e}")))?;
+    serde_json::to_string(&blos.analyze())
+        .map_err(|e| PyValueError::new_err(format!("serialize error: {e}")))
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<SubSegment>()?;
     m.add_class::<Segment>()?;
     m.add_class::<TwoLaneHighways>()?;
+    m.add_class::<BicycleLOS>()?;
+    m.add_function(wrap_pyfunction!(analyze_bicycle_los, m)?)?;
     Ok(())
 }

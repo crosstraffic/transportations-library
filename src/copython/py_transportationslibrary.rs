@@ -47,6 +47,8 @@ fn transportations_library(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()>
         procedures, one set of classes per HCM chapter.\n\n\
         Main Classes:\n\
         - SubSegment, Segment, TwoLaneHighways: HCM Chapter 15 (two-lane highways)\n\
+        - BicycleLOS, analyze_bicycle_los: HCM Chapter 15 Section 4 (bicycle mode on\n\
+          two-lane and multilane highways)\n\
         - BasicFreeways, ManagedLanes: HCM Chapter 12 (basic freeway, multilane\n\
           highway, and basic managed lane segments)\n\
         - analyze_mixed_flow, analyze_composite_grade: HCM Chapters 26 and 25\n\
