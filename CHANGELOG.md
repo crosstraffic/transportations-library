@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.3.6 — unreleased
+## 0.3.7 — unreleased
+
+### Added
+
+- **`analyze_bicycle_los` and the `BicycleLOS` class on the Python module**, JSON in and JSON out and a class beside it, closing the last Chapter 15 method with no Python binding. The bicycle mode of Section 4 has been in the Rust core since the chapter went in, with `bicycle_los_widening_example_test` reproducing the published widening example, but it was reachable only from Rust, which is why it was the one HCM method the MCP server could not offer. Nothing about the computation changed: the new `tests/test_bicycle_los_integration.py` drives the same `tests/ExampleCases/hcm/TwoLaneHighways/bicycle_widening.json` fixture through both entry points at the Rust test's own tolerances and reproduces BLOS 5.90 (LOS F) before the project and 3.58 (LOS D) after. Unlike the Rust test it reads the fixture's `expected` block rather than hardcoding those numbers, so fixture and assertion cannot drift apart. The class constructor takes all nine inputs positionally in the engine's own order rather than defaulting its trailing arguments the way `Segment` and `SubSegment` do, because every one of them enters Equation 15-47 directly and a defaulted `pavement_condition` alone moves the score by more than a whole LOS letter.
+
+### Known issues
+
+- **A posted speed limit of 20 mi/h or below gives `BicycleLOS` a non-finite score that still comes back with an LOS letter.** Equation 15-46 is `St = 1.1199 ln(Spl - 20) + 0.8103`, so exactly 20 mi/h gives negative infinity and anything below gives NaN. Neither is guarded, `serde_json` writes a non-finite float as `null`, and `determine_bicycle_los` compares the raw value and still returns a letter: negative infinity falls under the 1.5 threshold and reports LOS A, the best grade there is, while NaN fails every comparison and falls through to LOS F. A caller that reads only the letter gets no signal. This is not new in this release and is not introduced by the bindings — it is the engine's behaviour, and the model is in any case documented as calibrated over 25 to 50 mi/h — but the bindings make it reachable from Python, so it is recorded here. `test_a_speed_limit_at_or_below_20_returns_a_null_score_with_an_los_letter` pins the current behaviour so that a decision to refuse the input instead has to come past a test rather than land silently in the web calculator and the MCP server.
+
+## 0.3.6 — 2026-08-17
 
 ### Added
 
