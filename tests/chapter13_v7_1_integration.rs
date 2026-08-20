@@ -162,6 +162,145 @@ fn example_problem_3_two_sided_weave() {
     assert_eq!(los, LevelOfService::E);
 }
 
+/// Example Problem 4, Trial 1 (Exhibit 27-9, pp. 27-17 to 27-18): design of a complex weave for a
+/// desired LOS. Five lanes carried straight through, so the freeway-to-ramp movement needs two
+/// lane changes and can start from no lane that weaves in one. A "Complex 0-2" configuration.
+///
+/// The trial skips Step 4, so the manual prints no capacity for this segment and none is asserted.
+#[test]
+fn example_problem_4_trial_1_complex_0_2() {
+    let mut seg = WeavingSegment {
+        version: HcmVersion::V7_1,
+        weaving_type: WeavingType::OneSided,
+        length_short: 1320.0,
+        num_lanes: 5,
+        ffs: 60.0,
+        // All demands are already flow rates in pc/h under equivalent base conditions (p. 27-17).
+        v_ff: 2000.0,
+        v_fr: 1450.0,
+        v_rf: 1500.0,
+        v_rr: 1750.0,
+        phf: 1.00,
+        heavy_vehicle_pct: 0.0,
+        terrain: TerrainType::Level,
+        lc_rf: 0,
+        lc_fr: 2,
+        nw_rf: 2,
+        nw_fr: 0,
+        ..Default::default()
+    };
+
+    let los = seg.run_analysis();
+    let a = seg.analysis_v7_1.as_ref().expect("7.1 analysis stored");
+
+    assert_eq!(a.class, WeavingClass::Complex);
+    approx(a.flow_total, 6700.0, 1e-9, "v (p. 27-17)");
+    approx(a.flow_per_lane, 1340.0, 1e-9, "v/N (p. 27-17)");
+    approx(a.breakpoint_adj, 1600.0, 1e-9, "BP_adj (p. 27-18)");
+    approx(a.capacity_basic_adj, 2300.0, 1e-9, "C_b,adj (p. 27-18)");
+    // Below the breakpoint, so the equivalent basic segment runs at the adjusted FFS of 60 mi/h.
+    // The manual's prose at p. 27-18 says "the FFS of 65 mi/h" here, which contradicts both this
+    // problem's stated FFS of 60 and its own S_o arithmetic on p. 27-19. Recorded in
+    // docs/hcm/VERIFICATION.md.
+    approx(a.speed_basic, 60.0, 1e-9, "S_b (p. 27-18)");
+    approx(a.weaving_intensity, 0.008040, 5e-6, "W (p. 27-18)");
+    approx(a.speed_impedance, 6.75, 0.01, "SIW (p. 27-19)");
+    approx(a.speed_avg.unwrap(), 53.25, 0.01, "S_o (p. 27-19)");
+    approx(a.density, 25.2, 0.05, "D (p. 27-19)");
+    assert_eq!(los, LevelOfService::D);
+}
+
+/// Example Problem 4, Trial 2 (Exhibit 27-10, pp. 27-19 to 27-20): the same segment after a lane is
+/// added to the exit-ramp leg, which drops LC_FR to 1 and raises NW_FR to 1. A "Complex 0-1"
+/// configuration, and the design that reaches the target LOS C.
+#[test]
+fn example_problem_4_trial_2_complex_0_1() {
+    let mut seg = WeavingSegment {
+        version: HcmVersion::V7_1,
+        weaving_type: WeavingType::OneSided,
+        length_short: 1320.0,
+        num_lanes: 5,
+        ffs: 60.0,
+        v_ff: 2000.0,
+        v_fr: 1450.0,
+        v_rf: 1500.0,
+        v_rr: 1750.0,
+        phf: 1.00,
+        heavy_vehicle_pct: 0.0,
+        terrain: TerrainType::Level,
+        // Only the freeway-to-ramp configuration changes between the trials (p. 27-19).
+        lc_rf: 0,
+        lc_fr: 1,
+        nw_rf: 2,
+        nw_fr: 1,
+        ..Default::default()
+    };
+
+    let los = seg.run_analysis();
+    let a = seg.analysis_v7_1.as_ref().expect("7.1 analysis stored");
+
+    assert_eq!(a.class, WeavingClass::Complex);
+    approx(a.flow_per_lane, 1340.0, 1e-9, "v/N (p. 27-19)");
+    approx(a.speed_basic, 60.0, 1e-9, "S_b (p. 27-19)");
+    approx(a.weaving_intensity, 0.006701, 5e-6, "W (p. 27-19)");
+    approx(a.speed_impedance, 5.63, 0.01, "SIW (p. 27-19)");
+    approx(a.speed_avg.unwrap(), 54.37, 0.01, "S_o (p. 27-19)");
+    approx(a.density, 24.6, 0.05, "D (p. 27-20)");
+    // The manual's Trial 2 prose cites Equation 13-22 and Exhibit 13-6 here, and heads the step
+    // "Trial 1". Both citations belong to Trial 1's Equation 13-21 and Exhibit 13-7, and the
+    // letter below is the one Exhibit 13-7 gives. Recorded in docs/hcm/VERIFICATION.md.
+    assert_eq!(los, LevelOfService::C);
+}
+
+/// Chapter 28's Example Problem 3 discussion (pp. 28-16 to 28-18) re-analyzes its merge/diverge
+/// pair as a weaving segment, formed by connecting the two ramps with an auxiliary lane. It is a
+/// Chapter 13 problem carried in the Chapter 28 text, and it is the only published Edition 7.1
+/// simple-weave case that also prints a weaving capacity from Equation 13-16.
+#[test]
+fn chapter_28_example_problem_3_auxiliary_lane_weave() {
+    let mut seg = WeavingSegment {
+        version: HcmVersion::V7_1,
+        weaving_type: WeavingType::OneSided,
+        // Four mainline lanes plus the added auxiliary lane, striped for weaving over the full
+        // 1,300 ft between the two ramps (p. 28-16).
+        length_short: 1300.0,
+        num_lanes: 5,
+        ffs: 65.0,
+        // Already flow rates in pc/h, carried over from Example Problem 3's Step 1. The
+        // ramp-to-ramp movement is set to zero as the most conservative assumption (p. 28-16).
+        v_ff: 5723.0,
+        v_fr: 702.0,
+        v_rf: 458.0,
+        v_rr: 0.0,
+        phf: 1.00,
+        heavy_vehicle_pct: 0.0,
+        terrain: TerrainType::Level,
+        lc_rf: 1,
+        lc_fr: 1,
+        nw_rf: 1,
+        nw_fr: 1,
+        ..Default::default()
+    };
+
+    let los = seg.run_analysis();
+    let a = seg.analysis_v7_1.as_ref().expect("7.1 analysis stored");
+
+    assert_eq!(a.class, WeavingClass::Simple);
+    approx(a.flow_total, 6883.0, 1e-9, "v (p. 28-16)");
+    approx(a.flow_per_lane, 1377.0, 1.0, "v/N (p. 28-17)");
+    approx(a.breakpoint_adj, 1400.0, 1e-9, "BP_adj (p. 28-13)");
+    approx(a.capacity_basic_adj, 2350.0, 1e-9, "C_b,adj (p. 28-13)");
+    // 1,377 pc/h/ln is below the 1,400 pc/h/ln breakpoint, so S_b is the adjusted FFS (p. 28-17).
+    approx(a.speed_basic, 65.0, 1e-9, "S_b (p. 28-17)");
+    approx(a.weaving_intensity, 0.004546, 5e-6, "W (p. 28-17)");
+    approx(a.speed_impedance, 3.99, 0.01, "SIW (p. 28-17)");
+    approx(a.speed_avg.unwrap(), 61.01, 0.01, "S_o (p. 28-17)");
+    approx(a.capacity_per_lane.unwrap(), 1917.0, 2.0, "C_W (p. 28-18)");
+    approx(a.dc_ratio.unwrap(), 0.72, 0.005, "d/c (p. 28-18)");
+    approx(a.density, 22.6, 0.05, "D (p. 28-18)");
+    assert_eq!(los, LevelOfService::C);
+}
+
 /// The two editions are genuinely different models, not a refinement: the same segment analyzed
 /// under each produces different speeds, densities, and (here) different LOS letters. This is the
 /// behavior that makes the edition a required input rather than a default anyone can ignore.
